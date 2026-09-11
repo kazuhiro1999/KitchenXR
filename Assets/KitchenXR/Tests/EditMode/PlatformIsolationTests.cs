@@ -24,8 +24,24 @@ namespace KitchenXR.Tests.EditMode
 
         private static string KitchenXrRoot => Path.Combine(Application.dataPath, "KitchenXR");
 
+        /// <summary>
+        /// 規則は設計 §4.2 のとおり **`Platform/&lt;系&gt;/` の中だけ**。
+        /// P2 で `Platform/ArFoundation/` に本物の実装（<c>ArAnchorStore</c>）が入ったので、
+        /// 例外を `Platform/` 全体から `Platform/ArFoundation/` へ**狭めた**——
+        /// <c>Platform/PanelPoseFile.cs</c> のような系に依らない部品や、
+        /// <c>Platform/Null/</c> の受け皿に AR Foundation が混ざると、
+        /// PICO・WebXR へ差し替えるときに追い切れなくなる。
+        /// </summary>
+        private static readonly string[] VendorExemptFolders =
+        {
+            "/Platform/ArFoundation/",
+            "/Platform/Meta/",
+            "/Platform/Pico/",
+            "/Platform/WebXr/",
+        };
+
         [Test]
-        public void 機種固有の呼び出しはPlatformフォルダの外に無い()
+        public void 機種固有の呼び出しはPlatformの系別フォルダの外に無い()
         {
             var violations = new List<string>();
 
@@ -33,8 +49,9 @@ namespace KitchenXR.Tests.EditMode
             {
                 var normalized = file.Replace('\\', '/');
 
-                // Platform/ 配下（ArFoundation 実装が置かれる場所）と、この試験自身は対象外。
-                if (normalized.Contains("/Platform/") || normalized.Contains("/Tests/"))
+                // 系別フォルダ（ArFoundation 実装が置かれる場所）と、この試験自身は対象外。
+                if (VendorExemptFolders.Any(folder => normalized.Contains(folder)) ||
+                    normalized.Contains("/Tests/"))
                 {
                     continue;
                 }

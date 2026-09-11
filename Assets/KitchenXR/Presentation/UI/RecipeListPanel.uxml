@@ -3,7 +3,10 @@
     <ui:Style src="RecipeListPanel.uss" />
     <ui:VisualElement name="root" class="root-panel">
         <ui:VisualElement name="listHeader" class="recipe-list-header">
-            <ui:Label text="レシピ帳" class="heading" />
+            <ui:VisualElement class="recipe-list-header-row">
+                <ui:Label text="レシピ帳" class="heading recipe-list-title" />
+                <ui:Button name="placementButton" text="配置" class="kitchen-button kitchen-button--secondary recipe-place-button" />
+            </ui:VisualElement>
             <ui:Label name="statusLabel" text="" class="caption recipe-list-status" />
         </ui:VisualElement>
         <ui:VisualElement class="divider" />

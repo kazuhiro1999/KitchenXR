@@ -246,6 +246,65 @@ Claude Code の Unity プラグイン（公式。skill・Unity CLI・Editor を�
   ⑦最後まで進めて「作り終えた」を押すと一覧へ戻り、manor の `times_cooked` が増えるか。
   ⑧「一覧へ」が1度押しでは戻らず2度押しで戻るか（誤操作防止）。
 
+- 2026-09-13（v1.0.6。**P2 アンカーと配置モード**）: 板の置き場所を覚えるようにした（設計 §0 A
+  「空間に定着した UI は土台」・§4.3・§4.4）。
+  **①`Platform/ArFoundation/ArAnchorStore`**: AR Foundation 6.5 の永続アンカー。
+  保存は `TryAddAnchorAsync(世界の Pose)` → `TrySaveAnchorAsync` の `SerializableGuid` を
+  `persistentDataPath/anchors.json`（`{鍵: GUID}`）へ。復元は `TryLoadAnchorAsync` で返った
+  アンカーの Transform。同じ鍵を保存し直すときは先に `TryEraseAnchorAsync`。
+  **鍵は板1枚＝1つ**（`panel.recipe`／`ingredients`／`timer`／`video`。一覧はレシピと同じ鍵）。
+  文書で確かめたこと: Meta Quest（Unity OpenXR: Meta 2.5）は Save／Load／Erase に対応するが
+  **Get Saved Anchor Ids は非対応**（＝GUID は自分で持つほか無い）。**Editor の XR Simulation は
+  Save／Load／Erase のどれも非対応**なので、エディタでは必ず控えの側を通る。
+  **②退避路（`panels.json`）**: 板の位置を **XR Origin 基準の相対 Pose** で持つ。
+  アンカーが使えるときも**必ず一緒に書く**——アンカーの復元は部屋が変わった等で普通に失敗するので、
+  その受け皿が要る。壊れたファイル・数の欠けた行・長さ 0 の回転は「無かった」として既定へ落ちる。
+  **③配置モード**: 入り方は**手のひらメニュー**（XRI の `HandMenu` を MR テンプレートの
+  `Left/Right Hand > Palm` と Hands Interaction Demo の追従設定に結んだ）と、
+  レシピ／一覧の板の頭の**「配置」2度押し**の2通り。最中は全ての板に琥珀の枠と取っ手が出て、
+  **Ray ＋ Grab**（`XRGrabInteractable`・kinematic な Rigidbody・掴み口は触れたところ）で動かせる。
+  操作は「保存」「元に戻す」「やめる」の板から。
+  **④起動時の復元順**: アンカー → 控え → 既定（`Bootstrap` が頭の前へ配った位置）。
+  戻した板は 0.6 秒かけて今の位置から目的地へ補間しながら薄く出す。
+  **⑤** `bundleVersion 1.0.6` / `versionCode 7`、APK は `Build/KitchenXR_v1.0.6.apk`。
+  検算: EditMode 108件＋PlayMode 34件が緑（EditMode +15・PlayMode +8）。
+  `PlatformIsolationTests` の例外を `Platform/` 全体から **`Platform/<系>/` だけ**へ狭めた
+  （設計 §4.2 の文言どおり。`Platform/PanelPoseFile.cs` や `Platform/Null/` に AR Foundation が
+  混ざらないように）。
+  **ずらした点**: (a) 「配置モードでは Poke のボタンが効かない」を、**ポークの Interactor を切る**のではなく
+  **調理の板の UI に板ガラスを1枚かぶせる**（`CookingModeInputGate`）で実現した——Interactor ごと切ると
+  「保存」の板も手のひらメニューも指で押せなくなり、実機でレイが UI Toolkit に届かなかったときに
+  配置モードから出られなくなる。狙い（誤って工程が進まない）は板ガラスで満たせる。
+  (b) `Bootstrap` の分かれ道は「シーンに `ARAnchorManager` が居るか」だけを見る
+  （`AnchorStoreFactory`）。**保存に対応しているかは起動直後には分からない**（AR Session が立つまで
+  descriptor が無い）ので、そこは呼ばれるたびに見て false／null を返し、控えへ落ちる。
+  結果として Editor では「アンカーは常に失敗 → 控えだけが残る」となり、指示の
+  「Editor は InMemory ＋退避路」と同じ振る舞いになる。
+  (c) 既定の置き場所（頭の前 0.8m）は**変えていない**——今の `Bootstrap` の配置をそのまま既定とした。
+  (d) レシピの板と一覧の板は同じ鍵なので、配置モードでは**レシピの板だけ**を出して掴ませ、
+  出るときに一覧をそこへ揃える（同じ場所に2枚重なった状態で掴ませない）。
+  **主人が実機で見る点**: ①手のひらを返すと「配置」の小さな板が出るか（出なければレシピ／一覧の板の
+  頭の「配置」を2度押し。**こちらは必ず動く**）。②配置モードで板に枠と取っ手が出るか・
+  **レイで遠くから引き寄せて**置き直せるか・**指で「次へ」を突いても工程が進まない**か。
+  ③「保存」を押すと調理モードに戻るか。④**アプリを落として起動し直すと同じ場所に戻るか**
+  （3日連続で確認——これが P2 の済みの印）。⑤戻るときに板がゆっくり出るか。
+  ⑥「元に戻す」で入る前の位置へ戻るか。⑦配置の操作板（保存・元に戻す・やめる）が
+  **レイでも指でも**押せるか——レイで押せないときは指で押して抜けられる。
+  ⑧一度部屋を出て戻ってもアンカーが効くか（効かなければ控えの位置に出る＝原点のずれ分だけずれる）。
+
+## 板を置き直す（配置モードの使い方）
+
+1. **入る**: 手のひらを自分に向けると小さな板が出るので「配置」を押す。出ないときは、レシピの板
+   （または起動直後の一覧の板）の頭にある「配置」を**2度**押す（1度目で「もう一度」に変わり、4秒で戻る）。
+2. **動かす**: 全ての板に琥珀の枠と取っ手が出る。**コントローラのレイ**で板を指して掴むと、
+   遠くからでも引き寄せて置き直せる。配置モードの間は、調理の板のボタン（次へ・戻る等）は**効かない**。
+3. **決める**: 目の前に出る操作板の「保存」で覚えて調理モードへ戻る。「元に戻す」は入る前の位置へ、
+   「やめる」は戻して抜ける。
+4. **次の起動**: 覚えた場所に板がゆっくり戻る。アンカーが効かなかったときは控え（部屋の原点基準）の
+   位置に出るので、少しずれることがある——そのときはもう一度置き直して「保存」すればよい。
+   覚えを捨てたいときは `Application.persistentDataPath` の `anchors.json`・`panels.json` を消す
+   （`adb shell run-as com.kazuhiro.kitchenxr` か、アプリのデータ消去）。
+
 ## エディタでの Play について（2026-09-12）
 - **Play すると別のシーンが増えるのは正常**。XR Plug-in Management の **Standalone** の loader が
   AR Foundation の **XR Simulation**（`SimulationLoader`）なので、Play 中に模擬環境のシーンが

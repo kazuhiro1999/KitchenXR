@@ -11,6 +11,7 @@ using UnityEngine.XR.Interaction.Toolkit.Filtering;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 using UnityEngine.XR.Interaction.Toolkit.UI;
+using UnityEngine.XR.Interaction.Toolkit.UI.BodyUI;
 using KitchenXR.Presentation;
 using KitchenXR.Presentation.Video;
 
@@ -56,6 +57,25 @@ namespace KitchenXR.App.Editor
         // 動画の板は向きで寸法が変わる（VideoPanel が持つ。ここは 16:9 の初期値だけ）。
         private const float VideoWidthUnits = VideoPanel.LandscapeWidthUnits;
         private const float VideoHeightUnits = VideoPanel.LandscapeHeightUnits;
+
+        // 配置モードの操作板（P2）。40cm×18cm。実行時の位置は Bootstrap が頭の前に置き直す。
+        private const float PlacementWidthUnits = 200f;
+        private const float PlacementHeightUnits = 90f;
+
+        // 手のひらメニュー（P2）。手のひらに乗る大きさ（14cm×7cm）。
+        private const float PlacementMenuWidthUnits = 70f;
+        private const float PlacementMenuHeightUnits = 36f;
+
+        /// <summary>XRI の Hands Interaction Demo サンプルにある手のひら追従の設定（読むだけ）。</summary>
+        private const string HandsFollowPresetPath =
+            "Assets/Samples/XR Interaction Toolkit/3.5.1/Hands Interaction Demo/DatumPresets/Menu Hands Follow Preset.asset";
+
+        private const string ControllerFollowPresetPath =
+            "Assets/Samples/XR Interaction Toolkit/3.5.1/Hands Interaction Demo/DatumPresets/Menu Controller Follow Preset.asset";
+
+        public const string HandMenuObjectName = "Hand Menu";
+        public const string PlacementMenuObjectName = "PlacementMenu";
+        public const string PlacementPanelObjectName = "PlacementPanel";
 
         // XRI の World Space UI サンプル（WorldSpacePanel.asset）と同じ値。
         // 「既存のコライダーを使う」＝ UI Document は自前でコライダーを作らない。
@@ -117,12 +137,29 @@ namespace KitchenXR.App.Editor
             var videoPanel = videoGo.AddComponent<VideoPanel>();
             AttachYoutubePlayer(videoPanel);
 
+            // P2。配置モードの操作板（保存・元に戻す・やめる）。出るのは配置モードの間だけ
+            // （Bootstrap が PanelVisibility で隠す）。実行時の位置は頭の前へ置き直す。
+            var placementGo = CreatePanelObject(
+                PlacementPanelObjectName, panelsRoot.transform, panelSettings,
+                LoadUxml("Assets/KitchenXR/Presentation/UI/PlacementPanel.uxml"),
+                PlacementWidthUnits, PlacementHeightUnits,
+                new Vector3(-0.2f, 0.95f, 1.2f), Quaternion.identity);
+            var placementPanel = placementGo.AddComponent<PlacementPanel>();
+
             var inputGate = panelsRoot.AddComponent<CookingModeInputGate>();
             WireCookingModeInputGate(scene, inputGate);
 
+            var panelPlacement = panelsRoot.AddComponent<PanelPlacement>();
+            WirePanelPlacementOrigin(scene, panelPlacement);
+
+            // P2。手のひらメニュー（設計 §4.4「入り方＝手のひらメニュー」）。
+            // 揃わなければ黙って作らない——レシピ／一覧の板の頭の「配置」（2度押し）が確実な入り口。
+            var placementMenuPanel = AttachHandMenu(scene, panelSettings);
+
             EnsureUiToolkitInput(scene);
 
-            CreateBootstrap(recipeListPanel, recipePanel, ingredientsPanel, timerPanel, videoPanel, inputGate);
+            CreateBootstrap(recipeListPanel, recipePanel, ingredientsPanel, timerPanel, videoPanel, inputGate,
+                panelPlacement, placementPanel, placementMenuPanel);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -385,7 +422,8 @@ namespace KitchenXR.App.Editor
 
         private static void CreateBootstrap(
             RecipeListPanel recipeListPanel, RecipePanel recipePanel, IngredientsPanel ingredientsPanel,
-            TimerPanel timerPanel, VideoPanel videoPanel, CookingModeInputGate inputGate)
+            TimerPanel timerPanel, VideoPanel videoPanel, CookingModeInputGate inputGate,
+            PanelPlacement panelPlacement, PlacementPanel placementPanel, PlacementMenuPanel placementMenuPanel)
         {
             var go = new GameObject("Bootstrap");
             var bootstrap = go.AddComponent<Bootstrap>();
@@ -397,7 +435,89 @@ namespace KitchenXR.App.Editor
             so.FindProperty("_timerPanel").objectReferenceValue = timerPanel;
             so.FindProperty("_videoPanel").objectReferenceValue = videoPanel;
             so.FindProperty("_cookingModeInputGate").objectReferenceValue = inputGate;
+            so.FindProperty("_panelPlacement").objectReferenceValue = panelPlacement;
+            so.FindProperty("_placementPanel").objectReferenceValue = placementPanel;
+            so.FindProperty("_placementMenuPanel").objectReferenceValue = placementMenuPanel;
             so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>
+        /// 控え（`panels.json`）は **XR Origin 基準の相対 Pose** で持つ（設計 §4.3 の退避路）。
+        /// その基準になる Transform を挿す。見つからなければ世界座標をそのまま書く
+        /// （部屋の原点が動くとずれるが、無いよりまし——これは退避路であってアンカーの代わりではない）。
+        /// </summary>
+        private static void WirePanelPlacementOrigin(Scene scene, PanelPlacement placement)
+        {
+            var xrOrigin = FindDeepChild(scene, "XR Origin (XR Rig)");
+            if (xrOrigin == null)
+            {
+                Debug.LogWarning("[KitchenXR] XR Origin が見つからず、板の控えの基準を挿せませんでした。");
+                return;
+            }
+
+            var so = new SerializedObject(placement);
+            so.FindProperty("_originTransform").objectReferenceValue = xrOrigin;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>
+        /// 手のひらメニュー（設計 §4.4「入り方＝手のひらメニュー」）。
+        ///
+        /// XRI の <c>HandMenu</c>（`Runtime/UI/BodyUI/HandMenu.cs`）が、手のひらの Transform を
+        /// 追って板を出し入れする。要るのは3つ:
+        ///   - 左右の手のひらの Transform（MR テンプレートの `MR Interaction Setup` の
+        ///     Left Hand／Right Hand の下に `Palm` がある）
+        ///   - 追従の設定2つ（XRI の Hands Interaction Demo サンプルの DatumPresets）。
+        ///     **無いと HandMenu は OnEnable で自分を無効にする**
+        ///   - 板そのもの（ここで作る UI Toolkit の小さな板）
+        ///
+        /// **どれか1つでも欠けたら作らない。** 手のひらメニューは実機でしか確かめられないので、
+        /// レシピ／一覧の板の頭の「配置」（2度押し）を確実な入り口として必ず残してある。
+        /// </summary>
+        private static PlacementMenuPanel AttachHandMenu(Scene scene, PanelSettings panelSettings)
+        {
+            var leftPalm = FindPalm(scene, "Left Hand");
+            var rightPalm = FindPalm(scene, "Right Hand");
+            var handsPreset = AssetDatabase.LoadAssetAtPath<Object>(HandsFollowPresetPath);
+            var controllerPreset = AssetDatabase.LoadAssetAtPath<Object>(ControllerFollowPresetPath);
+
+            if (leftPalm == null || rightPalm == null || handsPreset == null || controllerPreset == null)
+            {
+                Debug.LogWarning(
+                    "[KitchenXR] 手のひらメニューに要るもの（左右の Palm・追従の設定）が揃わないので作りません。"
+                    + "「配置」はレシピ／一覧の板の頭の釦（2度押し）から入れます。");
+                return null;
+            }
+
+            var menuRoot = new GameObject(HandMenuObjectName);
+            var handMenu = menuRoot.AddComponent<HandMenu>();
+
+            var menuGo = CreatePanelObject(
+                PlacementMenuObjectName, menuRoot.transform, panelSettings,
+                LoadUxml("Assets/KitchenXR/Presentation/UI/PlacementMenu.uxml"),
+                PlacementMenuWidthUnits, PlacementMenuHeightUnits,
+                Vector3.zero, Quaternion.identity);
+            var menuPanel = menuGo.AddComponent<PlacementMenuPanel>();
+
+            var so = new SerializedObject(handMenu);
+            so.FindProperty("m_HandMenuUIGameObject").objectReferenceValue = menuGo;
+            so.FindProperty("m_LeftPalmAnchor").objectReferenceValue = leftPalm;
+            so.FindProperty("m_RightPalmAnchor").objectReferenceValue = rightPalm;
+            so.FindProperty("m_HandTrackingFollowPreset.m_UseConstant").boolValue = false;
+            so.FindProperty("m_HandTrackingFollowPreset.m_Variable").objectReferenceValue = handsPreset;
+            so.FindProperty("m_ControllerFollowPreset.m_UseConstant").boolValue = false;
+            so.FindProperty("m_ControllerFollowPreset.m_Variable").objectReferenceValue = controllerPreset;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(handMenu);
+
+            return menuPanel;
+        }
+
+        /// <summary>手のひらの Transform（`Left Hand`／`Right Hand` の下の `Palm`）を探す。</summary>
+        private static Transform FindPalm(Scene scene, string handName)
+        {
+            var hand = FindDeepChild(scene, handName);
+            return hand != null ? FindDeepChild(hand, "Palm") : null;
         }
 
         private static void RegisterInBuildSettings()

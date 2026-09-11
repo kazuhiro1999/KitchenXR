@@ -1,0 +1,7 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="theme.uss" />
+    <ui:Style src="PlacementPanel.uss" />
+    <ui:VisualElement name="root" class="root-panel placement-menu-root">
+        <ui:Button name="placementButton" text="配置" class="kitchen-button kitchen-button--primary placement-menu-button" />
+    </ui:VisualElement>
+</ui:UXML>

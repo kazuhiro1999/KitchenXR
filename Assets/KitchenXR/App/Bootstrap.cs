@@ -4,6 +4,7 @@ using Cysharp.Threading.Tasks;
 using KitchenXR.Domain;
 using KitchenXR.Net;
 using KitchenXR.Platform;
+using KitchenXR.Platform.ArFoundation;
 using KitchenXR.Platform.Null;
 using KitchenXR.Presentation;
 using KitchenXR.Presentation.Video;
@@ -38,16 +39,24 @@ namespace KitchenXR.App
         [SerializeField] private VideoPanel _videoPanel;
         [SerializeField] private CookingModeInputGate _cookingModeInputGate;
 
+        [Header("配置モード（P2。設計 §4.4）")]
+        [SerializeField] private PanelPlacement _panelPlacement;
+        [SerializeField] private PlacementPanel _placementPanel;
+        [SerializeField] private PlacementMenuPanel _placementMenuPanel;
+
         [Header("初期配置（設計 §9: 頭の前0.8m・目線より少し下に3枚）")]
         [SerializeField] private Transform _headTransform; // 未指定なら Camera.main を使う
         [SerializeField] private float _forwardDistanceMeters = 0.8f;
         [SerializeField] private float _belowEyelineMeters = 0.08f;
         [SerializeField] private float _lateralSpacingMeters = 0.5f;
 
-        // P0/P1 では Null 実装しか挿さない。ArFoundation 実装は P2（設計 §4.3）。
+        // P2 から、AR Foundation が使えるなら ArAnchorStore が挿さる（設計 §4.3）。
         private IAnchorStore _anchorStore;
         private IPassthroughControl _passthrough;
         private IHandInputPolicy _handInputPolicy;
+
+        /// <summary>板の位置の控え（`panels.json`）。アンカーが使えるときも必ず書く（退避路）。</summary>
+        private PanelPoseFile _panelPoseFile;
 
         private RecipeStore _recipeStore;
         private MediaStore _mediaStore;
@@ -68,7 +77,11 @@ namespace KitchenXR.App
 
         private void Awake()
         {
-            _anchorStore = new InMemoryAnchorStore(); // P2 で ArAnchorStore に差し替える（設計 §4.3）。
+            // P2。AR Foundation（ARAnchorManager）が居れば ArAnchorStore、居なければ InMemory。
+            // どちらでも「控え（panels.json）へは必ず書く」ので、板の位置は失われない（設計 §4.3）。
+            _anchorStore = AnchorStoreFactory.Create();
+            _panelPoseFile = PanelPoseFile.CreateDefault();
+
             _passthrough = new NullPassthrough();
             _passthrough.Enable(); // MR テンプレートは既定でパススルー済みだが、状態としても明示しておく。
             _handInputPolicy = new DefaultHandInputPolicy();
@@ -91,6 +104,17 @@ namespace KitchenXR.App
             if (_recipeListPanel != null)
             {
                 _recipeListPanel.RecipeSelected += HandleRecipeSelected;
+                _recipeListPanel.PlacementRequested += HandlePlacementRequested;
+            }
+
+            if (_recipePanel != null)
+            {
+                _recipePanel.PlacementRequested += HandlePlacementRequested;
+            }
+
+            if (_placementMenuPanel != null)
+            {
+                _placementMenuPanel.PlacementRequested += HandlePlacementRequested;
             }
 
             if (_cookingModeInputGate != null)
@@ -98,15 +122,25 @@ namespace KitchenXR.App
                 _cookingModeInputGate.Bind(_handInputPolicy);
             }
 
+            SetUpPlacement();
+
             // 起動の見た目は「レシピを選ぶ板」。調理の3枚は選んでから出す（主人の指示）。
             ShowListMode();
         }
 
         private void Start()
         {
+            // 念のためもう一度（Awake の時点で UIDocument の root が出来ていない構成もありうる）。
+            // 配置の板は配置モードの間だけ出る。
+            PanelVisibility.SetVisible(_placementPanel, false);
+
             PlaceInitialPanels();
 
             _cts = new CancellationTokenSource();
+
+            // P2。覚えている場所へ戻す（アンカー → 控え → 既定）。
+            // 起動の道筋（一覧・復帰）とは独立に走らせる——板の位置は中身より先に決まってよい。
+            RestorePlacementAsync(_cts.Token).Forget();
 
             // 動画の一覧（`StreamingAssets/media.json` → persistentDataPath）。設計 §6・ROADMAP P4。
             LoadMediaAsync(_cts.Token).Forget();
@@ -127,6 +161,29 @@ namespace KitchenXR.App
             if (_recipeListPanel != null)
             {
                 _recipeListPanel.RecipeSelected -= HandleRecipeSelected;
+                _recipeListPanel.PlacementRequested -= HandlePlacementRequested;
+            }
+
+            if (_recipePanel != null)
+            {
+                _recipePanel.PlacementRequested -= HandlePlacementRequested;
+            }
+
+            if (_placementMenuPanel != null)
+            {
+                _placementMenuPanel.PlacementRequested -= HandlePlacementRequested;
+            }
+
+            if (_placementPanel != null)
+            {
+                _placementPanel.SaveRequested -= HandlePlacementSave;
+                _placementPanel.UndoRequested -= HandlePlacementUndo;
+                _placementPanel.CancelRequested -= HandlePlacementCancel;
+            }
+
+            if (_panelPlacement != null)
+            {
+                _panelPlacement.PlacementFinished -= HandlePlacementFinished;
             }
 
             _cts?.Cancel();
@@ -485,6 +542,132 @@ namespace KitchenXR.App
         private async UniTaskVoid BackToListAsync(CancellationToken token)
         {
             await RefreshListAsync(token);
+        }
+
+        // ---------------------------------------------------------------- 配置モード（P2）
+
+        /// <summary>
+        /// 板と鍵を結ぶ（設計 §4.3「保存の単位はパネル1枚＝鍵1つ」）。
+        /// 一覧はレシピと**同じ鍵**——同じ場所に重ねて出す板なので、別々に覚える意味が無い。
+        /// レシピの板を取っ手役（leader）にして、一覧はそれに付いていく。
+        /// </summary>
+        private void SetUpPlacement()
+        {
+            if (_panelPlacement == null)
+            {
+                return;
+            }
+
+            _panelPlacement.Bind(_anchorStore, _panelPoseFile, _handInputPolicy, _cookingModeInputGate);
+
+            _panelPlacement.Register(PanelPlacement.RecipeKey, _recipePanel, _recipeListPanel);
+            _panelPlacement.Register(PanelPlacement.IngredientsKey, _ingredientsPanel);
+            _panelPlacement.Register(PanelPlacement.TimerKey, _timerPanel);
+            _panelPlacement.Register(PanelPlacement.VideoKey, _videoPanel);
+
+            _panelPlacement.PlacementFinished += HandlePlacementFinished;
+
+            if (_placementPanel != null)
+            {
+                _placementPanel.SaveRequested += HandlePlacementSave;
+                _placementPanel.UndoRequested += HandlePlacementUndo;
+                _placementPanel.CancelRequested += HandlePlacementCancel;
+                PanelVisibility.SetVisible(_placementPanel, false);
+            }
+        }
+
+        /// <summary>覚えている場所へ戻す（アンカー → 控え → 既定）。</summary>
+        private async UniTaskVoid RestorePlacementAsync(CancellationToken token)
+        {
+            if (_panelPlacement == null)
+            {
+                return;
+            }
+
+            await _panelPlacement.RestoreAsync(token);
+        }
+
+        /// <summary>
+        /// 配置モードへ入る（手のひらメニュー、またはレシピ／一覧の板の「配置」2度押し）。
+        /// 操作の板は**その場で頭の前に**出す——板を動かしている間も手が届く場所に居てほしいので、
+        /// 決まった場所に置かない。
+        /// </summary>
+        private void HandlePlacementRequested()
+        {
+            if (_panelPlacement == null || _panelPlacement.IsPlacing)
+            {
+                return;
+            }
+
+            PlacePlacementPanelInFrontOfHead();
+            PanelVisibility.SetVisible(_placementPanel, true);
+            _placementPanel?.SetHint("板を掴んで動かし、終わったら「保存」");
+
+            _panelPlacement.Enter();
+        }
+
+        private void HandlePlacementUndo()
+        {
+            _panelPlacement?.Undo();
+            _placementPanel?.SetHint("入る前の位置に戻しました");
+        }
+
+        private void HandlePlacementCancel() => _panelPlacement?.Cancel();
+
+        private void HandlePlacementSave()
+        {
+            if (_panelPlacement == null || _cts == null)
+            {
+                return;
+            }
+
+            _placementPanel?.SetHint("覚えています…");
+            SavePlacementAsync(_cts.Token).Forget();
+        }
+
+        private async UniTaskVoid SavePlacementAsync(CancellationToken token)
+        {
+            await _panelPlacement.SaveAsync(token);
+        }
+
+        /// <summary>配置モードを出た（保存でも取り消しでも）。操作の板を引っ込める。</summary>
+        private void HandlePlacementFinished()
+        {
+            PanelVisibility.SetVisible(_placementPanel, false);
+        }
+
+        /// <summary>操作の板を頭の前 0.7m・目線の少し下へ。</summary>
+        private void PlacePlacementPanelInFrontOfHead()
+        {
+            if (_placementPanel == null)
+            {
+                return;
+            }
+
+            var head = _headTransform != null ? _headTransform : Camera.main != null ? Camera.main.transform : null;
+            if (head == null)
+            {
+                return;
+            }
+
+            var flatForward = head.forward;
+            flatForward.y = 0f;
+            if (flatForward.sqrMagnitude < 1e-6f)
+            {
+                flatForward = Vector3.forward;
+            }
+
+            flatForward.Normalize();
+
+            var rotation = Quaternion.LookRotation(flatForward, Vector3.up);
+
+            // 板の原点は左上なので、中央に来るよう左へ半分ずらす（操作の板は 200px ≒ 40cm 幅）。
+            const float placementWidthMeters = 0.40f;
+            var right = rotation * Vector3.right;
+            var position = head.position + flatForward * 0.7f + Vector3.down * 0.35f
+                           - right * (placementWidthMeters / 2f);
+
+            _placementPanel.transform.SetPositionAndRotation(position, rotation);
         }
 
         // ---------------------------------------------------------------- 板の出し入れ

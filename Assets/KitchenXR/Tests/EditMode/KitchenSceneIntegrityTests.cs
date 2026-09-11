@@ -504,6 +504,66 @@ namespace KitchenXR.Tests.EditMode
                 + "主人が Project Settings > XR Plug-in Management > OpenXR で外してください。");
         }
 
+        // ---------------------------------------------------------------- 配置モード（P2）
+
+        /// <summary>
+        /// 板を置き直す仕掛け一式がシーンに在ること（ROADMAP P2・設計 §4.4）。
+        /// 手のひらメニューは実機でしか確かめられないので**必須にしない**——
+        /// レシピ／一覧の板の頭の「配置」（2度押し）が確実な入り口として残っている。
+        /// </summary>
+        [Test]
+        public void 配置モードの仕掛けがシーンに在る()
+        {
+            var placement = Object.FindFirstObjectByType<PanelPlacement>(FindObjectsInactive.Include);
+            Assert.IsNotNull(placement, "Kitchen.unity に PanelPlacement がありません（板の位置を覚えられません）。");
+
+            var so = new SerializedObject(placement);
+            Assert.IsNotNull(so.FindProperty("_originTransform").objectReferenceValue,
+                "控え（panels.json）の基準になる XR Origin が挿さっていません（相対で覚えられません）。");
+
+            var panel = Object.FindFirstObjectByType<PlacementPanel>(FindObjectsInactive.Include);
+            Assert.IsNotNull(panel, "配置モードの操作板（保存・元に戻す・やめる）がありません。");
+
+            var doc = panel.GetComponent<UIDocument>();
+            Assert.IsNotNull(doc, "PlacementPanel に UIDocument がありません。");
+            Assert.IsNotNull(panel.GetComponent<XRSimpleInteractable>(),
+                "PlacementPanel に XRSimpleInteractable がありません（指で押せません）。");
+            Assert.AreEqual(WorldSpacePanelFactory.PanelPivot, doc.pivot,
+                "PlacementPanel の原点が左上でないと、板とコライダーが半分ずれます。");
+        }
+
+        [Test]
+        public void Bootstrapに配置モードの板が挿さっている()
+        {
+            var bootstrap = Object.FindFirstObjectByType<KitchenXR.App.Bootstrap>(FindObjectsInactive.Include);
+            Assert.IsNotNull(bootstrap, "Kitchen.unity に Bootstrap がありません。");
+
+            var so = new SerializedObject(bootstrap);
+            Assert.IsNotNull(so.FindProperty("_panelPlacement").objectReferenceValue,
+                "Bootstrap に PanelPlacement が挿さっていません（起動しても板の位置が戻りません）。");
+            Assert.IsNotNull(so.FindProperty("_placementPanel").objectReferenceValue,
+                "Bootstrap に配置モードの操作板が挿さっていません（配置モードから出られません）。");
+        }
+
+        /// <summary>
+        /// 「配置」の釦が**両方の板**（調理中のレシピの板と、起動直後の一覧の板）にあること。
+        /// 手のひらメニューが実機で出なくても、ここから必ず入れる。
+        /// </summary>
+        [Test]
+        public void 配置の釦がレシピと一覧の板にある()
+        {
+            foreach (var uxml in new[]
+                     {
+                         "Assets/KitchenXR/Presentation/UI/RecipePanel.uxml",
+                         "Assets/KitchenXR/Presentation/UI/RecipeListPanel.uxml",
+                     })
+            {
+                var text = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), uxml));
+                StringAssert.Contains("name=\"placementButton\"", text,
+                    $"{Path.GetFileName(uxml)} に「配置」の釦がありません。");
+            }
+        }
+
         // ---------------------------------------------------------------- helpers
 
         private static IEnumerable<UIDocument> AllPanelDocuments()

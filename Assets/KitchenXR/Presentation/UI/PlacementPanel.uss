@@ -1,0 +1,42 @@
+/*
+ * 配置モードの操作板（ROADMAP P2・設計 §4.4）。
+ * 配置モードの間だけ出る。調理の板と違って**レイでも指でも押せる**——
+ * 実機でレイが UI に届かなかったときに、配置モードから出られなくなるのを避けるため。
+ */
+
+.placement-hint {
+    margin-top: 2px;
+    margin-bottom: var(--gap-tight);
+}
+
+.placement-button-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* 4cm角の下限（設計 §7）より広く取る。配置は落ち着いて操作する場面なので的を大きく。 */
+.placement-button {
+    min-width: 50px;
+    flex-shrink: 0;
+}
+
+/*
+ * 手のひらメニュー（XRI の HandMenu が手のひらに追従させる小さな板）。
+ * 手を返すと出るので、調理中に誤って押さないよう釦は1つだけ。
+ */
+
+.placement-menu-root {
+    padding: 4px;
+    justify-content: center;
+}
+
+.placement-menu-button {
+    min-width: 56px;
+    min-height: 22px;
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+}

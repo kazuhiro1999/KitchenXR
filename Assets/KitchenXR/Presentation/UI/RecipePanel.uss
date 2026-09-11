@@ -102,3 +102,20 @@
 .recipe-spacer {
     flex-grow: 1;
 }
+
+/*
+ * P2。「配置」（2度押し）——板を置き直すモードへ入る（設計 §4.4）。
+ * 「一覧へ」と同じ流儀で、1度目は「もう一度」に変わるだけ。
+ * 手のひらメニュー（HandMenu）が実機で出ないときの確実な入り口でもある。
+ */
+.recipe-place-button {
+    flex-shrink: 0;
+    min-width: 24px;
+    margin-left: var(--gap-tight);
+    margin-right: var(--gap-tight);
+}
+
+.recipe-place-button--armed {
+    background-color: var(--color-accent);
+    color: var(--color-accent-text);
+}

@@ -86,3 +86,14 @@
     border-bottom-left-radius: var(--radius-large);
     border-bottom-right-radius: var(--radius-large);
 }
+
+/* P2。頭は横1列: [レシピ帳][配置]。「配置」は2度押し（設計 §4.4・§7）。 */
+.recipe-list-header-row {
+    flex-direction: row;
+    align-items: center;
+}
+
+.recipe-list-title {
+    flex-grow: 1;
+    flex-shrink: 1;
+}

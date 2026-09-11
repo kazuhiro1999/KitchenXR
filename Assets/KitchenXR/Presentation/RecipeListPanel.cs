@@ -29,10 +29,24 @@ namespace KitchenXR.Presentation
         /// <summary>行が選ばれた。受けるのは <see cref="KitchenXR.App.Bootstrap"/>。</summary>
         public event Action<RecipeSummary> RecipeSelected;
 
+        /// <summary>
+        /// 「配置」が**2度**押された（P2。設計 §4.4）。
+        /// 起動直後はこの板が出ているので、調理を始める前に板を置き直せる入り口がここに要る。
+        /// </summary>
+        public event Action PlacementRequested;
+
+        private const string PlacementLabel = "配置";
+        private const string PlacementArmedLabel = "もう一度";
+        private const string PlacementArmedClass = "recipe-place-button--armed";
+
+        /// <summary>「配置」の2度押しの猶予（秒）。レシピの板の「一覧へ」と同じ長さ。</summary>
+        public const float PlacementConfirmSeconds = 4f;
+
         private Label _statusLabel;
         private ScrollView _scroll;
         private VisualElement _busySection;
         private Label _busyLabel;
+        private TwoPressButton _placementPress;
 
         private readonly List<RecipeSummary> _items = new List<RecipeSummary>();
 
@@ -44,7 +58,19 @@ namespace KitchenXR.Presentation
             _scroll = root.Q<ScrollView>("recipeScroll");
             _busySection = root.Q<VisualElement>("busySection");
             _busyLabel = root.Q<Label>("busyLabel");
+
+            var placementButton = root.Q<Button>("placementButton");
+            _placementPress = new TwoPressButton(
+                placementButton, PlacementLabel, PlacementArmedLabel,
+                PlacementConfirmSeconds, PlacementArmedClass);
+            _placementPress.Confirmed += () => PlacementRequested?.Invoke();
+            PokePress.BindButton(placementButton, _debounce, "place", () => _placementPress.Press());
         }
+
+        /// <summary>「配置」が2度目を待っているか（試験用）。</summary>
+        public bool IsPlacementArmed => _placementPress != null && _placementPress.IsArmed;
+
+        private void Update() => _placementPress?.Tick();
 
         /// <summary>今並んでいる行（試験と Bootstrap の確認用）。</summary>
         public IReadOnlyList<RecipeSummary> Items => _items;

@@ -1,0 +1,13 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="theme.uss" />
+    <ui:Style src="PlacementPanel.uss" />
+    <ui:VisualElement name="root" class="root-panel">
+        <ui:Label text="板を置く" class="heading" />
+        <ui:Label name="hintLabel" text="板を掴んで動かし、終わったら「保存」" class="caption placement-hint" />
+        <ui:VisualElement class="placement-button-row">
+            <ui:Button name="saveButton" text="保存" class="kitchen-button kitchen-button--primary placement-button" />
+            <ui:Button name="undoButton" text="元に戻す" class="kitchen-button kitchen-button--secondary placement-button" />
+            <ui:Button name="cancelButton" text="やめる" class="kitchen-button kitchen-button--secondary placement-button" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

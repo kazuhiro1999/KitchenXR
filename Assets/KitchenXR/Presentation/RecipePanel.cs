@@ -35,6 +35,10 @@ namespace KitchenXR.Presentation
         private const string BackToListArmedLabel = "もう一度";
         private const string BackToListArmedClass = "recipe-to-list-button--armed";
 
+        private const string PlacementLabel = "配置";
+        private const string PlacementArmedLabel = "もう一度";
+        private const string PlacementArmedClass = "recipe-place-button--armed";
+
         public event Action NextRequested;
         public event Action PrevRequested;
 
@@ -43,6 +47,12 @@ namespace KitchenXR.Presentation
 
         /// <summary>「作り終えた」が押された（P3。完了したときだけ出るボタン）。</summary>
         public event Action FinishRequested;
+
+        /// <summary>
+        /// 「配置」が**2度**押された（P2。板を置き直すモードへ。設計 §4.4）。
+        /// 手のひらメニューが実機で出ないときの、確実な入り口を兼ねる。
+        /// </summary>
+        public event Action PlacementRequested;
 
         private VisualElement _stepDots;
         private Label _progressLabel;
@@ -57,6 +67,7 @@ namespace KitchenXR.Presentation
         private Button _nextButton;
         private Button _backToListButton;
         private Button _finishButton;
+        private TwoPressButton _placementPress;
 
         private RecipeStore _store;
         private string _recipeId;
@@ -89,17 +100,27 @@ namespace KitchenXR.Presentation
             PokePress.BindButton(_backButton, _debounce, "back", () =>
             {
                 DisarmBackToList(); // 工程を動かしたら身構えを解く（別の意図の操作なので）。
+                _placementPress?.Disarm();
                 PrevRequested?.Invoke();
             });
 
             PokePress.BindButton(_nextButton, _debounce, "next", () =>
             {
                 DisarmBackToList();
+                _placementPress?.Disarm();
                 NextRequested?.Invoke();
             });
 
             PokePress.BindButton(_backToListButton, _debounce, "toList", HandleBackToListPressed);
             PokePress.BindButton(_finishButton, _debounce, "finish", () => FinishRequested?.Invoke());
+
+            // P2。「配置」も2度押し（調理の面に並んでいる釦なので、1度では動かさない）。
+            _placementPress = new TwoPressButton(
+                root.Q<Button>("placementButton"), PlacementLabel, PlacementArmedLabel,
+                BackToListConfirmSeconds, PlacementArmedClass);
+            _placementPress.Confirmed += () => PlacementRequested?.Invoke();
+            PokePress.BindButton(root.Q<Button>("placementButton"), _debounce, "place",
+                () => _placementPress.Press());
 
             DisarmBackToList();
         }
@@ -145,6 +166,9 @@ namespace KitchenXR.Presentation
         /// <summary>「一覧へ」が2度目を待っているか（試験用）。</summary>
         public bool IsBackToListArmed => _backToListArmedUntil > 0f && Time.unscaledTime <= _backToListArmedUntil;
 
+        /// <summary>「配置」が2度目を待っているか（試験用）。</summary>
+        public bool IsPlacementArmed => _placementPress != null && _placementPress.IsArmed;
+
         private void Update()
         {
             // 猶予が切れたら黙って元に戻す（押しっぱなしの札を残さない）。
@@ -152,6 +176,8 @@ namespace KitchenXR.Presentation
             {
                 DisarmBackToList();
             }
+
+            _placementPress?.Tick();
         }
 
         private void OnDestroy()

@@ -4,6 +4,7 @@
     <ui:VisualElement name="root" class="root-panel">
         <ui:VisualElement name="header" class="recipe-header">
             <ui:Button name="backToListButton" text="一覧へ" class="kitchen-button kitchen-button--secondary recipe-to-list-button" />
+            <ui:Button name="placementButton" text="配置" class="kitchen-button kitchen-button--secondary recipe-place-button" />
             <ui:VisualElement name="stepDots" class="step-dots" />
             <ui:Label name="progressLabel" text="0%" class="caption recipe-progress-label" />
         </ui:VisualElement>
