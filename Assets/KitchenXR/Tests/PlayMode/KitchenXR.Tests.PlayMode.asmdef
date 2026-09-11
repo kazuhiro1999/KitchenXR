@@ -1,24 +1,19 @@
 {
-    "name": "KitchenXR.Tests.EditMode",
-    "rootNamespace": "KitchenXR.Tests.EditMode",
+    "name": "KitchenXR.Tests.PlayMode",
+    "rootNamespace": "KitchenXR.Tests.PlayMode",
     "references": [
         "KitchenXR.Domain",
         "KitchenXR.Runtime",
-        "KitchenXR.App.Editor",
-        "Unity.XR.Interaction.Toolkit",
-        "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner"
+        "UnityEngine.TestRunner"
     ],
-    "includePlatforms": [
-        "Editor"
-    ],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
     "precompiledReferences": [
         "nunit.framework.dll"
     ],
-    "autoReferenced": true,
+    "autoReferenced": false,
     "defineConstraints": [
         "UNITY_INCLUDE_TESTS"
     ],

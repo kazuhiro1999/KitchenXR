@@ -8,8 +8,8 @@
 }
 
 .ingredient-toggle > .unity-toggle__input {
-    width: 8;
-    height: 8;
+    width: 8px;
+    height: 8px;
 }
 
 .ingredient-toggle .unity-toggle__text {

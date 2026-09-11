@@ -2,13 +2,20 @@
  * KitchenXR 共通テーマ（設計 Docs/design/PROTOTYPE.md §9）。
  * 白 85% の半透明の板・濃灰の文字・琥珀の強調色1色。角丸は大きめ。Unity既定の見た目は使わない。
  *
- * 実寸の換算（重要・要実機確認）:
- *   ワールド空間パネルは PanelSettings の World Space モードで、板の GameObject の
- *   localScale を 0.2 にそろえている。この設定では「1 UI 単位 ≒ 2mm」になる
- *   （XRI 公式サンプル World Space UI の比率から逆算した概算）。
- *   つまり単位 20 = 4cm・単位 10 = 2cm。設計 §7 の「最小4cm角・間隔2cm」はこの換算で
- *   決めた数値なので、実機で見た目が違えば KitchenSceneBuilder の localScale か
- *   このファイルの数値のどちらかを主人に調整してもらう前提（P1 の「触り心地の判定」）。
+ * 実寸の換算:
+ *   ワールド空間パネルは PanelSettings の World Space モード（Pixels Per Unit = 100）で、
+ *   板の GameObject の localScale を 0.2 にそろえている。
+ *   つまり 1 UI px = (1/100) local unit × 0.2 = 2mm。20px = 4cm・10px = 2cm。
+ *   設計 §7 の「最小4cm角・間隔2cm」はこの換算で決めた数値。
+ *
+ * 注意（2026-09-12 の実機不具合の直し。同じ罠を踏まないこと）:
+ *   1) `-unity-font-definition` は **UnityEngine.TextCore.Text.FontAsset**（UI Toolkit 用）しか
+ *      受け付けない。`Assets/TextMesh Pro/.../*.asset` は TMPro.TMP_FontAsset なので型が合わず、
+ *      指定ごと無視されて文字が1つも描かれなかった。ここでは
+ *      `Assets/KitchenXR/Presentation/UI/Fonts/NotoSansJP-Regular UITK.asset`
+ *      （KitchenFontAssetBuilder が TTF から作る TextCore 版）を指す。
+ *   2) 長さは **必ず単位（px）を付ける**。`--font-size-heading: 10` のような単位無しの値は
+ *      `var()` 越しに `font-size` へ渡すと型が合わず無視され、既定の 14px に戻ってしまう。
  */
 
 :root {
@@ -21,18 +28,18 @@
     --color-chip-bg: rgba(31, 41, 55, 0.08);
     --color-chip-bg-strong: rgba(245, 158, 11, 0.18);
 
-    /* 文字3段（見出し／本文／補助）。48/32/24pt の比を保った実機換算値（コメント参照）。 */
-    --font-size-heading: 10;
-    --font-size-body: 7;
-    --font-size-caption: 5;
+    /* 文字3段（見出し／本文／補助）。48/32/24pt の比を保った実機換算値（上のコメント参照）。 */
+    --font-size-heading: 10px;
+    --font-size-body: 7px;
+    --font-size-caption: 5px;
 
-    --radius-large: 12;
-    --radius-medium: 6;
+    --radius-large: 12px;
+    --radius-medium: 6px;
 
-    /* ボタン: 最小4cm角 = 単位20、間隔2cm = 単位10（設計 §7）。 */
-    --button-min: 20;
-    --gap-loose: 10;
-    --gap-tight: 5;
+    /* ボタン: 最小4cm角 = 20px、間隔2cm = 10px（設計 §7）。 */
+    --button-min: 20px;
+    --gap-loose: 10px;
+    --gap-tight: 5px;
 }
 
 .root-panel {
@@ -44,7 +51,7 @@
     border-bottom-right-radius: var(--radius-large);
     padding: 8px;
     color: var(--color-text);
-    -unity-font-definition: url("project://database/Assets/TextMesh Pro/Resources/Fonts & Materials/NotoSansJP-Regular SDF.asset");
+    -unity-font-definition: url("project://database/Assets/KitchenXR/Presentation/UI/Fonts/NotoSansJP-Regular%20UITK.asset?fileID=11400000&guid=2c70aed3703fdc543b76fb0e36c8518b&type=2#NotoSansJP-Regular%20UITK");
 }
 
 .heading {
@@ -74,7 +81,7 @@
 }
 
 .divider {
-    height: 0.6;
+    height: 0.6px;
     background-color: var(--color-divider);
     margin-top: var(--gap-tight);
     margin-bottom: var(--gap-tight);
@@ -139,14 +146,14 @@
 }
 
 .phase-dot {
-    width: 6;
-    height: 6;
-    margin-left: 3;
-    margin-right: 3;
-    border-top-left-radius: 3;
-    border-top-right-radius: 3;
-    border-bottom-left-radius: 3;
-    border-bottom-right-radius: 3;
+    width: 6px;
+    height: 6px;
+    margin-left: 3px;
+    margin-right: 3px;
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+    border-bottom-left-radius: 3px;
+    border-bottom-right-radius: 3px;
     background-color: var(--color-chip-bg);
 }
 
@@ -177,15 +184,15 @@
 }
 
 .ingredient-row__check {
-    width: 8;
-    height: 8;
-    margin-right: 6;
+    width: 8px;
+    height: 8px;
+    margin-right: 6px;
     border-width: 1px;
     border-color: var(--color-text-muted);
-    border-top-left-radius: 2;
-    border-top-right-radius: 2;
-    border-bottom-left-radius: 2;
-    border-bottom-right-radius: 2;
+    border-top-left-radius: 2px;
+    border-top-right-radius: 2px;
+    border-bottom-left-radius: 2px;
+    border-bottom-right-radius: 2px;
     background-color: rgba(255, 255, 255, 0.6);
 }
 
@@ -197,7 +204,7 @@
 .ingredient-row__qty {
     color: var(--color-text-muted);
     font-size: var(--font-size-caption);
-    margin-left: 6;
+    margin-left: 6px;
 }
 
 /* --- タイマー --- */
@@ -214,7 +221,7 @@
 }
 
 .timer-value {
-    font-size: 16;
+    font-size: 16px;
     color: var(--color-text);
 }
 

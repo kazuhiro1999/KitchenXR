@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
@@ -7,14 +8,22 @@ namespace KitchenXR.App.Editor
 {
     /// <summary>
     /// 検算用の Android ビルド（ROADMAP §3・PROTOTYPE §5「検算」）。
-    /// `unity build` の --execute-method から叩く。-buildOutput を自分で読んで honor する
-    /// （unity-cli skill: 「--execute-method の場合は自分の方法で --output-path を守る」）。
+    /// `unity build` の --execute-method から叩く。
+    /// 出力名は主人の指示どおり <c>Build/KitchenXR_v&lt;bundleVersion&gt;.apk</c>
+    /// （`-buildOutput` が渡されたときだけそちらを優先する）。
     /// </summary>
     public static class AndroidBuilder
     {
+        public const string BuildDirectory = "Build";
+
+        public static string DefaultOutputPath =>
+            Path.Combine(BuildDirectory, $"KitchenXR_v{PlayerSettings.bundleVersion}.apk").Replace('\\', '/');
+
         public static void PerformBuild()
         {
-            var outputPath = GetCommandLineArg("-buildOutput") ?? "Build/KitchenXR.apk";
+            var outputPath = GetCommandLineArg("-buildOutput") ?? DefaultOutputPath;
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
+
             var scenes = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToArray();
 
             var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
@@ -31,6 +40,8 @@ namespace KitchenXR.App.Editor
                 throw new Exception($"[KitchenXR] Android ビルドが失敗しました: {report.summary.result}" +
                                      $"（エラー {report.summary.totalErrors} 件）");
             }
+
+            UnityEngine.Debug.Log($"[KitchenXR] APK: {outputPath}（{report.summary.totalSize / (1024 * 1024)} MB）");
         }
 
         private static string GetCommandLineArg(string name)

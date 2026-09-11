@@ -72,3 +72,22 @@ Claude Code の Unity プラグイン（公式。skill・Unity CLI・Editor を�
   直接入れてから手動起動。③ パススルーの中にレシピ／材料／タイマーの3枚が頭の前0.8mに出て、
   指で触れて「次へ」「戻る」が反応し、材料チェックが押せ、タイマーが動くかを確認。手を伸ばした
   ピンチ操作やレイでボタンが反応**しない**ことも確認（調理モードの誤操作防止・設計 §7）。
+- 2026-09-12（実機確認後の直し。v1.0.1）: 主人が Quest 3 で見つけた3点を原因まで切り分けて修正。
+  **①文字が出ない**: `theme.uss` の `-unity-font-definition` が TMP の FontAsset を指しており、
+  USS 取り込みが「Unsupported type TMP_FontAsset … only the following types are supported: Font, FontAsset」
+  の警告とともにフォント指定を捨てていた（UI Toolkit は `UnityEngine.TextCore.Text.FontAsset` のみ）。
+  TTF から TextCore 版（Dynamic）`Presentation/UI/Fonts/NotoSansJP-Regular UITK.asset` と
+  `KitchenTextSettings.asset` を作って結び直し、併せて単位無しだった USS の長さ変数に `px` を付けた
+  （`var()` 越しでは単位無しは無視され font-size が既定の 14px に戻っていた）。
+  **②パススルーが効かない**: MR テンプレートの `Environment` ルート（グリッドの床と空）を消し忘れ。
+  本来はチュートリアル UI のトグルが消すが、その UI を外したので残り続けていた。カメラ背景は元から
+  Solid Color・alpha 0 で正しかった。Editor の「別シーン」は AR Foundation の XR Simulation が
+  Play 中に足す `Simulated Environment Scene`（Editor 専用。Android の loader は OpenXR のみ）。
+  **③指がすり抜ける**: XRI 3.5 のワールド空間 UI Toolkit の受け口が欠けていた——`XRUIToolkitManager` 無し・
+  `PanelInputConfiguration`（Redirection = Never）無し・`XRUIInputModule.bypassUIToolkitEvents` が true・
+  板の BoxCollider が UI px のまま（100 倍・中心が 26m ずれ）・`isTrigger` で Interactable の
+  コライダー一覧から外れていた。XRI の `World Space UI` サンプルを `Assets/Samples/` に取り込み、
+  見本の板と1つずつ突き合わせて直した。板の初期位置も原点から胸〜目線の高さへ。
+  検算: EditMode 42件＋PlayMode 4件が緑。APK は `Build/KitchenXR_v1.0.1.apk`（bundleVersion 1.0.1 /
+  versionCode 2、アイコン設定済み）。**主人が見る点**: パススルーが出るか・日本語が読めるか・
+  指で「次へ／戻る」が押せてレイとピンチでは反応しないか・文字の大きさが 1m 先で読めるか。
