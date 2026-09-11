@@ -91,3 +91,48 @@ Claude Code の Unity プラグイン（公式。skill・Unity CLI・Editor を�
   検算: EditMode 42件＋PlayMode 4件が緑。APK は `Build/KitchenXR_v1.0.1.apk`（bundleVersion 1.0.1 /
   versionCode 2、アイコン設定済み）。**主人が見る点**: パススルーが出るか・日本語が読めるか・
   指で「次へ／戻る」が押せてレイとピンチでは反応しないか・文字の大きさが 1m 先で読めるか。
+- 2026-09-12（v1.0.2。v1.0.1 で残った「ボタンが押せない」の決着）:
+  **原因は板の当たり判定の薄さだった**（受け口の欠けではない。v1.0.1 で揃えた
+  `XRUIToolkitManager`・`PanelInputConfiguration(Never)`・`bypassUIToolkitEvents=false` は正しく、
+  実際 Kitchen.unity をそのまま PlayMode で動かすとクリックは通っていた）。
+  `XRPokeInteractor` は指が当たり判定の外に出ると掴みを手放す（`ResetPointerState`）。
+  出られる余裕は「箱の半分の厚み ＋ 約16mm」しかなく、板の箱は厚み 0.02 ローカル単位＝実寸 4mm
+  だったので、**板の面から 18mm 奥へ入った時点で指が抜けていた**。手応えの無いホログラムを指で押せば
+  普通はもっと深く突き抜けるので、`PointerDown` は出るのに `PointerUp` が板の外で起き、
+  UI Toolkit の `Button.clicked` が発火しない。実機で「触ると色は変わり振動するのに反応しない」と
+  見えていたのはこれ（色と振動は `XRSimpleInteractable` のホバー＝当たり判定側の話で、UI とは別系統）。
+  直し: 箱を**裏側にだけ** 1.2 ローカル単位（＝24cm）伸ばした（表の面＝押し込みの判定位置は板のまま。
+  手前に張り出すと触れる前に反応してしまう）。PlayMode 試験で 22cm 突き抜けても押せることを確認。
+  併せて `UIDocument.pivot` を `TopLeft` に。既定の `Center` のままだと板の矩形とコライダーが半分ずれ、
+  **板の左半分（＝「戻る」）には当たり判定が無い**状態だった（XRI の World Space UI サンプルの板は
+  4枚とも TopLeft）。板の組み立ては `Presentation/WorldSpacePanelFactory` に一本化し、
+  シーン生成（Editor）と PlayMode 試験が同じ経路を通るようにした。
+  また、チュートリアル UI を消したせいで参照を失っていた MR テンプレートの `OcclusionManager` が
+  起動のたびに `UnassignedReferenceException` を投げていた（`Start()` がそこで止まるので元々何もしていない。
+  手の遮蔽が効くのは `ARShaderOcclusion` の働き）ので、シーン生成時に無効化するようにした。
+  検算: EditMode 44件＋PlayMode 7件が緑。APK は `Build/KitchenXR_v1.0.2.apk`
+  （bundleVersion 1.0.2 / versionCode 3）。
+  **主人が見る点**: 指で「次へ」「戻る」が**両方**押せるか（v1.0.1 では「戻る」は当たり判定すら無かった）・
+  勢いよく突き抜けても反応するか・板に触れる前に反応してしまわないか。
+  なお**レイ（コントローラー）でボタンが反応しないのは仕様**——`CookingModeInputGate` が調理モードの間
+  `NearFarInteractor`／`XRRayInteractor` を無効にしている（設計 §4.4・§7 の誤操作防止）。
+
+## エディタでの Play について（2026-09-12）
+- **Play すると別のシーンが増えるのは正常**。XR Plug-in Management の **Standalone** の loader が
+  AR Foundation の **XR Simulation**（`SimulationLoader`）なので、Play 中に模擬環境のシーンが
+  additive で足される。ヘッドセット無しで AR Foundation を動かすのに要るので消さないこと。
+  「別のシーン」に見えないよう、環境は最小の空プレハブ
+  `Assets/XR/UserSimulationSettings/MinimalSimulationEnvironment.prefab` に差し替えてある
+  （既定のままだと床・壁・机のある部屋が出る）。
+  **Quest Link で実機の映像を見ながら Play したいときは、Project Settings > XR Plug-in Management の
+  Standalone タブで Plug-in Provider を `OpenXR` に切り替える**（Android タブは触らない。実機ビルドは
+  そちらを使う）。確かめ終わったら XR Simulation に戻すと、ヘッドセットを繋がずに Play できる。
+- **Main Camera の回転が Play 中に勝手に変わるのは仕様**。`Main Camera` には `TrackedPoseDriver` が付いていて、
+  XR 機器（または XR Simulation の模擬 HMD）の姿勢を毎フレーム書き込む。Play 中に Inspector で直しても
+  次のフレームで上書きされ、Play を抜けると Play 前の値に戻る。
+  **Edit モードでは戻らない**ことは確認済み（シーンの複製で回転を変えて保存し開き直すと保持された。
+  `[ExecuteAlways]` で camera の transform を書くコンポーネントはプロジェクトに無い）。
+  つまり直すなら Play を抜けてから。
+- **エディタのレイアウトが初期に戻る**のは、CLI／バッチで Unity を起動すると終了時に
+  `UserSettings/Layouts/*.dwlt` が書き出されるため。AI／CI が Editor を起動する前後で
+  `Tools/editor-layout-backup.ps1 -Backup` ／ `-Restore` を必ず呼ぶこと（`-Status` で中身を確認できる）。

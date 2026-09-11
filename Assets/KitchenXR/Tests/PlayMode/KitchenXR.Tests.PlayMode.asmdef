@@ -4,6 +4,7 @@
     "references": [
         "KitchenXR.Domain",
         "KitchenXR.Runtime",
+        "Unity.XR.Interaction.Toolkit",
         "UnityEngine.TestRunner"
     ],
     "includePlatforms": [],

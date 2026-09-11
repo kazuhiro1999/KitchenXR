@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using KitchenXR.App.Editor;
+using KitchenXR.Presentation;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -263,6 +264,60 @@ namespace KitchenXR.Tests.EditMode
                 var interactable = go.GetComponent<XRSimpleInteractable>();
                 CollectionAssert.Contains(interactable.colliders, collider,
                     $"{go.name}: Interactable のコライダー一覧に板のコライダーが入っていません。");
+            }
+        }
+
+        /// <summary>
+        /// v1.0.1 で「触ると色は変わるのにボタンが押せない」を起こした当人。
+        /// コライダーは左上原点の約束で置いているのに、UIDocument の原点が既定のままだと
+        /// 板の矩形とコライダーが半分ずれる。当たってはいるので Interactable のホバー
+        /// （色と振動）は効くが、当たり点を板のローカル座標へ写すと文字の外に落ちるため、
+        /// UI Toolkit 側は Button を1度も掴めない。
+        /// XRI の World Space UI サンプルの板は4枚とも TopLeft。
+        /// </summary>
+        [Test]
+        public void 板の原点が左上でコライダーと揃っている()
+        {
+            foreach (var doc in AllPanelDocuments())
+            {
+                Assert.AreEqual(WorldSpacePanelFactory.PanelPivot, doc.pivot,
+                    $"{doc.name}: UIDocument.pivot が {WorldSpacePanelFactory.PanelPivot} ではありません"
+                    + "（既定のままだとコライダーと板が半分ずれて、ボタンが押せません）。");
+
+                var collider = doc.GetComponent<BoxCollider>();
+                Assert.IsNotNull(collider);
+
+                var expectedCenter = WorldSpacePanelFactory.ColliderCenterFor(
+                    doc.worldSpaceSize.x, doc.worldSpaceSize.y);
+
+                Assert.AreEqual(expectedCenter.x, collider.center.x, 0.001f,
+                    $"{doc.name}: pivot とコライダーの中心が食い違っています。");
+                Assert.AreEqual(expectedCenter.y, collider.center.y, 0.001f,
+                    $"{doc.name}: pivot とコライダーの中心が食い違っています。");
+            }
+        }
+
+        /// <summary>
+        /// v1.0.1 で「触っても押せない」の本当の原因。
+        /// 指が当たり判定から出ると XRPokeInteractor は掴みを手放すので、
+        /// 薄い板だと押し込んだ指がすぐ裏へ抜けて Button の clicked が発火しない。
+        /// 箱は**裏側にだけ**十分な奥行きを持たせる（表の面＝押し込みの判定位置は板のまま）。
+        /// </summary>
+        [Test]
+        public void 板の当たり判定が裏側に十分な奥行きを持つ()
+        {
+            foreach (var doc in AllPanelDocuments())
+            {
+                var collider = doc.GetComponent<BoxCollider>();
+                Assert.IsNotNull(collider);
+
+                Assert.AreEqual(WorldSpacePanelFactory.PanelColliderDepth, collider.size.z, 0.001f,
+                    $"{doc.name}: 当たり判定の奥行きが足りないと、押し込んだ指が抜けてクリックが落ちます。");
+
+                // 表の面が板と同じ位置（＝手前に張り出していない）こと。
+                var front = collider.center.z - collider.size.z / 2f;
+                Assert.AreEqual(0f, front, 0.001f,
+                    $"{doc.name}: 当たり判定が板より手前に張り出しています（触れる前に反応してしまう）。");
             }
         }
 

@@ -38,8 +38,9 @@ namespace KitchenXR.App.Editor
 
         // 設計 §9・§7 の実寸換算（詳細は theme.uss の先頭コメント）。
         // PanelSettings の Pixels Per Unit = 100、板の localScale = 0.2 なので 1 UI px ≒ 2mm。
-        public const float PanelLocalScale = 0.2f;
-        public const float PanelPixelsPerUnit = 100f;
+        // 実体は WorldSpacePanelFactory（PlayMode 試験と同じ組み立てを通すため）。
+        public const float PanelLocalScale = WorldSpacePanelFactory.PanelLocalScale;
+        public const float PanelPixelsPerUnit = WorldSpacePanelFactory.PanelPixelsPerUnit;
 
         private const float RecipeWidthUnits = 260f; // 実測 ≒ 52cm
         private const float RecipeHeightUnits = 190f; // ≒ 38cm
@@ -130,6 +131,36 @@ namespace KitchenXR.App.Editor
             // チュートリアルの目標演出とサンプルのオブジェクト出現機（MR Interaction Setup の子）。
             DestroyDeepChildByName(scene, "Goal Manager");
             DestroyDeepChildByName(scene, "Object Spawner");
+
+            DisableManagersThatLostTheirUi(scene);
+        }
+
+        /// <summary>
+        /// チュートリアル UI（"UI" ルート）を消すと、テンプレートの <c>OcclusionManager</c> が
+        /// 握っていたトグルの参照（m_QuestSettings・m_UIToggleObject・m_AndroidXRSettings）が
+        /// 全て null になる。Quest では <c>Start()</c> が
+        /// <c>m_QuestSettings.SetActive(true)</c> で UnassignedReferenceException を投げ、
+        /// そこで初期化が丸ごと止まる（＝この manager は最初から何もしていない。
+        /// 手の遮蔽が効いて見えるのは ARShaderOcclusion 側の働き）。
+        /// 起動のたびに例外を出すだけなので、参照を失っていれば止めておく。
+        /// P2 で遮蔽の切り替えを自前の UI から操作したくなったら、ここで参照を挿し直すこと。
+        /// </summary>
+        private static void DisableManagersThatLostTheirUi(Scene scene)
+        {
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                foreach (var behaviour in root.GetComponentsInChildren<Behaviour>(true))
+                {
+                    if (behaviour == null || behaviour.GetType().Name != "OcclusionManager")
+                    {
+                        continue;
+                    }
+
+                    behaviour.enabled = false;
+                    EditorUtility.SetDirty(behaviour);
+                    Debug.Log("[KitchenXR] OcclusionManager はチュートリアル UI の参照を失うため無効にしました。");
+                }
+            }
         }
 
         /// <summary>
@@ -208,39 +239,13 @@ namespace KitchenXR.App.Editor
             go.transform.SetParent(parent, false);
             go.transform.localPosition = localPosition;
             go.transform.localRotation = localRotation;
-            go.transform.localScale = new Vector3(PanelLocalScale, PanelLocalScale, PanelLocalScale);
 
-            var uiDocument = go.AddComponent<UIDocument>();
-            uiDocument.panelSettings = panelSettings;
-            uiDocument.visualTreeAsset = uxml;
-            uiDocument.worldSpaceSizeMode = UIDocument.WorldSpaceSizeMode.Fixed;
-            uiDocument.worldSpaceSize = new Vector2(widthUnits, heightUnits);
+            // (3) 板の組み立ては PlayMode 試験と同じ WorldSpacePanelFactory を通す。
+            // UIDocument.pivot を左上に据える（既定の中央のままだとコライダーと板の矩形が
+            // 半分ずれて、当たってはいるのにボタンを掴めない）ところまで含めてここが面倒を見る。
+            WorldSpacePanelFactory.Configure(go, panelSettings, uxml, widthUnits, heightUnits);
 
-            // (3) コライダーは **ローカル単位**（UI px ÷ Pixels Per Unit）で作る。
-            // 以前は UI px をそのまま入れていたため 100 倍の大きさになり、板から 26m ずれた
-            // 巨大な箱が当たり判定になっていた（XRI サンプルの板は 300x200 px に対して 3x2）。
-            // また isTrigger を立てると XRSimpleInteractable のコライダー一覧から外れて
-            // poke が一切当たらない（XRI の manual ui-world-space-ui-toolkit-support 参照）ので false。
-            var width = widthUnits / PanelPixelsPerUnit;
-            var height = heightUnits / PanelPixelsPerUnit;
-            var collider = go.AddComponent<BoxCollider>();
-            collider.center = new Vector3(width / 2f, -height / 2f, 0f); // パネルの原点は左上。
-            collider.size = new Vector3(width, height, 0.02f);
-            collider.isTrigger = false;
-
-            var interactable = go.AddComponent<XRSimpleInteractable>();
-            var so = new SerializedObject(interactable);
-            var colliders = so.FindProperty("m_Colliders");
-            if (colliders != null)
-            {
-                colliders.arraySize = 1;
-                colliders.GetArrayElementAtIndex(0).objectReferenceValue = collider;
-                so.ApplyModifiedPropertiesWithoutUndo();
-            }
-
-            var pokeFilter = go.AddComponent<XRPokeFilter>();
-            pokeFilter.pokeInteractable = interactable;
-            pokeFilter.pokeCollider = collider;
+            EditorUtility.SetDirty(go.GetComponent<XRSimpleInteractable>());
 
             return go;
         }
