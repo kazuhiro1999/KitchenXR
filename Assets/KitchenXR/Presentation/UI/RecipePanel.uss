@@ -1,0 +1,44 @@
+.recipe-current-section {
+    flex-grow: 1;
+}
+
+.recipe-image-area {
+    flex-grow: 1;
+    min-height: 60;
+    margin-top: 6px;
+    margin-bottom: 6px;
+    align-items: center;
+    justify-content: center;
+}
+
+.recipe-ingredient-chip {
+    background-color: var(--color-chip-bg);
+    padding: 6px 10px;
+    border-top-left-radius: var(--radius-medium);
+    border-top-right-radius: var(--radius-medium);
+    border-bottom-left-radius: var(--radius-medium);
+    border-bottom-right-radius: var(--radius-medium);
+}
+
+.recipe-progress-label {
+    align-self: center;
+}
+
+.recipe-next-section {
+    flex-direction: row;
+}
+
+.recipe-complete-section {
+    align-items: center;
+    justify-content: center;
+    flex-grow: 1;
+}
+
+.recipe-button-row {
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.recipe-spacer {
+    flex-grow: 1;
+}

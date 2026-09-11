@@ -1,0 +1,9 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="theme.uss" />
+    <ui:Style src="IngredientsPanel.uss" />
+    <ui:VisualElement name="root" class="root-panel">
+        <ui:Label text="材料" class="heading" />
+        <ui:VisualElement class="divider" />
+        <ui:ScrollView name="ingredientScroll" class="ingredients-scroll" />
+    </ui:VisualElement>
+</ui:UXML>

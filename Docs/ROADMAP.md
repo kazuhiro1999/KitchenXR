@@ -47,3 +47,28 @@ Claude Code の Unity プラグイン（公式。skill・Unity CLI・Editor を�
 - 2026-09-11: 設計 v0（`Docs/design/PROTOTYPE.md`）とこのロードマップを作成。主人の答えで採択（§10）。
   **次: 主人が Hub で `KitchenXR` を作る（§2）→ 執事が P0 の残りを進める。** 文書は作成後に
   `AI Agents/kitchen-xr/` から `KitchenXR/Docs/` へ移す
+- 2026-09-12: **P0 の残り**（Platform の3インターフェースと Null アダプタ・EditMode 試験の枠・
+  Platform 隔離の検算試験）と **P1 一式**を実装（AI・エディタ非対話）。`Assets/KitchenXR/` に
+  Domain（Recipe/Ingredient/Phase/Step・RecipeJson・CookSession・CookTimer）・Platform
+  （IAnchorStore/IPassthroughControl/IHandInputPolicy と Null 実装）・Presentation（theme.uss・
+  RecipePanel/IngredientsPanel/TimerPanel の UXML+USS+C#・調理モードの Poke 限定ゲート）・App
+  （Bootstrap）を追加。MR テンプレートの SampleScene を複製して `Assets/KitchenXR/Scenes/Kitchen.unity`
+  を作り（チュートリアル UI の `UI` ルートとサンプルの `Goal Manager`／`Object Spawner` を除去、
+  AR Session・XR Origin・手はそのまま）、レシピ／材料／タイマーの3枚のワールド空間 UI Toolkit
+  パネルと Bootstrap を配置。EditMode 試験24件が緑（`unity test`）。Android の APK ビルドを1回
+  試して成功（`unity build`。IL2CPP・約99MB。ライセンスの警告のみでコンパイルエラー0）。
+  `applicationIdentifier.Android` を `com.kazuhiro.kitchenxr` に変更。Build Settings の先頭に
+  Kitchen.unity を追加（SampleScene は残す）。
+  **ずらした点**: manor の `/api/v1/kitchen/recipes`（Net 層・`KitchenApi.cs`）は今回の指示の
+  作業範囲外だったため見送り——P1 は設計 ROADMAP どおりローカル JSON（`Resources/Recipes/chahan.json`）
+  で進行できるので実害は無いが、manor 側 ADR-015 が固まったら P3 として別途着手が要る。
+  ワールド空間パネルの実寸（4cm角ボタン等）は XRI 公式サンプルの比率から逆算した概算
+  （`theme.uss` 冒頭のコメント参照）——**実機で見た目を確認し、違えば localScale か USS の
+  数値を直すこと**（これが P1 の「ワールド空間 UI Toolkit の触り心地の判定」そのもの）。
+  **主人が実機で確かめる手順**: ① Quest 3 を USB 接続し開発者モードを確認 → `adb devices`。
+  ② Unity Editor で `KitchenXR/Assets/KitchenXR/Scenes/Kitchen.unity` を開き、File > Build Settings
+  で Android・Kitchen.unity が先頭にあることを確認して **Build And Run**（初回は時間がかかる）。
+  または CLI ですでに作った `Build/KitchenXR.apk` を `adb install -r Build/KitchenXR.apk` で
+  直接入れてから手動起動。③ パススルーの中にレシピ／材料／タイマーの3枚が頭の前0.8mに出て、
+  指で触れて「次へ」「戻る」が反応し、材料チェックが押せ、タイマーが動くかを確認。手を伸ばした
+  ピンチ操作やレイでボタンが反応**しない**ことも確認（調理モードの誤操作防止・設計 §7）。

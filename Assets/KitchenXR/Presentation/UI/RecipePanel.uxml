@@ -1,0 +1,28 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="theme.uss" />
+    <ui:Style src="RecipePanel.uss" />
+    <ui:VisualElement name="root" class="root-panel">
+        <ui:VisualElement name="phaseDots" class="phase-dots" />
+        <ui:Label name="progressLabel" text="0%" class="caption recipe-progress-label" />
+        <ui:VisualElement class="divider" />
+        <ui:VisualElement name="currentSection" class="recipe-current-section">
+            <ui:Label name="currentTitle" text="工程の見出し" class="heading" />
+            <ui:VisualElement name="currentImage" class="recipe-image-area">
+                <ui:Label name="currentIngredientChip" text="材料名" class="body-text recipe-ingredient-chip" />
+            </ui:VisualElement>
+            <ui:Label name="currentInstruction" text="工程の説明" class="body-text" />
+        </ui:VisualElement>
+        <ui:VisualElement class="divider" />
+        <ui:VisualElement name="nextSection" class="recipe-next-section">
+            <ui:Label name="nextLabel" text="次: —" class="caption caption--dim" />
+        </ui:VisualElement>
+        <ui:VisualElement name="completeSection" class="recipe-complete-section is-hidden">
+            <ui:Label text="お疲れさまでした。完成です！" class="heading" />
+        </ui:VisualElement>
+        <ui:VisualElement name="buttonRow" class="recipe-button-row">
+            <ui:Button name="backButton" text="戻る" class="kitchen-button kitchen-button--secondary" />
+            <ui:VisualElement class="recipe-spacer" />
+            <ui:Button name="nextButton" text="次へ" class="kitchen-button kitchen-button--primary" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

@@ -1,0 +1,13 @@
+.timer-scroll {
+    flex-grow: 1;
+}
+
+.timer-card__title {
+    margin-bottom: 3px;
+}
+
+.timer-card__row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}

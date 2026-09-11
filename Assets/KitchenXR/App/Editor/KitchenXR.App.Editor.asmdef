@@ -1,0 +1,20 @@
+{
+    "name": "KitchenXR.App.Editor",
+    "rootNamespace": "",
+    "references": [
+        "KitchenXR.Runtime",
+        "KitchenXR.Domain",
+        "Unity.XR.Interaction.Toolkit"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

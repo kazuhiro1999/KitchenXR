@@ -1,0 +1,227 @@
+/*
+ * KitchenXR 共通テーマ（設計 Docs/design/PROTOTYPE.md §9）。
+ * 白 85% の半透明の板・濃灰の文字・琥珀の強調色1色。角丸は大きめ。Unity既定の見た目は使わない。
+ *
+ * 実寸の換算（重要・要実機確認）:
+ *   ワールド空間パネルは PanelSettings の World Space モードで、板の GameObject の
+ *   localScale を 0.2 にそろえている。この設定では「1 UI 単位 ≒ 2mm」になる
+ *   （XRI 公式サンプル World Space UI の比率から逆算した概算）。
+ *   つまり単位 20 = 4cm・単位 10 = 2cm。設計 §7 の「最小4cm角・間隔2cm」はこの換算で
+ *   決めた数値なので、実機で見た目が違えば KitchenSceneBuilder の localScale か
+ *   このファイルの数値のどちらかを主人に調整してもらう前提（P1 の「触り心地の判定」）。
+ */
+
+:root {
+    --color-panel-bg: rgba(255, 255, 255, 0.85);
+    --color-text: rgb(31, 41, 55);
+    --color-text-muted: rgba(31, 41, 55, 0.55);
+    --color-accent: rgb(245, 158, 11);
+    --color-accent-text: rgb(255, 255, 255);
+    --color-divider: rgba(31, 41, 55, 0.15);
+    --color-chip-bg: rgba(31, 41, 55, 0.08);
+    --color-chip-bg-strong: rgba(245, 158, 11, 0.18);
+
+    /* 文字3段（見出し／本文／補助）。48/32/24pt の比を保った実機換算値（コメント参照）。 */
+    --font-size-heading: 10;
+    --font-size-body: 7;
+    --font-size-caption: 5;
+
+    --radius-large: 12;
+    --radius-medium: 6;
+
+    /* ボタン: 最小4cm角 = 単位20、間隔2cm = 単位10（設計 §7）。 */
+    --button-min: 20;
+    --gap-loose: 10;
+    --gap-tight: 5;
+}
+
+.root-panel {
+    flex-grow: 1;
+    background-color: var(--color-panel-bg);
+    border-top-left-radius: var(--radius-large);
+    border-top-right-radius: var(--radius-large);
+    border-bottom-left-radius: var(--radius-large);
+    border-bottom-right-radius: var(--radius-large);
+    padding: 8px;
+    color: var(--color-text);
+    -unity-font-definition: url("project://database/Assets/TextMesh Pro/Resources/Fonts & Materials/NotoSansJP-Regular SDF.asset");
+}
+
+.heading {
+    font-size: var(--font-size-heading);
+    color: var(--color-text);
+    white-space: normal;
+}
+
+.body-text {
+    font-size: var(--font-size-body);
+    color: var(--color-text);
+    white-space: normal;
+}
+
+.caption {
+    font-size: var(--font-size-caption);
+    color: var(--color-text-muted);
+    white-space: normal;
+}
+
+.caption--dim {
+    opacity: 0.6;
+}
+
+.is-hidden {
+    display: none;
+}
+
+.divider {
+    height: 0.6;
+    background-color: var(--color-divider);
+    margin-top: var(--gap-tight);
+    margin-bottom: var(--gap-tight);
+}
+
+/* --- ボタン（設計 §7: 最小4cm角・間隔2cm・押し込みの見た目は hysteresis を反映） --- */
+
+.kitchen-button {
+    min-width: var(--button-min);
+    min-height: var(--button-min);
+    margin-left: var(--gap-loose);
+    margin-right: var(--gap-loose);
+    margin-top: var(--gap-loose);
+    margin-bottom: var(--gap-loose);
+    border-top-left-radius: var(--radius-medium);
+    border-top-right-radius: var(--radius-medium);
+    border-bottom-left-radius: var(--radius-medium);
+    border-bottom-right-radius: var(--radius-medium);
+    border-width: 0;
+    -unity-text-align: middle-center;
+    font-size: var(--font-size-body);
+    align-items: center;
+    justify-content: center;
+}
+
+.kitchen-button--primary {
+    background-color: var(--color-accent);
+    color: var(--color-accent-text);
+}
+
+.kitchen-button--primary:hover {
+    opacity: 0.92;
+}
+
+/* poke の「入り」で少し縮む・色を濃くする（hysteresis の見た目）。抜けで戻る。 */
+.kitchen-button--pressed {
+    scale: 0.94 0.94;
+    opacity: 0.8;
+}
+
+.kitchen-button--secondary {
+    background-color: var(--color-chip-bg);
+    color: var(--color-text);
+}
+
+.kitchen-button--secondary:hover {
+    background-color: rgba(31, 41, 55, 0.14);
+}
+
+.kitchen-button--disabled {
+    opacity: 0.35;
+}
+
+/* --- phase の点列（設計 §9） --- */
+
+.phase-dots {
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    margin-top: var(--gap-tight);
+    margin-bottom: var(--gap-tight);
+}
+
+.phase-dot {
+    width: 6;
+    height: 6;
+    margin-left: 3;
+    margin-right: 3;
+    border-top-left-radius: 3;
+    border-top-right-radius: 3;
+    border-bottom-left-radius: 3;
+    border-bottom-right-radius: 3;
+    background-color: var(--color-chip-bg);
+}
+
+.phase-dot--done {
+    background-color: var(--color-accent);
+}
+
+.phase-dot--current {
+    background-color: var(--color-accent);
+    scale: 1.4 1.4;
+}
+
+/* --- 材料チップ / チェックリスト --- */
+
+.ingredient-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 4px;
+    border-top-left-radius: var(--radius-medium);
+    border-top-right-radius: var(--radius-medium);
+    border-bottom-left-radius: var(--radius-medium);
+    border-bottom-right-radius: var(--radius-medium);
+    margin-bottom: 2px;
+}
+
+.ingredient-row--highlight {
+    background-color: var(--color-chip-bg-strong);
+}
+
+.ingredient-row__check {
+    width: 8;
+    height: 8;
+    margin-right: 6;
+    border-width: 1px;
+    border-color: var(--color-text-muted);
+    border-top-left-radius: 2;
+    border-top-right-radius: 2;
+    border-bottom-left-radius: 2;
+    border-bottom-right-radius: 2;
+    background-color: rgba(255, 255, 255, 0.6);
+}
+
+.ingredient-row__check--checked {
+    background-color: var(--color-accent);
+    border-color: var(--color-accent);
+}
+
+.ingredient-row__qty {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-caption);
+    margin-left: 6;
+}
+
+/* --- タイマー --- */
+
+.timer-card {
+    background-color: rgba(31, 41, 55, 0.05);
+    border-top-left-radius: var(--radius-medium);
+    border-top-right-radius: var(--radius-medium);
+    border-bottom-left-radius: var(--radius-medium);
+    border-bottom-right-radius: var(--radius-medium);
+    padding: 6px;
+    margin-bottom: var(--gap-tight);
+    align-items: center;
+}
+
+.timer-value {
+    font-size: 16;
+    color: var(--color-text);
+}
+
+.timer-value--running {
+    color: var(--color-accent);
+}
+
+.timer-value--elapsed {
+    color: rgb(220, 38, 38);
+}

@@ -1,0 +1,9 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="theme.uss" />
+    <ui:Style src="TimerPanel.uss" />
+    <ui:VisualElement name="root" class="root-panel">
+        <ui:Label text="タイマー" class="heading" />
+        <ui:VisualElement class="divider" />
+        <ui:ScrollView name="timerScroll" class="timer-scroll" />
+    </ui:VisualElement>
+</ui:UXML>

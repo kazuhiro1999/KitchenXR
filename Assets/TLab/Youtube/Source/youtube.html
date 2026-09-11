@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unity YouTube Player</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+      }
+      .video-container {
+        position: relative;
+        padding-bottom: 56.25%; /* 16:9 アスペクト比 */
+        height: 0;
+        overflow: hidden;
+        max-width: 100%;
+      }
+      .video-container iframe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="video-container">
+      <div id="player"></div>
+    </div>
+
+    <script>
+      var tag = document.createElement('script');
+      tag.src = "https://www.youtube.com/iframe_api";
+      var firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+      let player;
+
+      function onYouTubeIframeAPIReady() {
+        player = new YT.Player('player', {
+          height: '144',
+          width: '256',
+          videoId: 'Vk5-c_v4gMU', // 再生したい動画のID
+          events: {
+            'onReady': onPlayerReady,
+            'onStateChange': onPlayerStateChange,
+            'onError': onPlayerError,
+            'onPlaybackRateChange': onPlaybackRateChanged,
+          }
+        });
+      }
+
+      function onPlayerReady(event) {
+        event.target.unMute(); // ミュート解除
+        event.target.setPlaybackQuality('small');
+        //event.target.playVideo(); // 動画再生
+        window.TLabWebViewActivity.unitySendMessage('YoutubePlayer', 'OnJsEvent', 'initialized');
+      }
+
+      function onPlayerError(event) {
+        window.TLabWebViewActivity.unitySendMessage('YoutubePlayer', 'OnPlayerError', event.data.toString());
+      }
+
+      function onPlayerStateChange(event) {
+        window.TLabWebViewActivity.unitySendMessage('YoutubePlayer', 'OnPlayerStateChange', event.data.toString());
+      }
+
+      function onPlaybackRateChanged(event) {
+        window.TLabWebViewActivity.unitySendMessage('YoutubePlayer', 'OnPlaybackRateChanged', event.data.toString());
+      }
+
+      function loadVideo(videoId){
+	player.loadVideoById(videoId);
+        window.TLabWebViewActivity.unitySendMessage('YoutubePlayer', 'OnJsEvent', 'load');
+      }
+
+      function cueVideo(videoId){
+	player.cueVideoById(videoId);
+        window.TLabWebViewActivity.unitySendMessage('YoutubePlayer', 'OnJsEvent', 'cue');
+      }
+
+      function play(){
+        player.playVideo();
+        window.TLabWebViewActivity.unitySendMessage('YoutubePlayer', 'OnJsEvent', 'play');
+      }
+
+      function pause(){
+        player.pauseVideo();
+        window.TLabWebViewActivity.unitySendMessage('YoutubePlayer', 'OnJsEvent', 'pause');
+      }
+
+      function getDuration(){
+        const duration = player.getDuration();
+        window.TLabWebViewActivity.unitySendMessage('YoutubePlayer', 'OnLoaded', duration.toString());
+      }
+
+      function getCurrentTime(){
+        const currentTime = player.getCurrentTime();
+        window.TLabWebViewActivity.unitySendMessage('YoutubePlayer', 'OnTimeUpdated', currentTime.toString());
+        return currentTime;
+      }
+
+      function seekTo(time){
+        player.seekTo(time, true);
+        window.TLabWebViewActivity.unitySendMessage('YoutubePlayer', 'OnJsEvent', 'seek');
+      }
+
+      function setPlaybackRate(speed){
+        player.setPlaybackRate(parseFloat(speed));
+        window.TLabWebViewActivity.unitySendMessage('YoutubePlayer', 'OnJsEvent', 'speed');        
+      }
+
+      function setVolume(volume){
+        player.setVolume(parseFloat(volume));
+        const currentVolume = player.getVolume();
+        window.TLabWebViewActivity.unitySendMessage('YoutubePlayer', 'OnVolumeChanged', currentVolume.toString());
+      }
+
+    </script>
+  </body>
+</html>
