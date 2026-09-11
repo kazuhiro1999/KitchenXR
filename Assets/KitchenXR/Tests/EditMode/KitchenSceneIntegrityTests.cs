@@ -4,10 +4,12 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using KitchenXR.App.Editor;
 using KitchenXR.Presentation;
+using KitchenXR.Presentation.Video;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
@@ -27,7 +29,8 @@ namespace KitchenXR.Tests.EditMode
     public class KitchenSceneIntegrityTests
     {
         private const string ThemeUssPath = "Assets/KitchenXR/Presentation/UI/theme.uss";
-        private static readonly string[] PanelNames = { "RecipePanel", "IngredientsPanel", "TimerPanel" };
+        private static readonly string[] PanelNames =
+            { "RecipePanel", "IngredientsPanel", "TimerPanel", "VideoPanel" };
 
         private Scene _scene;
 
@@ -368,6 +371,94 @@ namespace KitchenXR.Tests.EditMode
 
             var missing = AndroidPlayerSetup.UnassignedIconSlots();
             Assert.IsEmpty(missing, "絵が入っていないアイコン枠: " + string.Join(", ", missing));
+        }
+
+        // ---------------------------------------------------------------- 動画の板（P4）
+
+        /// <summary>
+        /// 4枚目の板が在り、主人の <c>YoutubePlayer</c> の実体を抱えていること。
+        /// 実体は**眠っている**のが正しい（起こすのは Android の実機だけ。Editor では札を出す）。
+        /// </summary>
+        [Test]
+        public void 動画の板に主人のYoutubePlayerが入っている()
+        {
+            var videoPanel = Object.FindFirstObjectByType<VideoPanel>(FindObjectsInactive.Include);
+            Assert.IsNotNull(videoPanel, "Kitchen.unity に動画の板（VideoPanel）がありません。");
+
+            var so = new SerializedObject(videoPanel);
+            var playerRoot = so.FindProperty("_playerRoot").objectReferenceValue as GameObject;
+            Assert.IsNotNull(playerRoot,
+                $"動画の板に {YoutubePlayerBridge.PlayerPrefabPath} の実体が挿さっていません。");
+
+            Assert.AreEqual(YoutubePlayerBridge.PlayerObjectName, playerRoot.name,
+                "主人の youtube.html が unitySendMessage でこの名前へ返してくるので、名前は変えられません。");
+            Assert.IsFalse(playerRoot.activeSelf,
+                "WebView は Android のプラグイン。起こすのは実機だけなので、シーンでは眠らせておきます。");
+            Assert.AreSame(videoPanel.transform, playerRoot.transform.parent,
+                "絵は板の中に置きます（板が動けば絵も動く）。");
+        }
+
+        [Test]
+        public void 動画の板の寸法が16対9の窓に合っている()
+        {
+            var doc = AllPanelDocuments().First(d => d.name == "VideoPanel");
+            Assert.AreEqual(VideoPanel.LandscapeWidthUnits, doc.worldSpaceSize.x, 0.01f);
+            Assert.AreEqual(VideoPanel.LandscapeHeightUnits, doc.worldSpaceSize.y, 0.01f);
+
+            // 設計 P4「16:9 で幅 50 cm」。板の内側（左右の余白 8px ずつ）が 50cm = 250px。
+            var windowCm = (VideoPanel.LandscapeWidthUnits - 16f) * 0.2f;
+            Assert.AreEqual(50f, windowCm, 0.5f, "動画の窓の幅が 50cm ではありません（設計 P4）。");
+        }
+
+        [Test]
+        public void 動画の一覧の見本が同梱されている()
+        {
+            var path = Path.Combine(Directory.GetCurrentDirectory(), "Assets/StreamingAssets/media.json");
+            Assert.IsTrue(File.Exists(path), "Assets/StreamingAssets/media.json がありません（一覧が空になります）。");
+        }
+
+        // ---------------------------------------------------------------- Android（WebView の要件。P4）
+
+        /// <summary>
+        /// WebView が実機で動くための Android の条件（`TLabWebView` の README）。
+        /// 落ちたときは <see cref="AndroidPlayerSetup.ApplyWebViewRequirements"/> を回せば直る
+        /// ——ただし OpenXR の「Force Remove Internet Permission」だけは主人の手が要る。
+        /// </summary>
+        [Test]
+        public void WebViewのためのAndroid設定が揃っている()
+        {
+            var issues = AndroidPlayerSetup.WebViewRequirementIssues();
+            Assert.IsEmpty(issues, string.Join("\n", issues));
+        }
+
+        [Test]
+        public void AndroidのGraphicsAPIにVulkanとOpenGLES3が両方ある()
+        {
+            var apis = AndroidPlayerSetup.AndroidGraphicsApis();
+            CollectionAssert.Contains(apis, GraphicsDeviceType.Vulkan);
+            CollectionAssert.Contains(apis, GraphicsDeviceType.OpenGLES3,
+                "TLabWebView は一部の処理が GLES API に依存しています（README の NOTICE）。"
+                + "Vulkan で組むなら OpenGLES3 も並べること。");
+        }
+
+        [Test]
+        public void 最小APIレベルが26以上でInternetPermissionが立っている()
+        {
+            Assert.GreaterOrEqual((int)PlayerSettings.Android.minSdkVersion, AndroidPlayerSetup.MinimumSupportedSdk);
+            Assert.IsTrue(PlayerSettings.Android.forceInternetPermission,
+                "YouTube を開くので Internet permission が要ります。");
+        }
+
+        /// <summary>
+        /// OpenXR の Meta Quest Support の「Force Remove Internet Permission」は**検算だけ**
+        /// （`Assets/XR/Settings/` は主人の持ち物なので書き換えない）。
+        /// </summary>
+        [Test]
+        public void OpenXRがInternetPermissionを剥がさない()
+        {
+            Assert.IsFalse(AndroidPlayerSetup.OpenXrRemovesInternetPermission(),
+                "OpenXR の Meta Quest Support で「Force Remove Internet Permission」が入っています。"
+                + "主人が Project Settings > XR Plug-in Management > OpenXR で外してください。");
         }
 
         // ---------------------------------------------------------------- helpers

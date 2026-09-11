@@ -12,6 +12,7 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 using UnityEngine.XR.Interaction.Toolkit.UI;
 using KitchenXR.Presentation;
+using KitchenXR.Presentation.Video;
 
 namespace KitchenXR.App.Editor
 {
@@ -52,6 +53,10 @@ namespace KitchenXR.App.Editor
         private const float TimerWidthUnits = 220f; // ≒ 44cm
         private const float TimerHeightUnits = 220f; // ≒ 44cm
 
+        // 動画の板は向きで寸法が変わる（VideoPanel が持つ。ここは 16:9 の初期値だけ）。
+        private const float VideoWidthUnits = VideoPanel.LandscapeWidthUnits;
+        private const float VideoHeightUnits = VideoPanel.LandscapeHeightUnits;
+
         // XRI の World Space UI サンプル（WorldSpacePanel.asset）と同じ値。
         // 「既存のコライダーを使う」＝ UI Document は自前でコライダーを作らない。
         private const int ColliderUpdateModeKeepExisting = 1;
@@ -90,12 +95,22 @@ namespace KitchenXR.App.Editor
                 new Vector3(0.72f, 1.35f, 1.05f), Quaternion.Euler(0f, 25f, 0f));
             var timerPanel = timerGo.AddComponent<TimerPanel>();
 
+            // 4枚目（動画）。レシピの右上＝タイマーの上（設計 P4）。実行時の位置は
+            // Bootstrap.PlaceVideoPanel が頭の向きから決め直すので、ここは Editor で見たときの目安。
+            var videoGo = CreatePanelObject(
+                "VideoPanel", panelsRoot.transform, panelSettings,
+                LoadUxml("Assets/KitchenXR/Presentation/UI/VideoPanel.uxml"),
+                VideoWidthUnits, VideoHeightUnits,
+                new Vector3(0.72f, 1.35f + 0.04f + VideoHeightUnits * 0.002f, 1.05f), Quaternion.Euler(0f, 25f, 0f));
+            var videoPanel = videoGo.AddComponent<VideoPanel>();
+            AttachYoutubePlayer(videoPanel);
+
             var inputGate = panelsRoot.AddComponent<CookingModeInputGate>();
             WireCookingModeInputGate(scene, inputGate);
 
             EnsureUiToolkitInput(scene);
 
-            CreateBootstrap(recipePanel, ingredientsPanel, timerPanel, inputGate);
+            CreateBootstrap(recipePanel, ingredientsPanel, timerPanel, videoPanel, inputGate);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -322,9 +337,43 @@ namespace KitchenXR.App.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
+        /// <summary>
+        /// 主人の <c>YoutubePlayer.prefab</c> を動画の板の中へ置く（設計 §6・ROADMAP P4）。
+        ///
+        /// **主人の資産は書き換えない。** ここでやるのはシーンへ実体を1つ置くことだけで、
+        /// 要らない仕掛けを止めるのも位置を合わせるのも**実行時**（<c>YoutubePlayerBridge</c>・
+        /// <c>VideoPanel.LayoutSurface</c>）に行う——プレハブ側へ差分が戻ることが無いように。
+        ///
+        /// 置いた実体は**眠らせておく**。起こすのは Android の実機だけで、
+        /// Editor では板が「動画は実機で」の札を出す（WebView は Android のプラグイン）。
+        /// 名前は <c>YoutubePlayer</c> のまま変えてはいけない——主人の <c>youtube.html</c> が
+        /// <c>unitySendMessage('YoutubePlayer', …)</c> でこの名前へ返してくる。
+        /// </summary>
+        private static void AttachYoutubePlayer(VideoPanel videoPanel)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(YoutubePlayerBridge.PlayerPrefabPath);
+            if (prefab == null)
+            {
+                Debug.LogWarning(
+                    $"[KitchenXR] 動画プレイヤーのプレハブが見つかりません: {YoutubePlayerBridge.PlayerPrefabPath}");
+                return;
+            }
+
+            var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab, videoPanel.transform);
+            instance.name = YoutubePlayerBridge.PlayerObjectName;
+            instance.transform.localPosition = Vector3.zero;
+            instance.transform.localRotation = Quaternion.identity;
+            instance.SetActive(false);
+
+            var so = new SerializedObject(videoPanel);
+            so.FindProperty("_playerRoot").objectReferenceValue = instance;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(videoPanel);
+        }
+
         private static void CreateBootstrap(
             RecipePanel recipePanel, IngredientsPanel ingredientsPanel, TimerPanel timerPanel,
-            CookingModeInputGate inputGate)
+            VideoPanel videoPanel, CookingModeInputGate inputGate)
         {
             var go = new GameObject("Bootstrap");
             var bootstrap = go.AddComponent<Bootstrap>();
@@ -333,6 +382,7 @@ namespace KitchenXR.App.Editor
             so.FindProperty("_recipePanel").objectReferenceValue = recipePanel;
             so.FindProperty("_ingredientsPanel").objectReferenceValue = ingredientsPanel;
             so.FindProperty("_timerPanel").objectReferenceValue = timerPanel;
+            so.FindProperty("_videoPanel").objectReferenceValue = videoPanel;
             so.FindProperty("_cookingModeInputGate").objectReferenceValue = inputGate;
             so.ApplyModifiedPropertiesWithoutUndo();
         }

@@ -21,7 +21,7 @@
 | **P1 手動進行** | 見本 `Docs/samples/chahan.recipe.json` をローカルに置き、レシピ／材料／タイマーの3パネル。`CookSession`（次へ／戻る／進捗）。UI Toolkit の `theme.uss`（明るい白・琥珀）。調理モードの Poke と誤操作の歯止め（§7） | 実機でレシピ1本を最後まで**触って**進められる。`CookSession` の EditMode 試験が緑。**ワールド空間 UI Toolkit の触り心地を判定**（悪ければ uGUI へ） | 2週 |
 | **P2 アンカー** | `ArAnchorStore`（AR Foundation の永続アンカー）。配置モード（Ray＋Grab）と保存。起動時の復元。手動キャリブレーションの退避路 | アプリを落として再起動しても3パネルが同じ場所に戻る（3日連続で確認） | 1週 |
 | **P3 レシピ帳と結ぶ** | manor 側の ADR-015 R1〜R3（表・API・取り込み・画面）が先。クライアントは passcode ログイン（cookie 保持）・一覧画面・取得・`cook-sessions` | manor の Web で炒飯を URL から登録し、Quest で一覧から開いて進められる | manor 側 1〜2週＋XR 側 3日 |
-| **P4 動画** | 動画パネル（主人の WebView SDK）。`GET /media` の一覧から開く。16:9／9:16 の切り替え。文字入力は置かない | 料理しながらショーツが流れる | 1週 |
+| **P4 動画** | 動画パネル（主人の WebView SDK）。`StreamingAssets/media.json` の一覧から開く（書き方は `Docs/media-json.md`）。16:9／9:16 の切り替え。文字入力は置かない | 料理しながらショーツが流れる | 1週 |
 | **P5 復帰** | `cook-sessions/current` で途中起動の復帰。終了で `times_cooked` が増える | 途中で外して再装着しても同じ工程から続く | 2日 |
 | — | **v0 完了。主人が2週間、実際の料理で使う。** 直す点を集める | 使用記録が10回を超え、「毎日使える」と主人が言う | 2週 |
 | **v1-a 音声** | 音声で「次」「戻る」「タイマー3分」。OS の音声認識（Android SpeechRecognizer）から始め、精度が足りなければ Whisper（サーバ） | 手を洗わずに工程を進められる | 1〜2週 |
@@ -146,6 +146,54 @@ Claude Code の Unity プラグイン（公式。skill・Unity CLI・Editor を�
   ④工程の写真が出るか（初回は通信が要る。以後は機内モードでも出るはず）。⑤材料の板に横スクロールが出ないか・
   文字が小さすぎないか。⑥タイマーを 1/3/5/10分と ±30 秒で作って3つ同時に動かせるか・鳴ったときに音と点滅が来るか。
   ⑦本文の大きさがちょうどか（1m 先で読めるか）。
+
+- 2026-09-13（v1.0.4。**P4 動画の板**）: 主人の `Assets/TLab/Youtube/YoutubePlayer.prefab` を
+  **書き換えずに包んで** 4枚目の板にした（設計 §6）。
+  **①板の作り**: `Presentation/Video/VideoPanel`（UI Toolkit）が操作部を持ち、**絵は主人のプレハブの
+  ワールド空間 Canvas ＋ RawImage をそのまま**「動画の窓」の 0.6mm 手前へ重ねる。
+  UI Toolkit の `backgroundImage` に貼り替えなかったのは、(a) `TLabWebView` が毎フレーム
+  `m_rawImage.texture` を自分で差し替える（GLES は外部テクスチャ、Vulkan は毎フレーム新しい
+  `Texture2D`）経路が SDK の試されている道であること、(b) UI Toolkit の**動的アトラス**に焼かれると
+  外部テクスチャの更新が届かず最初の1枚で固まる（実機でしか出ない止まり方）ため。
+  ポークの当たり判定は**UI 側の板だけ**が持つ（プレハブの `GraphicRaycaster`・`Button`・
+  `TLabWebViewInputField` は実行時に止める。設計 §6「文字入力は置かない」）。
+  **②操作**: 一覧から選ぶ／再生・一時停止／音量 ±10／16:9 ⇄ 9:16。全部 `PokePress`（押し下げ発火）。
+  **③一覧**: `Assets/StreamingAssets/media.json`（見本は YouTube 公式チャンネルの Rewind 2018/2019）を
+  初回だけ `persistentDataPath/media.json` へ写し、以後はそちらだけを読む（`Net/MediaStore`）。
+  最大8件・壊れた行は飛ばす・URL を貼っても id を取り出す・**JS へ埋めるので記号入りの id は通さない**
+  （`Domain/MediaJson`）。書き方は `Docs/media-json.md`。
+  **④Editor**: WebView は Android のプラグインなので Editor では板に「動画は実機で（Quest 3）」の札。
+  一覧もボタンも動く（`IVideoPlayer` の裏が `NullVideoPlayer` に替わるだけ）。
+  **⑤配置**: レシピの右上＝**タイマーの板の上** 4cm。16:9 は板 53.2×53.2cm（窓の幅が設計どおり 50cm）、
+  9:16 は 31.2×59.2cm（窓 20.25×36cm）。向きを変えても**板の下辺は動かない**（下のタイマーへ食い込まない）。
+  **⑥Android**: Graphics API に Vulkan＋**OpenGLES3** を併記（`TLabWebView` は一部の処理が GLES API に
+  依存。README の NOTICE）、Internet permission を明示、最小 API 26 以上（今は 34）。
+  OpenXR の「Force Remove Internet Permission」は**検算だけ**（`Assets/XR/Settings/` は触らない）——
+  今は外れているので APK に `android.permission.INTERNET` が入っていることを確認済み。
+  **⑦** `bundleVersion 1.0.4` / `versionCode 5`、APK は `Build/KitchenXR_v1.0.4.apk`（110MB）。
+  検算: EditMode 69件＋PlayMode 19件が緑（`PlatformIsolationTests` に
+  「WebView への参照は `Presentation/Video/` の中だけ」の規則を追加）。
+  **ずらした点**: (a) 主人の SDK のこの版に **`CaptureMode` は無い**（GLES と Vulkan を
+  `SystemInfo.graphicsDeviceType` で自動で選ぶ古い作り）ので「ByteBuffer から始める」は設定できなかった。
+  同じ意図＝安全側に寄せるなら Graphics API の並びで **OpenGLES3 を先頭にする**のが一手だが、
+  Quest 3 のパススルー（Unity OpenXR: Meta）で実績があるのは Vulkan なので、動画のために描画の土台は
+  動かさず Vulkan を先頭のままにした。実機で絵が出なければここを入れ替えるのが最初の一手。
+  (b) `YoutubePlayer.cs` は asmdef の無いフォルダにあり `Assembly-CSharp` に入るため、asmdef 側
+  （`KitchenXR.Runtime`）からは型で参照できない。主人の側に asmdef を足すのは「書き換えない」に反するので、
+  `YoutubePlayerBridge` が**型の名前で引き当てて呼ぶ**（`Load`/`Play`/`Pause`/`SetVolume` の4つだけ。
+  `TLabWebView` は asmdef を持つので型でそのまま呼んでいる）。
+  (c) 9:16 の窓を「幅 50cm のまま」にすると高さ 89cm になって台所に置けないので、
+  9:16 は**高さ 36cm** を基準に取った。
+  (d) `youtube.html` の器は `padding-bottom: 56.25%` 固定なので、9:16 では
+  `EvaluateJS` で style を上書きして頼む（html は書き換えない）。
+  (e) Editor が `ProjectSettings.asset` の Android の define に `SENTIS_ANALYTICS_ENABLED` を
+  勝手に足した（Standalone には元からある。無害なので戻していない）。`Assets/XR/Settings/` の
+  fileID の入れ替えは revert 済み。
+  **主人が実機で見る点**: ①板の一覧から選ぶと動画が出るか（**絵が出ないときは Graphics API の
+  Vulkan と OpenGLES3 の順を入れ替える**）。②絵が板の窓にぴったり収まるか・上下に黒い余白が残らないか。
+  ③再生／一時停止・音量 ±・9:16 の切り替えが指で押せるか。④9:16 にしたときショーツが縦いっぱいに出るか。
+  ⑤動画の窓を触っても誤ってボタンが反応しないか。⑥音が調理中に聞こえる大きさか（既定 70）。
+  ⑦レシピの右上（タイマーの上）という置き場が見やすいか——高すぎれば P2 のアンカーで動かせる。
 
 ## エディタでの Play について（2026-09-12）
 - **Play すると別のシーンが増えるのは正常**。XR Plug-in Management の **Standalone** の loader が

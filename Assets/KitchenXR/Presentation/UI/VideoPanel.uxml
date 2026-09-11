@@ -1,0 +1,22 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="theme.uss" />
+    <ui:Style src="VideoPanel.uss" />
+    <ui:VisualElement name="root" class="root-panel video-panel">
+        <ui:ScrollView name="mediaList" mode="Vertical" horizontal-scroller-visibility="Hidden" vertical-scroller-visibility="Auto" class="video-list" />
+        <ui:VisualElement class="divider" />
+        <ui:VisualElement name="videoArea" class="video-area">
+            <ui:Label name="editorNotice" text="動画は実機で（Quest 3）" class="caption video-notice" />
+        </ui:VisualElement>
+        <ui:VisualElement class="divider" />
+        <ui:VisualElement name="statusRow" class="video-status-row">
+            <ui:Label name="nowPlayingLabel" text="—" class="caption video-now-playing" />
+            <ui:Label name="volumeLabel" text="音量 70" class="caption" />
+        </ui:VisualElement>
+        <ui:VisualElement name="buttonRow" class="video-button-row">
+            <ui:Button name="playPauseButton" text="再生" class="kitchen-button kitchen-button--primary" />
+            <ui:Button name="volumeDownButton" text="−" class="kitchen-button kitchen-button--secondary" />
+            <ui:Button name="volumeUpButton" text="＋" class="kitchen-button kitchen-button--secondary" />
+            <ui:Button name="aspectButton" text="9:16" class="kitchen-button kitchen-button--secondary" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

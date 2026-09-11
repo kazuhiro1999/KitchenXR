@@ -133,5 +133,32 @@ namespace KitchenXR.Presentation
 
             return uiDocument;
         }
+
+        /// <summary>
+        /// できあがった板の寸法だけを変える（動画の板の 16:9 ⇄ 9:16。設計 §6）。
+        /// 板の矩形と当たり判定は**必ず一緒に**動かす——片方だけ変えると
+        /// 2026-09-12 の「触っているのに押せない」がそのまま戻る。
+        /// </summary>
+        public static void Resize(GameObject go, UIDocument uiDocument, float widthUnits, float heightUnits)
+        {
+            if (go == null || uiDocument == null)
+            {
+                return;
+            }
+
+            uiDocument.worldSpaceSizeMode = UIDocument.WorldSpaceSizeMode.Fixed;
+            uiDocument.worldSpaceSize = new Vector2(widthUnits, heightUnits);
+            uiDocument.pivot = PanelPivot;
+
+            var collider = go.GetComponent<BoxCollider>();
+            if (collider == null)
+            {
+                return;
+            }
+
+            var size = ColliderSizeFor(widthUnits, heightUnits);
+            collider.center = ColliderCenterFor(widthUnits, heightUnits);
+            collider.size = new Vector3(size.x, size.y, PanelColliderDepth);
+        }
     }
 }

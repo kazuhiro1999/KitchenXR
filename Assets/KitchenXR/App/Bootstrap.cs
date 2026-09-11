@@ -5,6 +5,7 @@ using KitchenXR.Net;
 using KitchenXR.Platform;
 using KitchenXR.Platform.Null;
 using KitchenXR.Presentation;
+using KitchenXR.Presentation.Video;
 using UnityEngine;
 
 namespace KitchenXR.App
@@ -26,6 +27,7 @@ namespace KitchenXR.App
         [SerializeField] private RecipePanel _recipePanel;
         [SerializeField] private IngredientsPanel _ingredientsPanel;
         [SerializeField] private TimerPanel _timerPanel;
+        [SerializeField] private VideoPanel _videoPanel;
         [SerializeField] private CookingModeInputGate _cookingModeInputGate;
 
         [Header("初期配置（設計 §9: 頭の前0.8m・目線より少し下に3枚）")]
@@ -40,6 +42,7 @@ namespace KitchenXR.App
         private IHandInputPolicy _handInputPolicy;
 
         private RecipeStore _recipeStore;
+        private MediaStore _mediaStore;
         private CookSession _session;
         private CancellationTokenSource _prefetchCts;
 
@@ -75,6 +78,28 @@ namespace KitchenXR.App
             // 通信があるうちに hero と全工程の画像を手元へ（オフライン前提。設計 §11 追補）。
             _prefetchCts = new CancellationTokenSource();
             _recipeStore.PrefetchAsync(_session.Recipe, _prefetchCts.Token).Forget();
+
+            // 動画の一覧（`StreamingAssets/media.json` → persistentDataPath）。設計 §6・ROADMAP P4。
+            LoadMediaAsync(_prefetchCts.Token).Forget();
+        }
+
+        /// <summary>
+        /// 動画の一覧を読んで板へ配る。読めなくても板は立つ（「一覧がありません」を出す）——
+        /// 娯楽の板なので、ここで落ちて調理が止まってはいけない。
+        /// </summary>
+        private async UniTaskVoid LoadMediaAsync(CancellationToken token)
+        {
+            if (_videoPanel == null)
+            {
+                return;
+            }
+
+            _mediaStore = MediaStore.CreateDefault();
+            var items = await _mediaStore.LoadAsync(token);
+            if (_videoPanel != null)
+            {
+                _videoPanel.BindMedia(items);
+            }
         }
 
         private void OnDestroy()
@@ -156,6 +181,32 @@ namespace KitchenXR.App
                 basePosition - right * _lateralSpacingMeters, rotation);
             PlacePanel(_timerPanel != null ? _timerPanel.transform : null,
                 basePosition + right * _lateralSpacingMeters, rotation);
+
+            PlaceVideoPanel(basePosition, right, rotation);
+        }
+
+        /// <summary>
+        /// 4枚目（動画）は**レシピの右上＝タイマーの上**（設計 P4 の第一候補）。
+        ///
+        /// 板の原点は左上なので、タイマーの板は基準点から右下へ 44cm 伸びている。
+        /// その上辺（＝基準点の高さ）から 4cm 空けたところに、動画の板の**下辺の中央**を置く。
+        /// 下辺を留めるのは、9:16 に切り替えると板が高くなるから——
+        /// 上辺を留めると下のタイマーへ食い込む。
+        /// 台所の壁掛けテレビと同じで、見上げる位置に来るのは意図どおり
+        /// （柱 C「ながら見」。作業面はレシピの板のまま）。
+        /// </summary>
+        private void PlaceVideoPanel(Vector3 basePosition, Vector3 right, Quaternion rotation)
+        {
+            if (_videoPanel == null)
+            {
+                return;
+            }
+
+            const float timerWidthMeters = 0.44f; // KitchenSceneBuilder の TimerWidthUnits と対。
+            const float gapMeters = 0.04f;
+
+            var timerCenter = basePosition + right * (_lateralSpacingMeters + timerWidthMeters / 2f);
+            _videoPanel.PlaceAtBottomCenter(timerCenter + Vector3.up * gapMeters, rotation);
         }
 
         private static void PlacePanel(Transform panel, Vector3 position, Quaternion rotation)
