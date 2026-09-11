@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using KitchenXR.Domain;
 using UnityEngine;
@@ -7,165 +6,392 @@ using UnityEngine.UIElements;
 namespace KitchenXR.Presentation
 {
     /// <summary>
-    /// タイマーパネル（設計 §9）。工程に timer_sec があれば「開始」を出す。複数同時に縦へ積む。
-    /// 時計は Time.unscaledTime を CookTimer に渡すだけ——時間の計算そのものは Domain の仕事。
+    /// タイマーパネル（設計 §9・§11 追補「タイマーは常時使える」）。
+    ///
+    /// 上の作り口で長さを決めて「開始」。動いているものは下に縦へ積む（同時に3つまで）。
+    /// 工程に <c>timer_sec</c> があれば、その工程に入ったときに既定値として入る。
+    /// 終わったら音（その場で作った短い合成音）と板の点滅で知らせる。
+    ///
+    /// 時間の計算そのものは Domain の <see cref="CookTimer"/> の仕事——
+    /// ここは時計（<c>Time.unscaledTime</c>）を渡して結果を映すだけ（設計 §4.2）。
+    /// 「停止」は Domain に一時停止の概念が無いので、止めた瞬間の残りを Presentation が覚えておき、
+    /// 「再開」でその残りを持つ <see cref="CookTimer"/> を作り直す。
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class TimerPanel : MonoBehaviour
     {
+        /// <summary>同時に持てるタイマーの数（設計 §11 追補）。</summary>
+        public const int MaxTimers = 3;
+
+        private const double MinSeconds = 30;
+        private const double MaxSeconds = 60 * 60;
+        private const double DefaultSeconds = 180;
+
+        /// <summary>鳴り続ける上限。触られなくてもいつかは静かになる。</summary>
+        private const float AlarmSeconds = 60f;
+
         private readonly ClickDebounce _debounce = new ClickDebounce();
-        private readonly Dictionary<int, Label> _valueLabelByStep = new Dictionary<int, Label>();
-        private readonly HashSet<int> _notifiedElapsed = new HashSet<int>();
+        private readonly List<TimerEntry> _entries = new List<TimerEntry>();
 
+        private VisualElement _root;
+        private Label _setterLabel;
+        private Label _setterValue;
+        private Button _startButton;
         private ScrollView _scroll;
-        private CookSession _session;
 
-        /// <summary>工程のタイマーを開始してほしい（設計 §3 の timer_sec を持つ工程）。</summary>
-        public event Action<int> TimerStartRequested;
+        private AudioSource _audioSource;
+        private AudioClip _chime;
 
-        /// <summary>工程のタイマーを止めてほしい（手動停止・時間切れの両方でこれを送る。設計 §5）。</summary>
-        public event Action<int> TimerStopRequested;
+        private double _pendingSeconds = DefaultSeconds;
+        private string _pendingLabel = "タイマー";
+        private int _lastStepIndex = int.MinValue;
+        private bool _needsRebuild;
 
         private void Awake()
         {
-            var root = GetComponent<UIDocument>().rootVisualElement;
-            _scroll = root.Q<ScrollView>("timerScroll");
+            _root = GetComponent<UIDocument>().rootVisualElement;
+
+            _setterLabel = _root.Q<Label>("setterLabel");
+            _setterValue = _root.Q<Label>("setterValue");
+            _startButton = _root.Q<Button>("startButton");
+            _scroll = _root.Q<ScrollView>("timerScroll");
+
+            PokePress.BindButton(_startButton, _debounce, "timer-start", StartPending);
+            BindSetterButton("minusButton", "timer-minus", () => AddPendingSeconds(-30));
+            BindSetterButton("plusButton", "timer-plus", () => AddPendingSeconds(30));
+            BindSetterButton("preset1Button", "timer-preset-1", () => SetPendingSeconds(60));
+            BindSetterButton("preset3Button", "timer-preset-3", () => SetPendingSeconds(180));
+            BindSetterButton("preset5Button", "timer-preset-5", () => SetPendingSeconds(300));
+            BindSetterButton("preset10Button", "timer-preset-10", () => SetPendingSeconds(600));
+
+            _audioSource = GetComponent<AudioSource>();
+            if (_audioSource == null)
+            {
+                _audioSource = gameObject.AddComponent<AudioSource>();
+            }
+
+            _audioSource.playOnAwake = false;
+            _audioSource.spatialBlend = 0f; // 台所のどこにいても聞こえるように（板の位置に縛らない）。
+            _chime = CreateChime();
+
+            RefreshSetter();
+        }
+
+        private void BindSetterButton(string name, string key, System.Action action)
+        {
+            var button = _root.Q<Button>(name);
+            PokePress.BindButton(button, _debounce, key, action);
         }
 
         private void Update()
         {
-            if (_session == null)
+            var now = Time.unscaledTime;
+
+            foreach (var entry in _entries)
+            {
+                UpdateEntryValue(entry, now);
+
+                if (entry.Timer != null && entry.Timer.IsRunning && entry.Timer.IsElapsed(now) && !entry.Alarmed)
+                {
+                    entry.Alarmed = true;
+                    entry.AlarmStartedAt = now;
+                    PlayChime();
+                    _needsRebuild = true; // 「停止」を「消す」に差し替える。
+                }
+            }
+
+            UpdateBlink(now);
+
+            if (_needsRebuild)
+            {
+                _needsRebuild = false;
+                RebuildCards();
+            }
+        }
+
+        /// <summary>工程が変わったら timer_sec を既定値に入れる（設計 §11 追補）。</summary>
+        public void Refresh(CookSession session)
+        {
+            var current = session.CurrentStep;
+            var stepIndex = current?.Index ?? int.MinValue;
+
+            if (stepIndex == _lastStepIndex)
             {
                 return;
             }
 
-            var now = Time.unscaledTime;
-            foreach (var timer in _session.AllTimers)
+            _lastStepIndex = stepIndex;
+
+            if (current?.TimerSec != null)
             {
-                if (!_valueLabelByStep.TryGetValue(timer.StepIndex, out var label))
-                {
-                    continue;
-                }
-
-                UpdateValueLabel(label, timer, now);
-
-                if (timer.IsRunning && timer.IsElapsed(now) && _notifiedElapsed.Add(timer.StepIndex))
-                {
-                    TimerStopRequested?.Invoke(timer.StepIndex);
-                }
+                _pendingSeconds = Mathf.Clamp((float)current.TimerSec.Value, (float)MinSeconds, (float)MaxSeconds);
+                _pendingLabel = string.IsNullOrEmpty(current.Title) ? "タイマー" : current.Title;
             }
+            else
+            {
+                _pendingLabel = "タイマー";
+            }
+
+            RefreshSetter();
         }
 
-        public void Refresh(CookSession session)
+        // ------------------------------------------------------------------ 作り口
+
+        private void SetPendingSeconds(double seconds)
         {
-            _session = session;
+            _pendingSeconds = System.Math.Min(System.Math.Max(seconds, MinSeconds), MaxSeconds);
+            RefreshSetter();
+        }
+
+        private void AddPendingSeconds(double delta) => SetPendingSeconds(_pendingSeconds + delta);
+
+        private void RefreshSetter()
+        {
+            if (_setterValue == null)
+            {
+                return;
+            }
+
+            _setterValue.text = FormatSeconds(_pendingSeconds);
+            _setterLabel.text = _entries.Count >= MaxTimers ? $"{_pendingLabel}（上限{MaxTimers}）" : _pendingLabel;
+            _startButton.SetEnabled(_entries.Count < MaxTimers);
+        }
+
+        private void StartPending()
+        {
+            if (_entries.Count >= MaxTimers)
+            {
+                return;
+            }
+
+            var entry = new TimerEntry
+            {
+                Label = _pendingLabel,
+                DurationSec = _pendingSeconds,
+                Timer = new CookTimer(_lastStepIndex, _pendingSeconds),
+            };
+
+            entry.Timer.Start(Time.unscaledTime);
+            _entries.Add(entry);
+            _needsRebuild = true;
+            RefreshSetter();
+        }
+
+        // ------------------------------------------------------------------ 札
+
+        private void RebuildCards()
+        {
             _scroll.Clear();
-            _valueLabelByStep.Clear();
 
-            var current = session.CurrentStep;
-            var shown = new HashSet<int>();
-
-            foreach (var timer in session.AllTimers)
+            foreach (var entry in _entries)
             {
-                AddTimerCard(session, timer.StepIndex, timer);
-                shown.Add(timer.StepIndex);
-                if (!timer.IsRunning)
-                {
-                    _notifiedElapsed.Remove(timer.StepIndex); // 止まっているものは次に開始したらまた通知してよい。
-                }
+                _scroll.Add(BuildCard(entry));
             }
 
-            // 今の工程にタイマーがあり、まだ始めていなければ「開始」だけの札を足す。
-            if (current?.TimerSec != null && !shown.Contains(current.Index))
-            {
-                AddTimerCard(session, current.Index, null);
-            }
+            RefreshSetter();
         }
 
-        private void AddTimerCard(CookSession session, int stepIndex, CookTimer timer)
+        private VisualElement BuildCard(TimerEntry entry)
         {
-            var step = FindStep(session, stepIndex);
             var card = new VisualElement();
             card.AddToClassList("timer-card");
+            entry.Card = card;
 
-            var title = new Label(step?.Title ?? $"工程{stepIndex}");
+            var title = new Label(entry.Label);
             title.AddToClassList("caption");
             title.AddToClassList("timer-card__title");
             card.Add(title);
 
             var row = new VisualElement();
-            row.AddToClassList("timer-card__row");
+            row.AddToClassList("timer-row");
 
-            var valueLabel = new Label();
-            valueLabel.AddToClassList("timer-value");
-            row.Add(valueLabel);
-            _valueLabelByStep[stepIndex] = valueLabel;
+            var value = new Label();
+            value.AddToClassList("timer-value");
+            entry.Value = value;
+            row.Add(value);
 
-            if (timer == null || !timer.IsRunning)
+            var running = IsRunning(entry, Time.unscaledTime);
+            var toggleButton = new Button { text = running ? "停止" : "再開" };
+            toggleButton.AddToClassList("kitchen-button");
+            toggleButton.AddToClassList("kitchen-button--secondary");
+            PokePress.BindButton(toggleButton, _debounce, $"timer-toggle-{entry.Id}",
+                () => { Acknowledge(entry); ToggleEntry(entry); });
+            row.Add(toggleButton);
+
+            var resetButton = new Button { text = "リセット" };
+            resetButton.AddToClassList("kitchen-button");
+            resetButton.AddToClassList("kitchen-button--secondary");
+            PokePress.BindButton(resetButton, _debounce, $"timer-reset-{entry.Id}",
+                () => { Acknowledge(entry); ResetEntry(entry); });
+            row.Add(resetButton);
+
+            var removeButton = new Button { text = "消す" };
+            removeButton.AddToClassList("kitchen-button");
+            removeButton.AddToClassList("kitchen-button--secondary");
+            PokePress.BindButton(removeButton, _debounce, $"timer-remove-{entry.Id}",
+                () => { Acknowledge(entry); RemoveEntry(entry); });
+            row.Add(removeButton);
+
+            card.Add(row);
+
+            UpdateEntryValue(entry, Time.unscaledTime);
+            return card;
+        }
+
+        private void ToggleEntry(TimerEntry entry)
+        {
+            var now = Time.unscaledTime;
+            if (IsRunning(entry, now))
             {
-                // 未開始、または停止済み（時間切れ含む）はどちらも「開始（やり直し）」を出す。
-                var startButton = new Button { text = "開始" };
-                startButton.AddToClassList("kitchen-button");
-                startButton.AddToClassList("kitchen-button--primary");
-                startButton.clicked += () =>
-                {
-                    if (_debounce.TryAccept($"timer-start-{stepIndex}"))
-                    {
-                        TimerStartRequested?.Invoke(stepIndex);
-                    }
-                };
-                row.Add(startButton);
-                valueLabel.text = timer != null
-                    ? FormatSeconds(timer.Remaining(Time.unscaledTime))
-                    : FormatSeconds(step?.TimerSec ?? 0);
+                entry.FrozenRemaining = entry.Timer.Remaining(now);
+                entry.Timer.Stop();
             }
             else
             {
-                var stopButton = new Button { text = "停止" };
-                stopButton.AddToClassList("kitchen-button");
-                stopButton.AddToClassList("kitchen-button--secondary");
-                stopButton.clicked += () =>
+                var remaining = entry.Timer == null || entry.Alarmed ? entry.DurationSec : entry.FrozenRemaining;
+                if (remaining <= 0)
                 {
-                    if (_debounce.TryAccept($"timer-stop-{stepIndex}"))
-                    {
-                        TimerStopRequested?.Invoke(stepIndex);
-                    }
-                };
-                row.Add(stopButton);
-                UpdateValueLabel(valueLabel, timer, Time.unscaledTime);
+                    remaining = entry.DurationSec;
+                }
+
+                entry.Alarmed = false;
+                entry.Timer = new CookTimer(_lastStepIndex, remaining);
+                entry.Timer.Start(now);
             }
 
-            card.Add(row);
-            _scroll.Add(card);
+            _needsRebuild = true;
         }
 
-        private static void UpdateValueLabel(Label label, CookTimer timer, float now)
+        private void ResetEntry(TimerEntry entry)
         {
-            label.text = FormatSeconds(timer.Remaining(now));
-            label.RemoveFromClassList("timer-value--running");
-            label.RemoveFromClassList("timer-value--elapsed");
+            entry.Timer = null;
+            entry.FrozenRemaining = entry.DurationSec;
+            entry.Alarmed = false;
+            _needsRebuild = true;
+        }
 
-            if (timer.IsElapsed(now))
+        private void RemoveEntry(TimerEntry entry)
+        {
+            _entries.Remove(entry);
+            _needsRebuild = true;
+        }
+
+        private static void Acknowledge(TimerEntry entry) => entry.AlarmAcknowledged = true;
+
+        private static bool IsRunning(TimerEntry entry, float now) =>
+            entry.Timer != null && entry.Timer.IsRunning && !entry.Timer.IsElapsed(now);
+
+        private void UpdateEntryValue(TimerEntry entry, float now)
+        {
+            if (entry.Value == null)
             {
-                label.AddToClassList("timer-value--elapsed");
+                return;
             }
-            else if (timer.IsRunning)
+
+            double remaining;
+            if (entry.Timer == null)
             {
-                label.AddToClassList("timer-value--running");
+                remaining = entry.DurationSec;
+            }
+            else if (entry.Timer.IsRunning)
+            {
+                remaining = entry.Timer.Remaining(now);
+            }
+            else
+            {
+                remaining = entry.FrozenRemaining; // 止めた瞬間の残り（Domain は一時停止を持たない）。
+            }
+
+            entry.Value.text = FormatSeconds(remaining);
+            entry.Value.RemoveFromClassList("timer-value--running");
+            entry.Value.RemoveFromClassList("timer-value--elapsed");
+
+            if (entry.Alarmed || remaining <= 0)
+            {
+                entry.Value.AddToClassList("timer-value--elapsed");
+            }
+            else if (entry.Timer != null && entry.Timer.IsRunning)
+            {
+                entry.Value.AddToClassList("timer-value--running");
             }
         }
 
-        private static Step FindStep(CookSession session, int stepIndex)
+        // ------------------------------------------------------------------ 知らせ（音と点滅）
+
+        private void UpdateBlink(float now)
         {
-            foreach (var step in session.Recipe.Steps)
+            var blinking = false;
+            foreach (var entry in _entries)
             {
-                if (step.Index == stepIndex)
+                var alarming = entry.Alarmed && !entry.AlarmAcknowledged && now - entry.AlarmStartedAt < AlarmSeconds;
+                var on = alarming && Mathf.Repeat(now, 0.8f) < 0.4f;
+                blinking |= on;
+
+                if (entry.Card != null)
                 {
-                    return step;
+                    SetClass(entry.Card, "timer-card--alarm", on);
                 }
             }
 
-            return null;
+            SetClass(_root, "root-panel--alarm", blinking);
+        }
+
+        private void PlayChime()
+        {
+            if (_audioSource != null && _chime != null)
+            {
+                _audioSource.PlayOneShot(_chime);
+            }
+        }
+
+        /// <summary>
+        /// 短い知らせの音をその場で作る（外部の音源は持ち込まない。設計 §11 追補）。
+        /// 880Hz の点を3つ、指数で減衰させる——調理中の音に紛れにくい高さにしてある。
+        /// </summary>
+        private static AudioClip CreateChime()
+        {
+            const int sampleRate = 44100;
+            const float beepSeconds = 0.14f;
+            const float gapSeconds = 0.10f;
+            const int beeps = 3;
+            const float frequency = 880f;
+
+            var totalSamples = Mathf.RoundToInt((beepSeconds + gapSeconds) * beeps * sampleRate);
+            var data = new float[totalSamples];
+            var beepSamples = Mathf.RoundToInt(beepSeconds * sampleRate);
+            var strideSamples = Mathf.RoundToInt((beepSeconds + gapSeconds) * sampleRate);
+
+            for (var beep = 0; beep < beeps; beep++)
+            {
+                var start = beep * strideSamples;
+                for (var i = 0; i < beepSamples && start + i < totalSamples; i++)
+                {
+                    var t = i / (float)sampleRate;
+                    var envelope = Mathf.Exp(-12f * t); // 立ち上がりだけ鋭く、すぐ減衰させる。
+                    data[start + i] = 0.45f * envelope * Mathf.Sin(2f * Mathf.PI * frequency * t);
+                }
+            }
+
+            var clip = AudioClip.Create("KitchenXR Timer Chime", totalSamples, 1, sampleRate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        private static void SetClass(VisualElement element, string className, bool on)
+        {
+            if (element == null)
+            {
+                return;
+            }
+
+            if (on)
+            {
+                element.AddToClassList(className);
+            }
+            else
+            {
+                element.RemoveFromClassList(className);
+            }
         }
 
         private static string FormatSeconds(double seconds)
@@ -174,6 +400,25 @@ namespace KitchenXR.Presentation
             var minutes = total / 60;
             var secs = total % 60;
             return $"{minutes:00}:{secs:00}";
+        }
+
+        /// <summary>板が持つタイマー1つ。時間の計算は <see cref="CookTimer"/>、見た目と一時停止はここ。</summary>
+        private sealed class TimerEntry
+        {
+            private static int s_nextId;
+
+            public readonly int Id = ++s_nextId;
+
+            public string Label;
+            public double DurationSec;
+            public CookTimer Timer;
+            public double FrozenRemaining;
+            public bool Alarmed;
+            public bool AlarmAcknowledged;
+            public float AlarmStartedAt;
+
+            public VisualElement Card;
+            public Label Value;
         }
     }
 }

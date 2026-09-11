@@ -44,8 +44,13 @@ namespace KitchenXR.App.Editor
 
         private const float RecipeWidthUnits = 260f; // 実測 ≒ 52cm
         private const float RecipeHeightUnits = 190f; // ≒ 38cm
-        private const float SideWidthUnits = 150f; // ≒ 30cm
-        private const float SideHeightUnits = 190f; // ≒ 38cm
+        private const float IngredientsWidthUnits = 150f; // ≒ 30cm
+        private const float IngredientsHeightUnits = 190f; // ≒ 38cm
+
+        // タイマーは §11 追補で「常時使える」作り口（1/3/5/10分・±30秒）と3つ積む場所が要るので、
+        // 材料の板より一回り大きい（4cm角のボタンを6つ並べるのに 44cm 要る）。
+        private const float TimerWidthUnits = 220f; // ≒ 44cm
+        private const float TimerHeightUnits = 220f; // ≒ 44cm
 
         // XRI の World Space UI サンプル（WorldSpacePanel.asset）と同じ値。
         // 「既存のコライダーを使う」＝ UI Document は自前でコライダーを作らない。
@@ -74,14 +79,14 @@ namespace KitchenXR.App.Editor
             var ingredientsGo = CreatePanelObject(
                 "IngredientsPanel", panelsRoot.transform, panelSettings,
                 LoadUxml("Assets/KitchenXR/Presentation/UI/IngredientsPanel.uxml"),
-                SideWidthUnits, SideHeightUnits,
+                IngredientsWidthUnits, IngredientsHeightUnits,
                 new Vector3(-0.72f, 1.35f, 1.05f), Quaternion.Euler(0f, -25f, 0f));
             var ingredientsPanel = ingredientsGo.AddComponent<IngredientsPanel>();
 
             var timerGo = CreatePanelObject(
                 "TimerPanel", panelsRoot.transform, panelSettings,
                 LoadUxml("Assets/KitchenXR/Presentation/UI/TimerPanel.uxml"),
-                SideWidthUnits, SideHeightUnits,
+                TimerWidthUnits, TimerHeightUnits,
                 new Vector3(0.72f, 1.35f, 1.05f), Quaternion.Euler(0f, 25f, 0f));
             var timerPanel = timerGo.AddComponent<TimerPanel>();
 

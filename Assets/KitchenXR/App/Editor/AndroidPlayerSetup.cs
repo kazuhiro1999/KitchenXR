@@ -14,7 +14,7 @@ namespace KitchenXR.App.Editor
     /// </summary>
     public static class AndroidPlayerSetup
     {
-        public const string TargetBundleVersion = "1.0.2";
+        public const string TargetBundleVersion = "1.0.3";
 
         public const string AdaptiveForegroundPath = "Assets/KitchenXR/Icons/icon_adaptive_fg.png";
         public const string AdaptiveBackgroundPath = "Assets/KitchenXR/Icons/icon_adaptive_bg.png";

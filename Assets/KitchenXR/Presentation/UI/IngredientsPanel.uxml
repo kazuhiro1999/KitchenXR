@@ -4,6 +4,6 @@
     <ui:VisualElement name="root" class="root-panel">
         <ui:Label text="材料" class="heading" />
         <ui:VisualElement class="divider" />
-        <ui:ScrollView name="ingredientScroll" class="ingredients-scroll" />
+        <ui:ScrollView name="ingredientScroll" mode="Vertical" horizontal-scroller-visibility="Hidden" vertical-scroller-visibility="Auto" class="ingredients-scroll" />
     </ui:VisualElement>
 </ui:UXML>

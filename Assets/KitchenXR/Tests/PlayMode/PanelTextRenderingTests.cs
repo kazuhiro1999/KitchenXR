@@ -113,8 +113,9 @@ namespace KitchenXR.Tests.PlayMode
 
             // 単位の無い `--font-size-heading: 10` は var() 越しに型が合わず無視され、
             // 既定の 14px に戻ってしまう。theme の値がそのまま出ることを確かめる。
+            // 本文は 2026-09-13 の主人の「少し大きいかも」で 7px → 6px（≒27pt）へ1段下げた（設計 §11 追補）。
             Assert.AreEqual(10f, Root.Q<Label>("currentTitle").resolvedStyle.fontSize, 0.01f, "見出し");
-            Assert.AreEqual(7f, Root.Q<Label>("currentInstruction").resolvedStyle.fontSize, 0.01f, "本文");
+            Assert.AreEqual(6f, Root.Q<Label>("currentInstruction").resolvedStyle.fontSize, 0.01f, "本文");
             Assert.AreEqual(5f, Root.Q<Label>("progressLabel").resolvedStyle.fontSize, 0.01f, "補助");
         }
 

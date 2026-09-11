@@ -1,31 +1,54 @@
-.recipe-current-section {
-    flex-grow: 1;
-}
+/*
+ * レシピの板（設計 §9・§11 追補）。
+ * 縦の並びは「頭（点列と%）／本文（溢れたら縦スクロール）／ボタンの行」の3段。
+ * ボタンの行を下に固定し、本文はその上の残りに収める——v1.0.2 は本文とボタンが重なっていた。
+ */
 
-.recipe-image-area {
-    flex-grow: 1;
-    min-height: 60px;
-    margin-top: 6px;
-    margin-bottom: 6px;
-    align-items: center;
-    justify-content: center;
-}
-
-.recipe-ingredient-chip {
-    background-color: var(--color-chip-bg);
-    padding: 6px 10px;
-    border-top-left-radius: var(--radius-medium);
-    border-top-right-radius: var(--radius-medium);
-    border-bottom-left-radius: var(--radius-medium);
-    border-bottom-right-radius: var(--radius-medium);
+.recipe-header {
+    flex-shrink: 0;
 }
 
 .recipe-progress-label {
     align-self: center;
 }
 
-.recipe-next-section {
-    flex-direction: row;
+/* 本文。余りを全部もらい、溢れたら縦にだけスクロールする。 */
+.recipe-content {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-height: 0;
+}
+
+.recipe-current-section {
+    flex-grow: 1;
+}
+
+.recipe-image-area {
+    height: 60px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+    align-items: center;
+    justify-content: center;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.recipe-ingredient-chip {
+    background-color: var(--color-chip-bg);
+    padding-left: 6px;
+    padding-right: 6px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    border-top-left-radius: var(--radius-medium);
+    border-top-right-radius: var(--radius-medium);
+    border-bottom-left-radius: var(--radius-medium);
+    border-bottom-right-radius: var(--radius-medium);
+    -unity-text-align: middle-center;
+}
+
+.recipe-next-label {
+    margin-top: 4px;
 }
 
 .recipe-complete-section {
@@ -34,9 +57,11 @@
     flex-grow: 1;
 }
 
+/* ボタンの行は縮まない・隠れない（設計 §11 追補「本文がボタンと重ならない」）。 */
 .recipe-button-row {
     flex-direction: row;
     justify-content: space-between;
+    flex-shrink: 0;
 }
 
 .recipe-spacer {

@@ -1,5 +1,5 @@
 /*
- * KitchenXR 共通テーマ（設計 Docs/design/PROTOTYPE.md §9）。
+ * KitchenXR 共通テーマ（設計 Docs/design/PROTOTYPE.md §9・§11 追補）。
  * 白 85% の半透明の板・濃灰の文字・琥珀の強調色1色。角丸は大きめ。Unity既定の見た目は使わない。
  *
  * 実寸の換算:
@@ -27,16 +27,23 @@
     --color-divider: rgba(31, 41, 55, 0.15);
     --color-chip-bg: rgba(31, 41, 55, 0.08);
     --color-chip-bg-strong: rgba(245, 158, 11, 0.18);
+    --color-alarm: rgb(220, 38, 38);
+    --color-alarm-bg: rgba(220, 38, 38, 0.22);
 
-    /* 文字3段（見出し／本文／補助）。48/32/24pt の比を保った実機換算値（上のコメント参照）。 */
+    /* 文字3段（見出し／本文／補助）。48/32/24pt の比を保った実機換算値（上のコメント参照）。
+     * 2026-09-13 主人「少し大きいかも」——**本文だけ**1段下げた（7px ≒ 32pt → 6px ≒ 27pt）。
+     * 見出しと補助は据え置き。材料の板はさらに一段小さい --font-size-ingredient を使う（§11 追補）。 */
     --font-size-heading: 10px;
-    --font-size-body: 7px;
+    --font-size-body: 6px;
     --font-size-caption: 5px;
+    --font-size-ingredient: 5.5px;
 
     --radius-large: 12px;
     --radius-medium: 6px;
 
-    /* ボタン: 最小4cm角 = 20px、間隔2cm = 10px（設計 §7）。 */
+    /* ボタン: 最小4cm角 = 20px、間隔2cm = 10px（設計 §7）。
+     * ボタンの余白は上下左右 5px（＝隣り合うボタンの間が 10px = 2cm）。
+     * v1.0.2 は 10px（間隔 4cm）で、本文の置き場を圧迫していた（§11 追補「本文が重ならない」）。 */
     --button-min: 20px;
     --gap-loose: 10px;
     --gap-tight: 5px;
@@ -51,7 +58,13 @@
     border-bottom-right-radius: var(--radius-large);
     padding: 8px;
     color: var(--color-text);
+    overflow: hidden;
     -unity-font-definition: url("project://database/Assets/KitchenXR/Presentation/UI/Fonts/NotoSansJP-Regular%20UITK.asset?fileID=11400000&guid=2c70aed3703fdc543b76fb0e36c8518b&type=2#NotoSansJP-Regular%20UITK");
+}
+
+/* タイマーの鳴っている板（点滅。C# が付け外しする）。 */
+.root-panel--alarm {
+    background-color: var(--color-alarm-bg);
 }
 
 .heading {
@@ -92,10 +105,10 @@
 .kitchen-button {
     min-width: var(--button-min);
     min-height: var(--button-min);
-    margin-left: var(--gap-loose);
-    margin-right: var(--gap-loose);
-    margin-top: var(--gap-loose);
-    margin-bottom: var(--gap-loose);
+    margin-left: var(--gap-tight);
+    margin-right: var(--gap-tight);
+    margin-top: var(--gap-tight);
+    margin-bottom: var(--gap-tight);
     border-top-left-radius: var(--radius-medium);
     border-top-right-radius: var(--radius-medium);
     border-bottom-left-radius: var(--radius-medium);
@@ -105,6 +118,7 @@
     font-size: var(--font-size-body);
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 
 .kitchen-button--primary {
@@ -135,21 +149,22 @@
     opacity: 0.35;
 }
 
-/* --- phase の点列（設計 §9） --- */
+/* --- 工程の点列（設計 §11 追補: phase の3つではなく「工程の数だけ」出す） --- */
 
-.phase-dots {
+.step-dots {
     flex-direction: row;
+    flex-wrap: wrap;
     justify-content: center;
     align-items: center;
     margin-top: var(--gap-tight);
     margin-bottom: var(--gap-tight);
 }
 
-.phase-dot {
+.step-dot {
     width: 6px;
     height: 6px;
-    margin-left: 3px;
-    margin-right: 3px;
+    margin-left: 2px;
+    margin-right: 2px;
     border-top-left-radius: 3px;
     border-top-right-radius: 3px;
     border-bottom-left-radius: 3px;
@@ -157,26 +172,39 @@
     background-color: var(--color-chip-bg);
 }
 
-.phase-dot--done {
+/* 済んだ工程。 */
+.step-dot--done {
     background-color: var(--color-accent);
 }
 
-.phase-dot--current {
+/* 今の工程。 */
+.step-dot--current {
     background-color: var(--color-accent);
-    scale: 1.4 1.4;
+    scale: 1.5 1.5;
 }
 
-/* --- 材料チップ / チェックリスト --- */
+/* phase の変わり目は間隔で見せる（色の段は上の3つと兼ねる）。 */
+.step-dot--phase-start {
+    margin-left: 8px;
+}
+
+/* --- 材料の板（§11 追補: 横スクロール禁止・文字を一段小さく・行の高さを板の幅に合わせる） --- */
 
 .ingredient-row {
     flex-direction: row;
     align-items: center;
-    padding: 4px;
+    min-height: 12px;
+    padding-left: 3px;
+    padding-right: 3px;
+    padding-top: 1px;
+    padding-bottom: 1px;
     border-top-left-radius: var(--radius-medium);
     border-top-right-radius: var(--radius-medium);
     border-bottom-left-radius: var(--radius-medium);
     border-bottom-right-radius: var(--radius-medium);
-    margin-bottom: 2px;
+    margin-bottom: 1px;
+    overflow: hidden;
+    flex-shrink: 0;
 }
 
 .ingredient-row--highlight {
@@ -186,7 +214,7 @@
 .ingredient-row__check {
     width: 8px;
     height: 8px;
-    margin-right: 6px;
+    margin-right: 4px;
     border-width: 1px;
     border-color: var(--color-text-muted);
     border-top-left-radius: 2px;
@@ -194,6 +222,7 @@
     border-bottom-left-radius: 2px;
     border-bottom-right-radius: 2px;
     background-color: rgba(255, 255, 255, 0.6);
+    flex-shrink: 0;
 }
 
 .ingredient-row__check--checked {
@@ -201,10 +230,27 @@
     border-color: var(--color-accent);
 }
 
+.ingredient-row__name {
+    flex-grow: 1;
+    flex-shrink: 1;
+    font-size: var(--font-size-ingredient);
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .ingredient-row__qty {
     color: var(--color-text-muted);
     font-size: var(--font-size-caption);
-    margin-left: 6px;
+    margin-left: 4px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.ingredient-row--checked .ingredient-row__name {
+    color: var(--color-text-muted);
 }
 
 /* --- タイマー --- */
@@ -215,14 +261,20 @@
     border-top-right-radius: var(--radius-medium);
     border-bottom-left-radius: var(--radius-medium);
     border-bottom-right-radius: var(--radius-medium);
-    padding: 6px;
-    margin-bottom: var(--gap-tight);
-    align-items: center;
+    padding: 2px;
+    margin-bottom: 2px;
+    flex-shrink: 0;
+}
+
+.timer-card--alarm {
+    background-color: var(--color-alarm-bg);
 }
 
 .timer-value {
-    font-size: 16px;
+    font-size: 14px;
     color: var(--color-text);
+    -unity-text-align: middle-left;
+    min-width: 42px;
 }
 
 .timer-value--running {
@@ -230,5 +282,5 @@
 }
 
 .timer-value--elapsed {
-    color: rgb(220, 38, 38);
+    color: var(--color-alarm);
 }

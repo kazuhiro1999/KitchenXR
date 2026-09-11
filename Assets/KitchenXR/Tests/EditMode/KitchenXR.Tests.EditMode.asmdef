@@ -5,6 +5,7 @@
         "KitchenXR.Domain",
         "KitchenXR.Runtime",
         "KitchenXR.App.Editor",
+        "UniTask",
         "Unity.XR.Interaction.Toolkit",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"

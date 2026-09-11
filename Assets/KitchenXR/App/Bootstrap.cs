@@ -1,4 +1,7 @@
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using KitchenXR.Domain;
+using KitchenXR.Net;
 using KitchenXR.Platform;
 using KitchenXR.Platform.Null;
 using KitchenXR.Presentation;
@@ -9,6 +12,10 @@ namespace KitchenXR.App
     /// <summary>
     /// どのアダプタを挿すかはここだけ（設計 §4.2）。見本レシピを読み、CookSession を作り、
     /// レシピ／材料／タイマーの3枚のパネルへ配る。アンカーは P2 まで <see cref="InMemoryAnchorStore"/>。
+    ///
+    /// レシピと画像は <see cref="RecipeStore"/>（persistentDataPath）を通す（設計 §11 追補）。
+    /// 見本（Resources）も初回に写して、以後はローカルのものを読む——電子レンジで通信が切れても
+    /// 同じ画面が出る。通信があるうちに残りの画像を裏で取っておく。
     /// </summary>
     public sealed class Bootstrap : MonoBehaviour
     {
@@ -32,7 +39,9 @@ namespace KitchenXR.App
         private IPassthroughControl _passthrough;
         private IHandInputPolicy _handInputPolicy;
 
+        private RecipeStore _recipeStore;
         private CookSession _session;
+        private CancellationTokenSource _prefetchCts;
 
         private void Awake()
         {
@@ -41,15 +50,15 @@ namespace KitchenXR.App
             _passthrough.Enable(); // MR テンプレートは既定でパススルー済みだが、状態としても明示しておく。
             _handInputPolicy = new DefaultHandInputPolicy();
 
-            var recipe = LoadRecipe(_recipeResourcePath);
+            _recipeStore = RecipeStore.CreateDefault();
+            var recipe = LoadRecipe(_recipeStore, _recipeResourcePath);
             _session = new CookSession(recipe);
 
+            _recipePanel.Bind(_recipeStore, recipe.Id);
             _ingredientsPanel.BindRecipe(recipe);
 
             _recipePanel.NextRequested += HandleNext;
             _recipePanel.PrevRequested += HandlePrev;
-            _timerPanel.TimerStartRequested += HandleTimerStart;
-            _timerPanel.TimerStopRequested += HandleTimerStop;
 
             if (_cookingModeInputGate != null)
             {
@@ -62,17 +71,26 @@ namespace KitchenXR.App
         private void Start()
         {
             PlaceInitialPanels();
+
+            // 通信があるうちに hero と全工程の画像を手元へ（オフライン前提。設計 §11 追補）。
+            _prefetchCts = new CancellationTokenSource();
+            _recipeStore.PrefetchAsync(_session.Recipe, _prefetchCts.Token).Forget();
         }
 
         private void OnDestroy()
         {
             _recipePanel.NextRequested -= HandleNext;
             _recipePanel.PrevRequested -= HandlePrev;
-            _timerPanel.TimerStartRequested -= HandleTimerStart;
-            _timerPanel.TimerStopRequested -= HandleTimerStop;
+
+            _prefetchCts?.Cancel();
+            _prefetchCts?.Dispose();
         }
 
-        private static Recipe LoadRecipe(string resourcePath)
+        /// <summary>
+        /// 見本（Resources）も保管庫を通す: 初回だけ Resources の中身を写し、読むのは常にローカル。
+        /// P3 でサーバから取ってくるようになっても、表示側の経路はここのままで変わらない。
+        /// </summary>
+        private static Recipe LoadRecipe(RecipeStore store, string resourcePath)
         {
             var textAsset = Resources.Load<TextAsset>(resourcePath);
             if (textAsset == null)
@@ -81,7 +99,9 @@ namespace KitchenXR.App
                     $"見本レシピが見つかりません: Resources/{resourcePath}.json");
             }
 
-            return RecipeJson.Parse(textAsset.text);
+            // 契約 JSON の id が保管庫の置き場になるので、まずは中身から id を読む。
+            var bundled = RecipeJson.Parse(textAsset.text);
+            return store.LoadRecipe(bundled.Id, textAsset.text);
         }
 
         private void HandleNext()
@@ -93,19 +113,6 @@ namespace KitchenXR.App
         private void HandlePrev()
         {
             _session.Apply(SessionEvent.PrevRequested.Instance);
-            RefreshAllPanels();
-        }
-
-        private void HandleTimerStart(int stepIndex)
-        {
-            _session.Apply(new SessionEvent.TimerStarted(stepIndex, Time.unscaledTime));
-            RefreshAllPanels();
-        }
-
-        private void HandleTimerStop(int stepIndex)
-        {
-            // 手動停止も時間切れも、CookSession から見れば「このタイマーを止める」で同じ（設計 §5）。
-            _session.Apply(new SessionEvent.TimerElapsed(stepIndex));
             RefreshAllPanels();
         }
 

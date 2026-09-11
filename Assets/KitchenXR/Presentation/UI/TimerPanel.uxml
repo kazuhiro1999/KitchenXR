@@ -4,6 +4,22 @@
     <ui:VisualElement name="root" class="root-panel">
         <ui:Label text="タイマー" class="heading" />
         <ui:VisualElement class="divider" />
-        <ui:ScrollView name="timerScroll" class="timer-scroll" />
+        <ui:VisualElement name="setter" class="timer-setter">
+            <ui:VisualElement class="timer-row">
+                <ui:Label name="setterLabel" text="新しいタイマー" class="caption timer-setter__label" />
+                <ui:Label name="setterValue" text="03:00" class="timer-value" />
+                <ui:Button name="startButton" text="開始" class="kitchen-button kitchen-button--primary" />
+            </ui:VisualElement>
+            <ui:VisualElement class="timer-row">
+                <ui:Button name="minusButton" text="-30" class="kitchen-button kitchen-button--secondary" />
+                <ui:Button name="plusButton" text="+30" class="kitchen-button kitchen-button--secondary" />
+                <ui:Button name="preset1Button" text="1分" class="kitchen-button kitchen-button--secondary" />
+                <ui:Button name="preset3Button" text="3分" class="kitchen-button kitchen-button--secondary" />
+                <ui:Button name="preset5Button" text="5分" class="kitchen-button kitchen-button--secondary" />
+                <ui:Button name="preset10Button" text="10分" class="kitchen-button kitchen-button--secondary" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement class="divider" />
+        <ui:ScrollView name="timerScroll" mode="Vertical" horizontal-scroller-visibility="Hidden" vertical-scroller-visibility="Auto" class="timer-scroll" />
     </ui:VisualElement>
 </ui:UXML>

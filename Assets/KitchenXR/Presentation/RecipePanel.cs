@@ -3,17 +3,22 @@ using System.Text;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using KitchenXR.Domain;
+using KitchenXR.Net;
 using UnityEngine;
-using UnityEngine.Networking;
 using UnityEngine.UIElements;
 
 namespace KitchenXR.Presentation
 {
     /// <summary>
-    /// レシピパネル（主。設計 §9）。上に phase の点列と進捗%、中央に今の工程、下に次の工程、
-    /// 右下「次へ」左下「戻る」。CookSession は持たない——Bootstrap から渡された状態を映すだけ。
-    /// 「次へ／戻る」は 600ms のうちに同じボタンを連打しても1回しか外へ伝えない（設計 §7）。
-    /// Domain 側は連打を扱わないので、この抑止は Presentation の責務。
+    /// レシピパネル（主。設計 §9・§11 追補）。上に**工程の数だけ**の点列と進捗%、
+    /// 中央に今の工程（見出し・画像・1〜2文・次の工程）、下にボタンの行。
+    /// CookSession は持たない——Bootstrap から渡された状態を映すだけ。
+    ///
+    /// 「次へ／戻る」は <see cref="PokePress"/> で**押し下げ**に反応する（設計 §11 追補）。
+    /// <c>Button.clicked</c>（押し上げ）は購読しない——深く突き抜けると発火しないため。
+    ///
+    /// 画像は <see cref="RecipeStore"/> 越しに**ローカルから**読む（オフライン前提。§11 追補）。
+    /// 無ければその場で取りに行き、取れなければ材料名の淡い札で代える。
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class RecipePanel : MonoBehaviour
@@ -23,68 +28,66 @@ namespace KitchenXR.Presentation
         public event Action NextRequested;
         public event Action PrevRequested;
 
-        private VisualElement _phaseDots;
+        private VisualElement _stepDots;
         private Label _progressLabel;
         private VisualElement _currentSection;
         private Label _currentTitle;
         private VisualElement _currentImage;
         private Label _currentIngredientChip;
         private Label _currentInstruction;
-        private VisualElement _nextSection;
         private Label _nextLabel;
         private VisualElement _completeSection;
         private Button _backButton;
         private Button _nextButton;
 
-        private string _loadedImageUrl;
+        private RecipeStore _store;
+        private string _recipeId;
+
+        private string _shownImageKey;
+        private Texture2D _shownTexture;
         private CancellationTokenSource _imageLoadCts;
 
         private void Awake()
         {
             var root = GetComponent<UIDocument>().rootVisualElement;
 
-            _phaseDots = root.Q<VisualElement>("phaseDots");
+            _stepDots = root.Q<VisualElement>("stepDots");
             _progressLabel = root.Q<Label>("progressLabel");
             _currentSection = root.Q<VisualElement>("currentSection");
             _currentTitle = root.Q<Label>("currentTitle");
             _currentImage = root.Q<VisualElement>("currentImage");
             _currentIngredientChip = root.Q<Label>("currentIngredientChip");
             _currentInstruction = root.Q<Label>("currentInstruction");
-            _nextSection = root.Q<VisualElement>("nextSection");
             _nextLabel = root.Q<Label>("nextLabel");
             _completeSection = root.Q<VisualElement>("completeSection");
             _backButton = root.Q<Button>("backButton");
             _nextButton = root.Q<Button>("nextButton");
 
-            _backButton.clicked += () => { if (_debounce.TryAccept("back")) PrevRequested?.Invoke(); };
-            _nextButton.clicked += () => { if (_debounce.TryAccept("next")) NextRequested?.Invoke(); };
-
-            RegisterPressedVisual(_backButton);
-            RegisterPressedVisual(_nextButton);
+            PokePress.BindButton(_backButton, _debounce, "back", () => PrevRequested?.Invoke());
+            PokePress.BindButton(_nextButton, _debounce, "next", () => NextRequested?.Invoke());
         }
 
         private void OnDestroy()
         {
             _imageLoadCts?.Cancel();
             _imageLoadCts?.Dispose();
+            ReleaseShownTexture();
         }
 
-        /// <summary>poke の押し込み（hysteresis）に合わせた見た目だけの反応。実際の深さ判定は XRPokeFilter 側。</summary>
-        private static void RegisterPressedVisual(Button button)
+        /// <summary>画像の出どころを挿す（Bootstrap から。P3 でサーバに変わってもここは変わらない）。</summary>
+        public void Bind(RecipeStore store, string recipeId)
         {
-            button.RegisterCallback<PointerDownEvent>(_ => button.AddToClassList("kitchen-button--pressed"));
-            button.RegisterCallback<PointerUpEvent>(_ => button.RemoveFromClassList("kitchen-button--pressed"));
-            button.RegisterCallback<PointerLeaveEvent>(_ => button.RemoveFromClassList("kitchen-button--pressed"));
+            _store = store;
+            _recipeId = recipeId;
         }
 
         public void Refresh(CookSession session)
         {
-            RefreshPhaseDots(session);
+            RefreshStepDots(session);
             _progressLabel.text = $"{Mathf.RoundToInt((float)session.Progress * 100f)}%";
 
             var isComplete = session.IsComplete;
             SetHidden(_currentSection, isComplete);
-            SetHidden(_nextSection, isComplete);
             SetHidden(_completeSection, !isComplete);
             // 戻るは常に可能（設計 §5）。次へは完了後に押しても Domain 側で無視されるだけなので、
             // 工程が1つも無いレシピ（想定外）のときだけ押せなくする。
@@ -103,55 +106,124 @@ namespace KitchenXR.Presentation
 
             _currentTitle.text = current.Title;
             _currentInstruction.text = current.Instruction;
-            RefreshImageOrChip(current);
 
             var next = session.NextStep;
             _nextLabel.text = next != null ? $"次: {next.Title}" : "次: —";
+
+            ShowImageOrChip(current);
         }
 
-        private void RefreshPhaseDots(CookSession session)
+        /// <summary>
+        /// 工程の数だけ点を出す（設計 §11 追補。v1.0.2 は phase の3つしか出していなかった）。
+        /// 今までを塗り、今の工程は大きく。phase の変わり目は点の間隔で見せる。
+        /// </summary>
+        private void RefreshStepDots(CookSession session)
         {
-            _phaseDots.Clear();
-            foreach (var phase in session.PhaseProgressList())
+            _stepDots.Clear();
+
+            string previousPhase = null;
+            foreach (var step in session.Recipe.Steps)
             {
                 var dot = new VisualElement();
-                dot.AddToClassList("phase-dot");
-                if (phase.IsCurrent)
+                dot.AddToClassList("step-dot");
+
+                if (session.IsComplete || step.Index < session.Current)
                 {
-                    dot.AddToClassList("phase-dot--current");
+                    dot.AddToClassList("step-dot--done");
                 }
-                else if (phase.IsComplete)
+                else if (!session.IsComplete && step.Index == session.Current)
                 {
-                    dot.AddToClassList("phase-dot--done");
+                    dot.AddToClassList("step-dot--current");
                 }
 
-                _phaseDots.Add(dot);
+                if (previousPhase != null && step.PhaseId != previousPhase)
+                {
+                    dot.AddToClassList("step-dot--phase-start");
+                }
+
+                previousPhase = step.PhaseId;
+                _stepDots.Add(dot);
             }
         }
 
-        private void RefreshImageOrChip(Step step)
+        private void ShowImageOrChip(Step step)
         {
-            if (string.IsNullOrEmpty(step.Image))
+            var key = RecipeStore.StepImageKey(step.Index);
+            if (_shownImageKey == key)
             {
-                _loadedImageUrl = null;
-                _imageLoadCts?.Cancel();
-                _currentImage.style.backgroundImage = StyleKeyword.Null;
-                _currentIngredientChip.style.display = DisplayStyle.Flex;
-                _currentIngredientChip.text = BuildIngredientChipText(step);
+                return; // 同じ工程を描き直しただけ。読み直さない。
+            }
+
+            _shownImageKey = key;
+            _imageLoadCts?.Cancel();
+            _imageLoadCts?.Dispose();
+            _imageLoadCts = null;
+
+            ShowChip(step);
+
+            if (_store == null || string.IsNullOrEmpty(step.Image))
+            {
+                return; // URL の無い工程は材料名の札のまま（設計 §9）。
+            }
+
+            _imageLoadCts = new CancellationTokenSource();
+            LoadImageAsync(key, step.Image, _imageLoadCts.Token).Forget();
+        }
+
+        private async UniTaskVoid LoadImageAsync(string key, string url, CancellationToken token)
+        {
+            Texture2D texture;
+            try
+            {
+                texture = await _store.LoadImageAsync(_recipeId, key, url, token);
+            }
+            catch (OperationCanceledException)
+            {
                 return;
             }
 
-            _currentIngredientChip.style.display = DisplayStyle.None;
-
-            if (_loadedImageUrl == step.Image)
+            if (token.IsCancellationRequested || this == null || texture == null)
             {
-                return; // 同じ工程を再描画しただけなら読み直さない。
+                return;
             }
 
-            _imageLoadCts?.Cancel();
-            _imageLoadCts = new CancellationTokenSource();
-            _loadedImageUrl = step.Image;
-            LoadImageAsync(step.Image, _imageLoadCts.Token).Forget();
+            if (_shownImageKey != key)
+            {
+                return; // 待っている間に工程が変わった。
+            }
+
+            ReleaseShownTexture();
+            _shownTexture = texture;
+            _currentImage.style.backgroundImage = new StyleBackground(texture);
+            _currentIngredientChip.style.display = DisplayStyle.None;
+        }
+
+        private void ShowChip(Step step)
+        {
+            ReleaseShownTexture();
+            _currentImage.style.backgroundImage = StyleKeyword.Null;
+            _currentIngredientChip.style.display = DisplayStyle.Flex;
+            _currentIngredientChip.text = BuildIngredientChipText(step);
+        }
+
+        private void ReleaseShownTexture()
+        {
+            if (_shownTexture == null)
+            {
+                return;
+            }
+
+            _currentImage.style.backgroundImage = StyleKeyword.Null;
+            if (Application.isPlaying)
+            {
+                Destroy(_shownTexture);
+            }
+            else
+            {
+                DestroyImmediate(_shownTexture);
+            }
+
+            _shownTexture = null;
         }
 
         private static string BuildIngredientChipText(Step step)
@@ -169,34 +241,6 @@ namespace KitchenXR.Presentation
             }
 
             return sb.ToString();
-        }
-
-        private async UniTaskVoid LoadImageAsync(string url, CancellationToken token)
-        {
-            using var request = UnityWebRequestTexture.GetTexture(url);
-            try
-            {
-                await request.SendWebRequest().ToUniTask(cancellationToken: token);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-
-            if (token.IsCancellationRequested || this == null)
-            {
-                return;
-            }
-
-            if (request.result != UnityWebRequest.Result.Success)
-            {
-                Debug.LogWarning($"[KitchenXR] 工程画像の取得に失敗しました: {url} ({request.error})");
-                _currentIngredientChip.style.display = DisplayStyle.Flex;
-                return;
-            }
-
-            var texture = DownloadHandlerTexture.GetContent(request);
-            _currentImage.style.backgroundImage = new StyleBackground(texture);
         }
 
         private static void SetHidden(VisualElement element, bool hidden)

@@ -1,23 +1,19 @@
+/*
+ * 材料の板（設計 §9・§11 追補）。
+ * 横スクロールは出さない——行は板の幅に収め、溢れた文字は「…」で切る。縦だけスクロールする。
+ */
+
 .ingredients-scroll {
     flex-grow: 1;
+    flex-shrink: 1;
+    min-height: 0;
 }
 
-.ingredient-toggle {
-    flex-grow: 1;
-    margin-left: 0;
+/* 横に溢れたぶんは見せない（横スクロールバーを出さない）。 */
+.ingredients-scroll .unity-scroll-view__content-viewport {
+    overflow: hidden;
 }
 
-.ingredient-toggle > .unity-toggle__input {
-    width: 8px;
-    height: 8px;
-}
-
-.ingredient-toggle .unity-toggle__text {
-    font-size: var(--font-size-body);
-    color: var(--color-text);
-    white-space: normal;
-}
-
-.ingredient-toggle:checked .unity-toggle__text {
-    color: var(--color-text-muted);
+.ingredients-scroll .unity-scroll-view__content-container {
+    flex-shrink: 0;
 }
