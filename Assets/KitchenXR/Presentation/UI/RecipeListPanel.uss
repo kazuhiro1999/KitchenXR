@@ -1,0 +1,88 @@
+/*
+ * レシピを選ぶ板（P3。主人の指示）。起動したらレシピの板の場所にこれが出る。
+ *
+ * 行そのものが的（材料の板と同じ流儀）。指で押すので**行の高さは 20px = 4cm**
+ * ——設計 §7 の「最小4cm角」をボタンだけでなく行にも当てる。
+ * 横スクロールは出さない（§11 追補。材料の板と同じ）。
+ */
+
+.recipe-list-header {
+    flex-shrink: 0;
+}
+
+.recipe-list-status {
+    margin-top: 2px;
+}
+
+.recipe-list-scroll {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* 1件の行。左に題名、右に「25分 ・ 中華 ・ 620kcal」。 */
+.recipe-row {
+    flex-direction: row;
+    align-items: center;
+    min-height: 20px;
+    padding-left: 6px;
+    padding-right: 6px;
+    margin-bottom: 5px;
+    border-top-left-radius: var(--radius-medium);
+    border-top-right-radius: var(--radius-medium);
+    border-bottom-left-radius: var(--radius-medium);
+    border-bottom-right-radius: var(--radius-medium);
+    background-color: var(--color-chip-bg);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+/* 見本（Resources の炒飯）。manor が無くても必ず並ぶので、少しだけ色を変えて区別する。 */
+.recipe-row--sample {
+    background-color: var(--color-chip-bg-strong);
+}
+
+.recipe-row__title {
+    flex-grow: 1;
+    flex-shrink: 1;
+    font-size: var(--font-size-body);
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.recipe-row__detail {
+    flex-shrink: 0;
+    margin-left: 6px;
+    font-size: var(--font-size-caption);
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* 空のときの札（「manor 未設定（見本だけ）」など）。 */
+.recipe-list-empty {
+    font-size: var(--font-size-body);
+    color: var(--color-text-muted);
+    white-space: normal;
+    -unity-text-align: middle-center;
+    margin-top: 10px;
+}
+
+/* 「準備中 n/m」。押せる的を覆い隠して二重の選択を防ぐ。 */
+.recipe-list-busy {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255, 255, 255, 0.92);
+    border-top-left-radius: var(--radius-large);
+    border-top-right-radius: var(--radius-large);
+    border-bottom-left-radius: var(--radius-large);
+    border-bottom-right-radius: var(--radius-large);
+}

@@ -81,6 +81,18 @@ namespace KitchenXR.App.Editor
                 new Vector3(0f, 1.35f, 1.2f), Quaternion.identity);
             var recipePanel = recipeGo.AddComponent<RecipePanel>();
 
+            // P3。レシピを選ぶ板は**レシピの板と同じ場所・同じ寸法**に重ねて置く
+            // （起動時はこちらが出て、選ぶと入れ替わる。主人の指示）。
+            // 出し入れは GameObject.SetActive ではなく Presentation/PanelVisibility が行う
+            // ——UIDocument は無効化のたびに rootVisualElement を作り直すので、
+            // 各パネルが Awake で掴んだ要素の参照が死んでしまう。
+            var recipeListGo = CreatePanelObject(
+                "RecipeListPanel", panelsRoot.transform, panelSettings,
+                LoadUxml("Assets/KitchenXR/Presentation/UI/RecipeListPanel.uxml"),
+                RecipeWidthUnits, RecipeHeightUnits,
+                new Vector3(0f, 1.35f, 1.2f), Quaternion.identity);
+            var recipeListPanel = recipeListGo.AddComponent<RecipeListPanel>();
+
             var ingredientsGo = CreatePanelObject(
                 "IngredientsPanel", panelsRoot.transform, panelSettings,
                 LoadUxml("Assets/KitchenXR/Presentation/UI/IngredientsPanel.uxml"),
@@ -110,7 +122,7 @@ namespace KitchenXR.App.Editor
 
             EnsureUiToolkitInput(scene);
 
-            CreateBootstrap(recipePanel, ingredientsPanel, timerPanel, videoPanel, inputGate);
+            CreateBootstrap(recipeListPanel, recipePanel, ingredientsPanel, timerPanel, videoPanel, inputGate);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -372,13 +384,14 @@ namespace KitchenXR.App.Editor
         }
 
         private static void CreateBootstrap(
-            RecipePanel recipePanel, IngredientsPanel ingredientsPanel, TimerPanel timerPanel,
-            VideoPanel videoPanel, CookingModeInputGate inputGate)
+            RecipeListPanel recipeListPanel, RecipePanel recipePanel, IngredientsPanel ingredientsPanel,
+            TimerPanel timerPanel, VideoPanel videoPanel, CookingModeInputGate inputGate)
         {
             var go = new GameObject("Bootstrap");
             var bootstrap = go.AddComponent<Bootstrap>();
 
             var so = new SerializedObject(bootstrap);
+            so.FindProperty("_recipeListPanel").objectReferenceValue = recipeListPanel;
             so.FindProperty("_recipePanel").objectReferenceValue = recipePanel;
             so.FindProperty("_ingredientsPanel").objectReferenceValue = ingredientsPanel;
             so.FindProperty("_timerPanel").objectReferenceValue = timerPanel;

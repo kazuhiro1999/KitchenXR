@@ -4,12 +4,47 @@
  * ボタンの行を下に固定し、本文はその上の残りに収める——v1.0.2 は本文とボタンが重なっていた。
  */
 
+/* 頭は横1列: [一覧へ][工程の点列][進捗%]（P3 で「一覧へ」が増えた）。 */
 .recipe-header {
+    flex-direction: row;
+    align-items: center;
     flex-shrink: 0;
 }
 
+/* 点列は頭の残りを全部もらう（「一覧へ」と「%」の間）。 */
+.recipe-header .step-dots {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
 .recipe-progress-label {
-    align-self: center;
+    flex-shrink: 0;
+    min-width: 24px;
+    -unity-text-align: middle-right;
+}
+
+/*
+ * P3。長押しではなく**2度押し**で一覧へ戻る（主人の指示・設計 §7 の誤操作防止）。
+ * 1度目で文字が「もう一度」に変わり色が付く。4秒で元に戻る。
+ * 長押しにしなかったのは、押し下げ発火（§11 追補）と長押しの判定が噛み合わないため
+ * ——深く突っ込んだまま止めるのは調理中の手では普通に起きる。
+ */
+.recipe-to-list-button {
+    flex-shrink: 0;
+    min-width: 34px;
+    margin-left: 0;
+}
+
+.recipe-to-list-button--armed {
+    background-color: var(--color-accent);
+    color: var(--color-accent-text);
+}
+
+/* 最後の工程を越えたときだけ出る（設計 §7「破壊的な操作」に当たるが、
+ * 完成の後なので取り消しは要らない。1度押しでよい）。 */
+.recipe-finish-button {
+    min-width: 60px;
+    margin-top: 10px;
 }
 
 /* 本文。余りを全部もらい、溢れたら縦にだけスクロールする。 */

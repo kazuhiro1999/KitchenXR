@@ -246,6 +246,12 @@ WebView の SDK（unitypackage）**を作っている。動画パネルはこれ
 | `GET /api/v1/kitchen/cook-sessions/current` | 途中起動の復帰 |
 | `POST /api/v1/kitchen/cook-sessions/{id}/end` | 終了（`times_cooked` が増える） |
 
+**繋ぎ先と合言葉はファイルで渡す**（2026-09-13・P3）。`Application.persistentDataPath/manor.json`
+（`{"base_url": "…", "passcode": "…"}`）。板に文字入力を置かない（§6）ため、主人は PC から
+`adb push` する。書き方と確かめ方は [`Docs/manor-connection.md`](../manor-connection.md)。
+置かれていなければ一覧に「manor 未設定（見本だけ）」の札が出て、見本の炒飯だけが並ぶ。
+cookie（`manor_session`）はクライアントが自分で持ち、401 が返ったら**1度だけ**入り直して送り直す。
+
 登録・取り込み・編集は manor の Web（`/kitchen/recipes`）で行い、XR からは行わない。
 取り込みの構造化（`claude -p`・文字数の上限・1動作1工程）も manor 側の仕事（ADR-015 D2）。
 

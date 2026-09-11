@@ -28,6 +28,9 @@ namespace KitchenXR.Net
         public const string RecipeFileName = "recipe.json";
         public const string HeroImageKey = "hero";
 
+        /// <summary>レシピ一覧の写し（P3）。取れたら保存し、取れないときはこれを出す。</summary>
+        public const string IndexFileName = "index.json";
+
         private readonly string _rootDirectory;
         private readonly IRecipeImageDownloader _downloader;
 
@@ -64,6 +67,51 @@ namespace KitchenXR.Net
         public bool HasLocalImage(string recipeId, string imageKey) => File.Exists(ImagePath(recipeId, imageKey));
 
         public bool HasLocalRecipe(string recipeId) => File.Exists(RecipeJsonPath(recipeId));
+
+        // ------------------------------------------------------------------ 一覧の写し（P3）
+
+        /// <summary>一覧の写しの置き場（<c>&lt;root&gt;/index.json</c>）。</summary>
+        public string IndexPath => Path.Combine(_rootDirectory, IndexFileName);
+
+        public bool HasLocalIndex => File.Exists(IndexPath);
+
+        /// <summary>manor から取れた一覧を**そのまま**写す（解釈はしない。契約が動いても写しは残る）。</summary>
+        public void SaveIndexJson(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return;
+            }
+
+            try
+            {
+                Directory.CreateDirectory(_rootDirectory);
+                File.WriteAllText(IndexPath, json, Encoding.UTF8);
+            }
+            catch (IOException e)
+            {
+                Debug.LogWarning($"[KitchenXR] レシピ一覧を控えられませんでした: {IndexPath} ({e.Message})");
+            }
+        }
+
+        /// <summary>控えてある一覧。無ければ null（板は見本だけを並べる）。</summary>
+        public string LoadIndexJson()
+        {
+            if (!File.Exists(IndexPath))
+            {
+                return null;
+            }
+
+            try
+            {
+                return File.ReadAllText(IndexPath, Encoding.UTF8);
+            }
+            catch (IOException e)
+            {
+                Debug.LogWarning($"[KitchenXR] 控えた一覧を読めませんでした: {IndexPath} ({e.Message})");
+                return null;
+            }
+        }
 
         // ------------------------------------------------------------------ レシピ本体
 
@@ -151,14 +199,34 @@ namespace KitchenXR.Net
         /// レシピの画像（hero と全工程）を手元に揃える。通信のあるうちに済ませておくためのもの。
         /// 取れなかったものは黙って飛ばす（次の起動でまた試みる）。
         /// </summary>
-        public async UniTask PrefetchAsync(Recipe recipe, CancellationToken token = default)
+        public UniTask PrefetchAsync(Recipe recipe, CancellationToken token = default) =>
+            PrepareAsync(recipe, null, token);
+
+        /// <summary>
+        /// 調理を始める前に画像（hero と全工程）を**全部**手元へ揃える（P3。主人の指示）。
+        ///
+        /// <see cref="PrefetchAsync"/> との違いは
+        /// <paramref name="onProgress"/>（終わった枚数・全体の枚数）を刻むことだけ。
+        /// 一覧の板が「準備中 n/m」を出すために使う——調理を始めてから
+        /// 電子レンジで通信が切れても、工程の写真が出ないということが起きないようにする。
+        ///
+        /// 取れなかった画像は黙って飛ばす（その工程は材料名の淡い札になる）。
+        /// **取れないことで調理を始められない、にはしない。**
+        /// </summary>
+        public async UniTask PrepareAsync(
+            Recipe recipe, System.Action<int, int> onProgress, CancellationToken token = default)
         {
             if (recipe == null)
             {
                 return;
             }
 
+            var total = 1 + recipe.Steps.Count; // hero ＋ 工程の数。
+            var done = 0;
+            onProgress?.Invoke(done, total);
+
             await EnsureLocalImageAsync(recipe.Id, HeroImageKey, recipe.HeroImage, token);
+            onProgress?.Invoke(++done, total);
 
             foreach (var step in recipe.Steps)
             {
@@ -168,6 +236,7 @@ namespace KitchenXR.Net
                 }
 
                 await EnsureLocalImageAsync(recipe.Id, StepImageKey(step.Index), step.Image, token);
+                onProgress?.Invoke(++done, total);
             }
         }
 

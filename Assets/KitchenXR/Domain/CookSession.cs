@@ -51,6 +51,27 @@ namespace KitchenXR.Domain
             }
         }
 
+        /// <summary>
+        /// 途中起動の復帰（設計 §5・ROADMAP P5）。manor の <c>cook-sessions/current</c> か、
+        /// オフラインなら手元の控え（<c>last_session.json</c>）から戻した工程番号を入れる。
+        ///
+        /// 範囲外は 1..<c>Steps.Count</c> に丸める——サーバの数を無条件に信じない
+        /// （レシピが manor 側で編集されて工程が減っていることがある）。
+        /// </summary>
+        public void SeekTo(int stepIndex)
+        {
+            var total = Recipe.Steps.Count;
+            if (total == 0)
+            {
+                Current = 0;
+                IsComplete = false;
+                return;
+            }
+
+            IsComplete = false;
+            Current = stepIndex < 1 ? 1 : stepIndex > total ? total : stepIndex;
+        }
+
         public void Apply(SessionEvent sessionEvent)
         {
             switch (sessionEvent)

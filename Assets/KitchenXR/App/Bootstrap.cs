@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using KitchenXR.Domain;
@@ -11,19 +12,26 @@ using UnityEngine;
 namespace KitchenXR.App
 {
     /// <summary>
-    /// どのアダプタを挿すかはここだけ（設計 §4.2）。見本レシピを読み、CookSession を作り、
-    /// レシピ／材料／タイマーの3枚のパネルへ配る。アンカーは P2 まで <see cref="InMemoryAnchorStore"/>。
+    /// どのアダプタを挿すかはここだけ（設計 §4.2）。P3 からは**manor のレシピ帳と結ぶ**:
     ///
-    /// レシピと画像は <see cref="RecipeStore"/>（persistentDataPath）を通す（設計 §11 追補）。
-    /// 見本（Resources）も初回に写して、以後はローカルのものを読む——電子レンジで通信が切れても
-    /// 同じ画面が出る。通信があるうちに残りの画像を裏で取っておく。
+    ///   起動 → 待ち行列を流す → 途中の調理があれば復帰 → 無ければレシピを選ぶ板
+    ///        → 選んだら JSON と画像を**先に全部**手元へ → 調理の3枚へ
+    ///
+    /// 通す順の約束（主人の指示・設計 §11 追補）:
+    ///   - **表示は常にローカルから**。一覧も、レシピ本体も、画像も、まず手元に写してから出す
+    ///   - **送れないことで調理を止めない**。工程の進みはまず Domain に効かせ、
+    ///     サーバへの報せは <see cref="CookEventQueue"/> に積むだけ
+    ///   - **manor.json が無ければ見本だけで動く**（文字入力は板に置かない。設計 §6）
+    ///
+    /// アンカーは P2 まで <see cref="InMemoryAnchorStore"/>。
     /// </summary>
     public sealed class Bootstrap : MonoBehaviour
     {
-        [Header("見本レシピ（Resources 配下。P1 はローカル JSON。設計 ROADMAP P1）")]
+        [Header("見本レシピ（Resources 配下。manor 未設定でもこれだけは開ける）")]
         [SerializeField] private string _recipeResourcePath = "Recipes/chahan";
 
         [Header("パネル（Kitchen.unity で配置済みのものを挿す）")]
+        [SerializeField] private RecipeListPanel _recipeListPanel;
         [SerializeField] private RecipePanel _recipePanel;
         [SerializeField] private IngredientsPanel _ingredientsPanel;
         [SerializeField] private TimerPanel _timerPanel;
@@ -43,8 +51,20 @@ namespace KitchenXR.App
 
         private RecipeStore _recipeStore;
         private MediaStore _mediaStore;
+        private ManorClient _manor;
+        private CookEventQueue _eventQueue;
+        private LastSessionStore _lastSessionStore;
+
         private CookSession _session;
-        private CancellationTokenSource _prefetchCts;
+
+        /// <summary>今の調理の manor 側のセッション id。見本・manor 未設定のときは null。</summary>
+        private int? _manorSessionId;
+
+        /// <summary>見本（Resources）の中身。一覧の先頭の行と、開いたときの写し元。</summary>
+        private string _bundledJson;
+        private RecipeSummary _bundledSummary;
+
+        private CancellationTokenSource _cts;
 
         private void Awake()
         {
@@ -54,33 +74,516 @@ namespace KitchenXR.App
             _handInputPolicy = new DefaultHandInputPolicy();
 
             _recipeStore = RecipeStore.CreateDefault();
-            var recipe = LoadRecipe(_recipeStore, _recipeResourcePath);
-            _session = new CookSession(recipe);
+            _manor = ManorClient.CreateDefault();
+            _eventQueue = CookEventQueue.CreateDefault();
+            _lastSessionStore = LastSessionStore.CreateDefault();
 
-            _recipePanel.Bind(_recipeStore, recipe.Id);
-            _ingredientsPanel.BindRecipe(recipe);
+            LoadBundledSample();
 
-            _recipePanel.NextRequested += HandleNext;
-            _recipePanel.PrevRequested += HandlePrev;
+            if (_recipePanel != null)
+            {
+                _recipePanel.NextRequested += HandleNext;
+                _recipePanel.PrevRequested += HandlePrev;
+                _recipePanel.BackToListRequested += HandleBackToList;
+                _recipePanel.FinishRequested += HandleFinish;
+            }
+
+            if (_recipeListPanel != null)
+            {
+                _recipeListPanel.RecipeSelected += HandleRecipeSelected;
+            }
 
             if (_cookingModeInputGate != null)
             {
                 _cookingModeInputGate.Bind(_handInputPolicy);
             }
 
-            RefreshAllPanels();
+            // 起動の見た目は「レシピを選ぶ板」。調理の3枚は選んでから出す（主人の指示）。
+            ShowListMode();
         }
 
         private void Start()
         {
             PlaceInitialPanels();
 
-            // 通信があるうちに hero と全工程の画像を手元へ（オフライン前提。設計 §11 追補）。
-            _prefetchCts = new CancellationTokenSource();
-            _recipeStore.PrefetchAsync(_session.Recipe, _prefetchCts.Token).Forget();
+            _cts = new CancellationTokenSource();
 
             // 動画の一覧（`StreamingAssets/media.json` → persistentDataPath）。設計 §6・ROADMAP P4。
-            LoadMediaAsync(_prefetchCts.Token).Forget();
+            LoadMediaAsync(_cts.Token).Forget();
+
+            StartupAsync(_cts.Token).Forget();
+        }
+
+        private void OnDestroy()
+        {
+            if (_recipePanel != null)
+            {
+                _recipePanel.NextRequested -= HandleNext;
+                _recipePanel.PrevRequested -= HandlePrev;
+                _recipePanel.BackToListRequested -= HandleBackToList;
+                _recipePanel.FinishRequested -= HandleFinish;
+            }
+
+            if (_recipeListPanel != null)
+            {
+                _recipeListPanel.RecipeSelected -= HandleRecipeSelected;
+            }
+
+            _cts?.Cancel();
+            _cts?.Dispose();
+        }
+
+        // ---------------------------------------------------------------- 起動の道筋
+
+        /// <summary>
+        /// 起動して最初にやること。順番に意味がある:
+        ///   1. **溜まっている進行の記録を流す**（前回オフラインで終えた分。送れなければ残るだけ）
+        ///   2. **途中の調理を探す**（manor → 無ければ手元の控え）。あれば一覧を飛ばして続きから
+        ///   3. 無ければ一覧を出す
+        /// </summary>
+        private async UniTaskVoid StartupAsync(CancellationToken token)
+        {
+            if (_manor.IsConfigured)
+            {
+                _recipeListPanel?.ShowBusy("manor に繋いでいます");
+                await _manor.LoginAsync(token);
+                await _eventQueue.FlushAsync(_manor, token);
+            }
+
+            if (await TryResumeAsync(token))
+            {
+                return;
+            }
+
+            await RefreshListAsync(token);
+        }
+
+        /// <summary>
+        /// 途中起動の復帰（設計 §5・ROADMAP P5）。
+        /// manor に未終了のセッションがあればそれを、繋がらなければ手元の控えを使う。
+        /// </summary>
+        private async UniTask<bool> TryResumeAsync(CancellationToken token)
+        {
+            if (_manor.IsConfigured)
+            {
+                var current = await _manor.CurrentSessionAsync(token);
+                if (current.IsSuccess && current.Value.Exists)
+                {
+                    var known = FindSummary(current.Value.RecipeId);
+                    var summary = known ?? new RecipeSummary(
+                        current.Value.RecipeId, current.Value.RecipeId, 0, string.Empty, null);
+
+                    if (await OpenRecipeAsync(summary, current.Value.Id, current.Value.Current, token))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            // オフライン（または manor 未設定）。手元の控えから戻す——
+            // レシピ本体も画像も既に手元にあるので、工程番号さえあれば続きが出せる。
+            var last = _lastSessionStore.Load();
+            if (last == null || last.IsComplete || !_recipeStore.HasLocalRecipe(last.RecipeId))
+            {
+                return false;
+            }
+
+            var recipe = TryLoadLocalRecipe(last.RecipeId);
+            if (recipe == null)
+            {
+                return false;
+            }
+
+            BeginCooking(recipe, last.SessionId, last.Current);
+            Debug.Log($"[KitchenXR] 手元の控えから調理を再開しました: {last.RecipeId} 工程 {last.Current}");
+            return true;
+        }
+
+        /// <summary>
+        /// 一覧を出し直す。取れたら <c>index.json</c> へ写し、取れなければその写しを出す。
+        /// 先頭は必ず「見本: 炒飯」（主人の指示）。
+        /// </summary>
+        private async UniTask RefreshListAsync(CancellationToken token)
+        {
+            var items = new List<RecipeSummary>();
+            if (_bundledSummary != null)
+            {
+                items.Add(_bundledSummary);
+            }
+
+            var status = string.Empty;
+            if (!_manor.IsConfigured)
+            {
+                status = "manor 未設定（見本だけ）";
+            }
+            else
+            {
+                var listed = await _manor.ListRecipesAsync(token);
+                if (listed.IsSuccess)
+                {
+                    _recipeStore.SaveIndexJson(listed.Value);
+                }
+                else
+                {
+                    status = listed.IsOffline ? "manor に繋がりません（控えた一覧）" : listed.Message;
+                }
+
+                // 取れても取れなくても**読むのは写し**——経路を1本にしておくと、
+                // 「取れたときだけ出る欄」のようなものが混ざらない（設計 §11 追補と同じ流儀）。
+                var cached = _recipeStore.LoadIndexJson();
+                if (!string.IsNullOrEmpty(cached))
+                {
+                    items.AddRange(RecipeListJson.Parse(cached));
+                }
+            }
+
+            ShowListMode();
+            _recipeListPanel?.Show(items, status);
+        }
+
+        // ---------------------------------------------------------------- 選ぶ・開く
+
+        private void HandleRecipeSelected(RecipeSummary summary)
+        {
+            if (summary == null || _cts == null)
+            {
+                return;
+            }
+
+            SelectRecipeAsync(summary, _cts.Token).Forget();
+        }
+
+        private async UniTaskVoid SelectRecipeAsync(RecipeSummary summary, CancellationToken token)
+        {
+            // 見本は manor に無いので、セッションは作らない（進行はローカルの控えだけ）。
+            int? sessionId = null;
+            if (!summary.IsBundledSample && _manor.IsConfigured)
+            {
+                _recipeListPanel?.ShowBusy("準備中");
+                sessionId = await StartOrResumeSessionAsync(summary.Id, token);
+            }
+
+            await OpenRecipeAsync(summary, sessionId, 0, token);
+        }
+
+        /// <summary>
+        /// 調理を始める。**manor は「未終了のセッションが1件だけ」を機構で守る**
+        /// （`recipes.start_session` は未終了があればレシピを問わずそれを返す）ので、
+        /// 別のレシピの途中が残っていると、選んだレシピの進行がそちらに記録されてしまう。
+        ///
+        /// そこで先に <c>current</c> を見て、**別のレシピの途中なら終わらせてから**始める。
+        /// 同じレシピの途中ならそのまま返るので、続きから出る（これは望ましい）。
+        ///
+        /// 手放した調理が <c>times_cooked</c> に1つ数えられるのは承知の上——
+        /// manor に「やめる」の口は無く、違うレシピの工程を別の帳簿に書き込むほうが悪い。
+        /// </summary>
+        private async UniTask<int?> StartOrResumeSessionAsync(string recipeId, CancellationToken token)
+        {
+            var current = await _manor.CurrentSessionAsync(token);
+            if (current.IsSuccess && current.Value.Exists && current.Value.RecipeId != recipeId)
+            {
+                Debug.Log($"[KitchenXR] 別のレシピ（{current.Value.RecipeId}）の調理が残っていたので終わらせます。");
+                await _manor.EndSessionAsync(current.Value.Id.Value, token);
+            }
+
+            var started = await _manor.StartSessionAsync(recipeId, token);
+            return started.IsSuccess ? started.Value.Id : null;
+        }
+
+        /// <summary>
+        /// レシピを開く。**先に全部手元へ**（主人の指示）:
+        /// 契約 JSON → <see cref="RecipeStore"/> へ写す → hero と全工程の画像 → それから調理を始める。
+        /// その間、一覧の板は「準備中 n/m」の覆いを出して別の行を受け付けない。
+        /// </summary>
+        /// <param name="startStep">1 以上なら復帰（その工程から）。0 なら最初から。</param>
+        /// <returns>開けたか。開けなければ一覧のまま。</returns>
+        private async UniTask<bool> OpenRecipeAsync(
+            RecipeSummary summary, int? sessionId, int startStep, CancellationToken token)
+        {
+            if (summary == null)
+            {
+                return false;
+            }
+
+            _recipeListPanel?.ShowBusy("準備中");
+
+            var recipe = await FetchRecipeAsync(summary, token);
+            if (recipe == null)
+            {
+                _recipeListPanel?.HideBusy();
+                _recipeListPanel?.SetStatus("レシピを取れませんでした");
+                return false;
+            }
+
+            // 画像を全部揃えてから始める（電子レンジで通信が切れても工程の写真が出るように）。
+            await _recipeStore.PrepareAsync(
+                recipe, (done, total) => _recipeListPanel?.ShowPreparing(done, total), token);
+
+            if (token.IsCancellationRequested)
+            {
+                return false;
+            }
+
+            BeginCooking(recipe, sessionId, startStep);
+            return true;
+        }
+
+        /// <summary>
+        /// レシピ本体を手に入れる。順は「manor から取って写す → 手元のものを読む」。
+        /// 見本（Resources）は manor に問い合わせず、初回だけ写して以後はローカルを読む。
+        /// </summary>
+        private async UniTask<Recipe> FetchRecipeAsync(RecipeSummary summary, CancellationToken token)
+        {
+            if (summary.IsBundledSample)
+            {
+                return TryLoadLocalRecipe(summary.Id, _bundledJson);
+            }
+
+            if (_manor.IsConfigured)
+            {
+                var fetched = await _manor.GetRecipeAsync(summary.Id, token);
+                if (fetched.IsSuccess && !string.IsNullOrWhiteSpace(fetched.Value))
+                {
+                    _recipeStore.SaveRecipeJson(summary.Id, fetched.Value);
+                }
+            }
+
+            return TryLoadLocalRecipe(summary.Id);
+        }
+
+        private Recipe TryLoadLocalRecipe(string recipeId, string bundledJson = null)
+        {
+            try
+            {
+                return _recipeStore.LoadRecipe(recipeId, bundledJson);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[KitchenXR] レシピを開けませんでした: {recipeId}（{e.Message}）");
+                return null;
+            }
+        }
+
+        /// <summary>調理の3枚に切り替えて、状態機械を立てる。</summary>
+        private void BeginCooking(Recipe recipe, int? sessionId, int startStep)
+        {
+            _session = new CookSession(recipe);
+            if (startStep >= 1)
+            {
+                _session.SeekTo(startStep);
+            }
+
+            _manorSessionId = sessionId;
+
+            _recipePanel?.Bind(_recipeStore, recipe.Id);
+            _ingredientsPanel?.BindRecipe(recipe);
+
+            ShowCookingMode();
+            RefreshAllPanels();
+            SaveLastSession();
+        }
+
+        // ---------------------------------------------------------------- 進行
+
+        private void HandleNext()
+        {
+            if (_session == null)
+            {
+                return;
+            }
+
+            _session.Apply(SessionEvent.NextRequested.Instance);
+            RefreshAllPanels();
+            RecordProgress("next");
+        }
+
+        private void HandlePrev()
+        {
+            if (_session == null)
+            {
+                return;
+            }
+
+            _session.Apply(SessionEvent.PrevRequested.Instance);
+            RefreshAllPanels();
+            RecordProgress("prev");
+        }
+
+        /// <summary>
+        /// 進行を控えて、送れるなら送る。**送れなくても調理は止まらない**——
+        /// 積むのはファイルへの追記1回で、送る試みは裏で回る（設計 §11 追補・主人の指示）。
+        /// </summary>
+        private void RecordProgress(string type)
+        {
+            SaveLastSession();
+
+            _eventQueue.Enqueue(_manorSessionId, type, _session?.Current);
+            if (_manor.IsConfigured && _cts != null)
+            {
+                _eventQueue.FlushAsync(_manor, _cts.Token).Forget();
+            }
+        }
+
+        private void SaveLastSession()
+        {
+            if (_session == null)
+            {
+                return;
+            }
+
+            _lastSessionStore.Save(
+                _session.Recipe.Id, _manorSessionId, _session.Current, _session.IsComplete);
+        }
+
+        /// <summary>
+        /// 「作り終えた」（完了したときだけ出るボタン）。manor の <c>/end</c> へ送って一覧へ戻る。
+        /// 送れなければ待ち行列に残り、次に繋がったときに送られる。
+        /// </summary>
+        private void HandleFinish()
+        {
+            if (_session == null)
+            {
+                return;
+            }
+
+            _eventQueue.Enqueue(_manorSessionId, CookEventQueue.EndType);
+            _lastSessionStore.Clear();
+            _manorSessionId = null;
+            _session = null;
+
+            if (_cts != null)
+            {
+                FinishAsync(_cts.Token).Forget();
+            }
+        }
+
+        private async UniTaskVoid FinishAsync(CancellationToken token)
+        {
+            if (_manor.IsConfigured)
+            {
+                await _eventQueue.FlushAsync(_manor, token);
+            }
+
+            await RefreshListAsync(token);
+        }
+
+        /// <summary>
+        /// 「一覧へ」（2度押し）。**調理をやめるのではなく、板を戻すだけ**——
+        /// manor 側のセッションは未終了のまま残るので、次の起動ではそこから復帰する
+        /// （設計 §5「途中起動の復帰」）。手元の控えもそのまま残す。
+        /// </summary>
+        private void HandleBackToList()
+        {
+            if (_cts == null)
+            {
+                return;
+            }
+
+            BackToListAsync(_cts.Token).Forget();
+        }
+
+        private async UniTaskVoid BackToListAsync(CancellationToken token)
+        {
+            await RefreshListAsync(token);
+        }
+
+        // ---------------------------------------------------------------- 板の出し入れ
+
+        /// <summary>
+        /// 一覧の板だけを出す（調理の3枚は引っ込める。動画の板はそのまま＝ながら見）。
+        /// <see cref="GameObject.SetActive"/> ではなく <see cref="PanelVisibility"/> を通すのは、
+        /// UIDocument が無効化のたびに rootVisualElement を作り直して、
+        /// 各パネルが Awake で掴んだ要素の参照を殺してしまうため。
+        /// </summary>
+        private void ShowListMode()
+        {
+            PanelVisibility.SetVisible(_recipeListPanel, true);
+            PanelVisibility.SetVisible(_recipePanel, false);
+            PanelVisibility.SetVisible(_ingredientsPanel, false);
+            PanelVisibility.SetVisible(_timerPanel, false);
+        }
+
+        /// <summary>調理の3枚（レシピ・材料・タイマー）を出す。</summary>
+        private void ShowCookingMode()
+        {
+            PanelVisibility.SetVisible(_recipeListPanel, false);
+            PanelVisibility.SetVisible(_recipePanel, true);
+            PanelVisibility.SetVisible(_ingredientsPanel, true);
+            PanelVisibility.SetVisible(_timerPanel, true);
+        }
+
+        private void RefreshAllPanels()
+        {
+            if (_session == null)
+            {
+                return;
+            }
+
+            _recipePanel?.Refresh(_session);
+            _ingredientsPanel?.Refresh(_session);
+            _timerPanel?.Refresh(_session);
+        }
+
+        // ---------------------------------------------------------------- 見本と動画
+
+        /// <summary>
+        /// 見本（Resources）を読んでおく。**一覧の先頭に必ず並べる**ので、
+        /// manor が寝ていても合言葉が未設定でも1本は最後まで進められる。
+        /// 中身は開いたときに <see cref="RecipeStore"/> へ写す（表示の経路は1本のまま）。
+        /// </summary>
+        private void LoadBundledSample()
+        {
+            var textAsset = Resources.Load<TextAsset>(_recipeResourcePath);
+            if (textAsset == null)
+            {
+                Debug.LogWarning($"[KitchenXR] 見本レシピが見つかりません: Resources/{_recipeResourcePath}.json");
+                return;
+            }
+
+            _bundledJson = textAsset.text;
+
+            try
+            {
+                var recipe = RecipeJson.Parse(_bundledJson);
+                _bundledSummary = new RecipeSummary(
+                    recipe.Id, $"見本: {recipe.Title}", recipe.TotalMinutes, "見本", null,
+                    recipe.HeroImage, true);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[KitchenXR] 見本レシピの形が読めませんでした: {e.Message}");
+                _bundledJson = null;
+            }
+        }
+
+        /// <summary>id から一覧の行を引く（復帰のとき、題名を札に出すため）。</summary>
+        private RecipeSummary FindSummary(string recipeId)
+        {
+            if (string.IsNullOrEmpty(recipeId))
+            {
+                return null;
+            }
+
+            if (_bundledSummary != null && _bundledSummary.Id == recipeId)
+            {
+                return _bundledSummary;
+            }
+
+            var cached = _recipeStore.LoadIndexJson();
+            if (string.IsNullOrEmpty(cached))
+            {
+                return null;
+            }
+
+            foreach (var item in RecipeListJson.Parse(cached))
+            {
+                if (item.Id == recipeId)
+                {
+                    return item;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -102,54 +605,11 @@ namespace KitchenXR.App
             }
         }
 
-        private void OnDestroy()
-        {
-            _recipePanel.NextRequested -= HandleNext;
-            _recipePanel.PrevRequested -= HandlePrev;
-
-            _prefetchCts?.Cancel();
-            _prefetchCts?.Dispose();
-        }
+        // ---------------------------------------------------------------- 初期配置
 
         /// <summary>
-        /// 見本（Resources）も保管庫を通す: 初回だけ Resources の中身を写し、読むのは常にローカル。
-        /// P3 でサーバから取ってくるようになっても、表示側の経路はここのままで変わらない。
-        /// </summary>
-        private static Recipe LoadRecipe(RecipeStore store, string resourcePath)
-        {
-            var textAsset = Resources.Load<TextAsset>(resourcePath);
-            if (textAsset == null)
-            {
-                throw new System.InvalidOperationException(
-                    $"見本レシピが見つかりません: Resources/{resourcePath}.json");
-            }
-
-            // 契約 JSON の id が保管庫の置き場になるので、まずは中身から id を読む。
-            var bundled = RecipeJson.Parse(textAsset.text);
-            return store.LoadRecipe(bundled.Id, textAsset.text);
-        }
-
-        private void HandleNext()
-        {
-            _session.Apply(SessionEvent.NextRequested.Instance);
-            RefreshAllPanels();
-        }
-
-        private void HandlePrev()
-        {
-            _session.Apply(SessionEvent.PrevRequested.Instance);
-            RefreshAllPanels();
-        }
-
-        private void RefreshAllPanels()
-        {
-            _recipePanel.Refresh(_session);
-            _ingredientsPanel.Refresh(_session);
-            _timerPanel.Refresh(_session);
-        }
-
-        /// <summary>
-        /// 起動時に頭の前 0.8m・目線より少し下へ3枚を配る（設計 §9）。
+        /// 起動時に頭の前 0.8m・目線より少し下へ配る（設計 §9）。
+        /// 一覧の板は**レシピの板と同じ場所**（主人の指示。切り替えで入れ替わる）。
         /// アンカーへの保存・復元は P2（<see cref="_anchorStore"/> は今は InMemory）。
         /// </summary>
         private void PlaceInitialPanels()
@@ -170,13 +630,14 @@ namespace KitchenXR.App
 
             flatForward.Normalize();
 
-            // パネルの「表」は local -Z（XRI World Space UI サンプルの向きに合わせた。設計 Platform 外の判断・README 参照）。
+            // パネルの「表」は local -Z（XRI World Space UI サンプルの向きに合わせた）。
             var rotation = Quaternion.LookRotation(flatForward, Vector3.up);
             var right = rotation * Vector3.right;
 
             var basePosition = head.position + flatForward * _forwardDistanceMeters + Vector3.down * _belowEyelineMeters;
 
             PlacePanel(_recipePanel != null ? _recipePanel.transform : null, basePosition, rotation);
+            PlacePanel(_recipeListPanel != null ? _recipeListPanel.transform : null, basePosition, rotation);
             PlacePanel(_ingredientsPanel != null ? _ingredientsPanel.transform : null,
                 basePosition - right * _lateralSpacingMeters, rotation);
             PlacePanel(_timerPanel != null ? _timerPanel.transform : null,
@@ -192,8 +653,6 @@ namespace KitchenXR.App
         /// その上辺（＝基準点の高さ）から 4cm 空けたところに、動画の板の**下辺の中央**を置く。
         /// 下辺を留めるのは、9:16 に切り替えると板が高くなるから——
         /// 上辺を留めると下のタイマーへ食い込む。
-        /// 台所の壁掛けテレビと同じで、見上げる位置に来るのは意図どおり
-        /// （柱 C「ながら見」。作業面はレシピの板のまま）。
         /// </summary>
         private void PlaceVideoPanel(Vector3 basePosition, Vector3 right, Quaternion rotation)
         {

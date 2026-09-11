@@ -1,0 +1,15 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="theme.uss" />
+    <ui:Style src="RecipeListPanel.uss" />
+    <ui:VisualElement name="root" class="root-panel">
+        <ui:VisualElement name="listHeader" class="recipe-list-header">
+            <ui:Label text="レシピ帳" class="heading" />
+            <ui:Label name="statusLabel" text="" class="caption recipe-list-status" />
+        </ui:VisualElement>
+        <ui:VisualElement class="divider" />
+        <ui:ScrollView name="recipeScroll" mode="Vertical" horizontal-scroller-visibility="Hidden" vertical-scroller-visibility="Auto" class="recipe-list-scroll" />
+        <ui:VisualElement name="busySection" class="recipe-list-busy is-hidden">
+            <ui:Label name="busyLabel" text="準備中" class="heading" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

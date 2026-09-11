@@ -346,6 +346,49 @@ namespace KitchenXR.Tests.EditMode
             }
         }
 
+        // ---------------------------------------------------------------- レシピを選ぶ板（P3）
+
+        /// <summary>
+        /// 起動時はレシピの板の場所に一覧を出す（主人の指示）。同じ場所に同じ寸法で重ねて置き、
+        /// 出し入れは <see cref="PanelVisibility"/> が行う
+        /// （<c>GameObject.SetActive</c> だと UIDocument が rootVisualElement を作り直して、
+        /// 各パネルが Awake で掴んだ要素の参照が死ぬ）。
+        /// </summary>
+        [Test]
+        public void レシピを選ぶ板がレシピの板と同じ場所にある()
+        {
+            var list = Object.FindFirstObjectByType<RecipeListPanel>(FindObjectsInactive.Include);
+            Assert.IsNotNull(list, "Kitchen.unity にレシピを選ぶ板（RecipeListPanel）がありません。");
+
+            var recipe = Object.FindFirstObjectByType<RecipePanel>(FindObjectsInactive.Include);
+            Assert.IsNotNull(recipe, "Kitchen.unity にレシピの板がありません。");
+
+            Assert.Less(Vector3.Distance(list.transform.position, recipe.transform.position), 0.01f,
+                "起動時はレシピの板の位置に一覧を出します（主人の指示）。");
+
+            var doc = list.GetComponent<UIDocument>();
+            Assert.IsNotNull(doc, "RecipeListPanel に UIDocument がありません。");
+            Assert.AreEqual(recipe.GetComponent<UIDocument>().worldSpaceSize, doc.worldSpaceSize,
+                "入れ替わる2枚の寸法が違うと、切り替えのたびに板の大きさが変わります。");
+
+            Assert.IsNotNull(list.GetComponent<XRPokeFilter>(), "RecipeListPanel に XRPokeFilter がありません。");
+            Assert.IsNotNull(list.GetComponent<XRSimpleInteractable>(),
+                "RecipeListPanel に XRSimpleInteractable がありません（行が指で押せません）。");
+        }
+
+        [Test]
+        public void Bootstrapに一覧の板が挿さっている()
+        {
+            var bootstrap = Object.FindFirstObjectByType<KitchenXR.App.Bootstrap>(FindObjectsInactive.Include);
+            Assert.IsNotNull(bootstrap, "Kitchen.unity に Bootstrap がありません。");
+
+            var so = new SerializedObject(bootstrap);
+            var listPanel = so.FindProperty("_recipeListPanel");
+            Assert.IsNotNull(listPanel, "Bootstrap に _recipeListPanel の欄がありません。");
+            Assert.IsNotNull(listPanel.objectReferenceValue,
+                "Bootstrap にレシピを選ぶ板が挿さっていません（起動しても一覧が出ません）。");
+        }
+
         // ---------------------------------------------------------------- 版とアイコン
 
         [Test]

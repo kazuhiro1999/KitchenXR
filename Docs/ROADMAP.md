@@ -195,6 +195,57 @@ Claude Code の Unity プラグイン（公式。skill・Unity CLI・Editor を�
   ⑤動画の窓を触っても誤ってボタンが反応しないか。⑥音が調理中に聞こえる大きさか（既定 70）。
   ⑦レシピの右上（タイマーの上）という置き場が見やすいか——高すぎれば P2 のアンカーで動かせる。
 
+- 2026-09-13（v1.0.5。**P3 レシピ帳と結ぶ**＋ P5 の復帰）: manor の料理長のレシピ帳
+  （ADR-015 D3）を**読む側**として繋いだ。manor には何も足していない（依存は一方向のまま）。
+  **①繋ぎ方は板ではなくファイル**: `persistentDataPath/manor.json`（`{"base_url", "passcode"}`）。
+  無ければ一覧に「manor 未設定（見本だけ）」の札が出て、見本の炒飯だけが並ぶ（アプリは動く）。
+  書き方は `Docs/manor-connection.md`（`adb push` の手順・`tailscale serve` と `manor web serve --host`・
+  札の読み方）。設計 §6「文字入力はパネルに置かない」に従い、Quest 側に入力欄は1つも無い。
+  **②`Net/ManorClient`**: `UnityWebRequest` を `IHttpTransport` 越しに呼ぶ（試験では差し替え）。
+  **cookie は自分で持つ**——`Set-Cookie` から `manor_session` を取り出し、以後 `Cookie:` 見出しを
+  手で付ける（Android の自動 cookie の生き死にはこちらから見えないので頼らない）。
+  **401 なら1度だけ入り直して同じ頼みを送り直す**（2度目の 401 で諦める。manor 側の 429 を誘わない）。
+  loopback の manor は cookie を返さないが、それも成功として扱う。
+  口は `ListRecipes`／`GetRecipe`／`StartSession`／`PostEvent`／`CurrentSession`／`EndSession` の6つ。
+  例外は投げず `ManorResult<T>`（取れた／繋がらない／断られた）で返す。
+  **③オフライン前提の徹底**: 一覧は取れたら `recipes/index.json` へ**そのまま写し**、
+  読むのは常にその写し。レシピを選ぶと契約 JSON と画像（hero＋全工程）を**先に全部**手元へ
+  落としてから調理を始める（その間は一覧に「準備中 n/m」の覆いが出て、別の行を受け付けない）。
+  進行（`next`/`prev`/`end`）は追記ファイルの待ち行列 `cook_events.jsonl` に積み、繋がったときに
+  **積んだ順に**送って送れた分だけ消す（起動時にも流す）。**送れないことで調理は止まらない。**
+  **④`Presentation/RecipeListPanel`**: 起動時はレシピの板の場所にこれが出る。題名・分・分類・kcal の
+  行（最大 20 件・縦スクロール）で、行そのものが的（`PokePress` の押し下げ発火。高さ 20px＝4cm）。
+  先頭は必ず「見本: 炒飯」。**⑤「一覧へ」は2度押し**（レシピの板の頭。1度目で「もう一度」に変わり
+  4秒で戻る）。長押しにしなかったのは、押し下げ発火と長押しの判定が噛み合わないため——
+  手応えの無い板は深く入って留まるのが普通で、「長押し」が1回押しと区別できない。
+  **⑥途中起動の復帰（P5 前倒し）**: 起動時に `cook-sessions/current` を見て未終了があればその工程から
+  再開（一覧を飛ばす）。繋がらなければ `last_session.json` から戻す。
+  **⑦終了**: 最後の工程を越えると「作り終えた」が出て、`end` を待ち行列へ積んで一覧へ戻る。
+  **⑧** `bundleVersion 1.0.5` / `versionCode 6`、APK は `Build/KitchenXR_v1.0.5.apk`（110MB）。
+  検算: EditMode 93件＋PlayMode 26件が緑（EditMode +24・PlayMode +7）。
+  **ずらした点**: (a) 板の出し入れは `GameObject.SetActive` ではなく
+  `Presentation/PanelVisibility`（root の display＋BoxCollider＋XRSimpleInteractable を一緒に切る）
+  ——`UIDocument` は無効化のたびに `rootVisualElement` を作り直すので、各パネルが `Awake` で
+  掴んだ要素の参照が死ぬ。(b) 一覧が出ている間は**タイマーの板も引っ込める**（主人の指示
+  「調理の3枚に切り替え」に従った。§11 追補⑥「タイマーは常時使える」は調理中の話と読んだ）。
+  (c) manor の `start_session` は「未終了があればレシピを問わずそれを返す」ので、
+  別のレシピの途中が残っていると進行がそちらに記録されてしまう。**選ぶ前に `current` を見て、
+  別のレシピの途中なら `end` してから始める**ようにした——手放した調理が `times_cooked` に
+  1つ数えられるのは承知の上（manor に「やめる」の口が無い。違うレシピの工程を別の帳簿へ
+  書き込むほうが悪い）。(d) 「一覧へ」では manor のセッションを**終わらせない**（次の起動で
+  そこから復帰するのが設計 §5）。(e) 待ち行列の 4xx は**その1件だけ捨てて先へ進む**
+  （既に終わったセッションへの `next` 等を残すと行列が永久に詰まる）。5xx と「繋がらない」は残す。
+  (f) 見本（Resources の炒飯）の id は文字列なので manor のセッションは作らない——
+  進行は `last_session.json` にだけ残る。
+  **主人が実機で見る点**: ①起動してレシピを選ぶ板が出るか・「manor 未設定（見本だけ）」の札が
+  出るか（`manor.json` を置く前）。②`manor.json` を置いて起動し直すと manor の一覧が並ぶか
+  （題名・分・分類・kcal が読めるか・行が指で押せるか）。③選んでから「準備中 n/m」が出て、
+  終わると調理の板3枚に切り替わるか。④**機内モードにしてから**次へ／戻るが止まらずに動くか・
+  工程の写真が出るか。⑤機内モードを解いて少し待つと manor 側の `current` が追いつくか
+  （manor の Web で確認）。⑥途中でアプリを落として起動し直すと同じ工程から続くか。
+  ⑦最後まで進めて「作り終えた」を押すと一覧へ戻り、manor の `times_cooked` が増えるか。
+  ⑧「一覧へ」が1度押しでは戻らず2度押しで戻るか（誤操作防止）。
+
 ## エディタでの Play について（2026-09-12）
 - **Play すると別のシーンが増えるのは正常**。XR Plug-in Management の **Standalone** の loader が
   AR Foundation の **XR Simulation**（`SimulationLoader`）なので、Play 中に模擬環境のシーンが

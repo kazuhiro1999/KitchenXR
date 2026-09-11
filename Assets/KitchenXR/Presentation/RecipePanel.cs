@@ -25,8 +25,24 @@ namespace KitchenXR.Presentation
     {
         private readonly ClickDebounce _debounce = new ClickDebounce();
 
+        /// <summary>
+        /// 「一覧へ」の2度押しを受け付ける猶予（秒）。1度目から4秒で元に戻る。
+        /// <see cref="ClickDebounce"/> が 600ms 間引くので、2度目はそれより後になる。
+        /// </summary>
+        public const float BackToListConfirmSeconds = 4f;
+
+        private const string BackToListLabel = "一覧へ";
+        private const string BackToListArmedLabel = "もう一度";
+        private const string BackToListArmedClass = "recipe-to-list-button--armed";
+
         public event Action NextRequested;
         public event Action PrevRequested;
+
+        /// <summary>「一覧へ」が**2度**押された（P3。1度目は身構えるだけ）。</summary>
+        public event Action BackToListRequested;
+
+        /// <summary>「作り終えた」が押された（P3。完了したときだけ出るボタン）。</summary>
+        public event Action FinishRequested;
 
         private VisualElement _stepDots;
         private Label _progressLabel;
@@ -39,6 +55,8 @@ namespace KitchenXR.Presentation
         private VisualElement _completeSection;
         private Button _backButton;
         private Button _nextButton;
+        private Button _backToListButton;
+        private Button _finishButton;
 
         private RecipeStore _store;
         private string _recipeId;
@@ -46,6 +64,9 @@ namespace KitchenXR.Presentation
         private string _shownImageKey;
         private Texture2D _shownTexture;
         private CancellationTokenSource _imageLoadCts;
+
+        /// <summary>「一覧へ」の1度目を受けた時刻＋猶予。0 なら身構えていない。</summary>
+        private float _backToListArmedUntil;
 
         private void Awake()
         {
@@ -62,9 +83,75 @@ namespace KitchenXR.Presentation
             _completeSection = root.Q<VisualElement>("completeSection");
             _backButton = root.Q<Button>("backButton");
             _nextButton = root.Q<Button>("nextButton");
+            _backToListButton = root.Q<Button>("backToListButton");
+            _finishButton = root.Q<Button>("finishButton");
 
-            PokePress.BindButton(_backButton, _debounce, "back", () => PrevRequested?.Invoke());
-            PokePress.BindButton(_nextButton, _debounce, "next", () => NextRequested?.Invoke());
+            PokePress.BindButton(_backButton, _debounce, "back", () =>
+            {
+                DisarmBackToList(); // 工程を動かしたら身構えを解く（別の意図の操作なので）。
+                PrevRequested?.Invoke();
+            });
+
+            PokePress.BindButton(_nextButton, _debounce, "next", () =>
+            {
+                DisarmBackToList();
+                NextRequested?.Invoke();
+            });
+
+            PokePress.BindButton(_backToListButton, _debounce, "toList", HandleBackToListPressed);
+            PokePress.BindButton(_finishButton, _debounce, "finish", () => FinishRequested?.Invoke());
+
+            DisarmBackToList();
+        }
+
+        /// <summary>
+        /// 「一覧へ」は**2度押し**（主人の指示。長押しではない）。
+        ///
+        /// 調理の途中で一覧へ戻るのは、進めていた工程を画面から失う操作にあたる。
+        /// 1度目は身構えるだけ（文字が「もう一度」に変わり色が付く）で、
+        /// 猶予（<see cref="BackToListConfirmSeconds"/>）の間にもう1度押されたときだけ戻る。
+        ///
+        /// 長押しにしなかったのは、押し下げ発火（設計 §11 追補）と噛み合わないため——
+        /// 手応えの無い板を押せば指は深く入って留まるので、「長押し」が普通の1回押しと区別できない。
+        /// </summary>
+        private void HandleBackToListPressed()
+        {
+            if (_backToListArmedUntil > 0f && Time.unscaledTime <= _backToListArmedUntil)
+            {
+                DisarmBackToList();
+                BackToListRequested?.Invoke();
+                return;
+            }
+
+            _backToListArmedUntil = Time.unscaledTime + BackToListConfirmSeconds;
+            if (_backToListButton != null)
+            {
+                _backToListButton.text = BackToListArmedLabel;
+                _backToListButton.AddToClassList(BackToListArmedClass);
+            }
+        }
+
+        /// <summary>身構えを解く（猶予切れ・別のボタンが押された・板が入れ替わった）。</summary>
+        public void DisarmBackToList()
+        {
+            _backToListArmedUntil = 0f;
+            if (_backToListButton != null)
+            {
+                _backToListButton.text = BackToListLabel;
+                _backToListButton.RemoveFromClassList(BackToListArmedClass);
+            }
+        }
+
+        /// <summary>「一覧へ」が2度目を待っているか（試験用）。</summary>
+        public bool IsBackToListArmed => _backToListArmedUntil > 0f && Time.unscaledTime <= _backToListArmedUntil;
+
+        private void Update()
+        {
+            // 猶予が切れたら黙って元に戻す（押しっぱなしの札を残さない）。
+            if (_backToListArmedUntil > 0f && Time.unscaledTime > _backToListArmedUntil)
+            {
+                DisarmBackToList();
+            }
         }
 
         private void OnDestroy()
@@ -77,8 +164,20 @@ namespace KitchenXR.Presentation
         /// <summary>画像の出どころを挿す（Bootstrap から。P3 でサーバに変わってもここは変わらない）。</summary>
         public void Bind(RecipeStore store, string recipeId)
         {
+            var changed = _recipeId != recipeId;
             _store = store;
             _recipeId = recipeId;
+
+            if (changed)
+            {
+                // P3。別のレシピに差し替わった——同じ工程番号でも絵は別物なので、
+                // 「今出している絵」の覚えを捨てて必ず読み直させる。
+                _imageLoadCts?.Cancel();
+                _imageLoadCts?.Dispose();
+                _imageLoadCts = null;
+                _shownImageKey = null;
+                DisarmBackToList();
+            }
         }
 
         public void Refresh(CookSession session)
