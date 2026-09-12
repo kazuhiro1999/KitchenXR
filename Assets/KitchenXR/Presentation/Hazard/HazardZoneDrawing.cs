@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
 namespace KitchenXR.Presentation.Hazard
@@ -30,6 +31,11 @@ namespace KitchenXR.Presentation.Hazard
 
         /// <summary>水平に近すぎるレイは作業面と交わらない（|d.y| の下限）。</summary>
         private const float MinVerticalComponent = 0.05f;
+
+        /// <summary>一度に見る当たりの数。台所の板は数枚なので余裕を持って 16。</summary>
+        private const int MaxHits = 16;
+
+        private readonly RaycastHit[] _hits = new RaycastHit[MaxHits];
 
         [SerializeField]
         [Tooltip("レイを持つ Interactor（rig の Near-Far Interactor 4つ）。")]
@@ -77,6 +83,7 @@ namespace KitchenXR.Presentation.Hazard
         {
             IsArmed = true;
             IsDragging = false;
+            SetGrabSuspended(true);
         }
 
         /// <summary>「やり直す」「戻る」——描くのをやめる。</summary>
@@ -84,6 +91,26 @@ namespace KitchenXR.Presentation.Hazard
         {
             IsArmed = false;
             IsDragging = false;
+            SetGrabSuspended(false);
+        }
+
+        /// <summary>
+        /// 描いている間だけレイの掴みを止める（触れてよい層を空にする）。
+        ///
+        /// 配置モードのレイは全ての層に届くので、コンロを指したレイが途中の板を横切っていると、
+        /// 囲もうとしたピンチがその板を掴んでしまう（板が飛んで、矩形も始まらない）。
+        /// 戻す先が配置モードの値で固定なのは、描くのが配置モードの中だけだから。
+        /// </summary>
+        private void SetGrabSuspended(bool suspended)
+        {
+            foreach (var interactor in _interactors)
+            {
+                if (interactor != null)
+                {
+                    interactor.interactionLayers =
+                        suspended ? 0 : CookingModeInputGate.PlacementRayInteractionLayers;
+                }
+            }
         }
 
         private void Update()
@@ -166,26 +193,53 @@ namespace KitchenXR.Presentation.Hazard
             }
 
             IsDragging = false;
+            SetGrabSuspended(false);
             Committed?.Invoke(Start, Current, YawDegrees);
         }
 
         // ---------------------------------------------------------------- レイと面
 
         /// <summary>
-        /// 最初のピンチの当たり点。物に当たればその点、当たらなければ
-        /// 「頭の高さ − 30cm」の水平面との交点（それも取れなければレイの 1m 先）。
+        /// 最初のピンチの当たり点。台所の物（AR の面・壁・家具）に当たればその点、
+        /// 当たらなければ「頭の高さ − 30cm」の水平面との交点
+        /// （それも取れなければレイの 1m 先）。
+        ///
+        /// **板は数えない。** レイが途中の板を横切っていると、作業面が板の面の高さに張られて
+        /// しまう（板は胸の高さなので、天板よりずっと高いところを囲うことになる）。
         /// </summary>
         private Vector3 FirstHitPoint(Ray ray)
         {
-            if (Physics.Raycast(ray, out var hit, MaxReachMeters,
-                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+            var count = Physics.RaycastNonAlloc(
+                ray, _hits, MaxReachMeters, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+
+            var nearest = float.PositiveInfinity;
+            var found = false;
+            var point = Vector3.zero;
+
+            for (var i = 0; i < count; i++)
             {
-                return hit.point;
+                var hit = _hits[i];
+                if (hit.collider == null || hit.collider.GetComponentInParent<XRBaseInteractable>() != null)
+                {
+                    continue; // 板（XRI の相手）は飛ばす。
+                }
+
+                if (hit.distance < nearest)
+                {
+                    nearest = hit.distance;
+                    point = hit.point;
+                    found = true;
+                }
+            }
+
+            if (found)
+            {
+                return point;
             }
 
             var fallbackY = HeadPosition().y - FallbackBelowHeadMeters;
-            return TryIntersectPlane(ray, fallbackY, out var point)
-                ? point
+            return TryIntersectPlane(ray, fallbackY, out var fallback)
+                ? fallback
                 : ray.origin + ray.direction;
         }
 

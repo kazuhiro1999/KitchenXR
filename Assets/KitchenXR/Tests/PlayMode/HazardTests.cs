@@ -43,6 +43,7 @@ namespace KitchenXR.Tests.PlayMode
         private GameObject _hazardGo;
         private GameObject _menuGo;
         private GameObject _pokeGo;
+        private GameObject _rayGo;
 
         private PanelPlacement _placement;
         private CookingModeInputGate _gate;
@@ -74,7 +75,7 @@ namespace KitchenXR.Tests.PlayMode
         {
             foreach (var go in new[]
                      {
-                         _menuGo, _hazardGo, _placementGo, _pokeGo, _originGo, _cameraGo,
+                         _menuGo, _hazardGo, _placementGo, _pokeGo, _rayGo, _originGo, _cameraGo,
                          _eventSystemGo, _managerGo,
                      })
             {
@@ -84,7 +85,7 @@ namespace KitchenXR.Tests.PlayMode
                 }
             }
 
-            _menuGo = _hazardGo = _placementGo = _pokeGo = _originGo = _cameraGo = null;
+            _menuGo = _hazardGo = _placementGo = _pokeGo = _rayGo = _originGo = _cameraGo = null;
             _eventSystemGo = _managerGo = null;
             _placement = null;
             _gate = null;
@@ -461,6 +462,45 @@ namespace KitchenXR.Tests.PlayMode
             yield return null;
 
             Assert.AreEqual(0, _zones.Count, "指の震えほどの囲みで領域ができました。");
+        }
+
+        /// <summary>
+        /// 囲んでいる間はレイの掴みを止めること。配置モードのレイは全ての層に届くので、
+        /// コンロを指したレイが途中の板を横切っていると、囲もうとしたピンチで板が飛ぶ。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 囲んでいる間はレイで板を掴めない()
+        {
+            yield return BuildAll();
+
+            _rayGo = new GameObject("Ray Interactor");
+            _rayGo.SetActive(false);
+            var ray = _rayGo.AddComponent<XRRayInteractor>();
+            _rayGo.SetActive(true);
+
+            _drawing.Bind(new XRBaseInputInteractor[] { ray }, _cameraGo.transform);
+
+            yield return null;
+
+            _zones.BeginDraw();
+            Assert.AreEqual(0, (int)ray.interactionLayers,
+                "囲んでいる間もレイが板を掴めます（ピンチで板が飛びます）。");
+
+            _drawing.BeginAt(new Vector3(-0.3f, 0.9f, 1.0f));
+            _drawing.DragTo(new Vector3(0.3f, 0.9f, 1.5f));
+            _drawing.Commit();
+
+            yield return null;
+
+            Assert.AreEqual(CookingModeInputGate.PlacementRayInteractionLayers, (int)ray.interactionLayers,
+                "囲み終わってもレイが戻っていません（板を掴み直せません）。");
+
+            // 「戻る」でやめたときも戻ること。
+            _zones.BeginDraw();
+            Assert.AreEqual(0, (int)ray.interactionLayers);
+            _zones.CancelDraw();
+            Assert.AreEqual(CookingModeInputGate.PlacementRayInteractionLayers, (int)ray.interactionLayers,
+                "描くのをやめてもレイが戻っていません。");
         }
 
         [UnityTest]
