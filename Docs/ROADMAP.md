@@ -51,15 +51,29 @@
 | **コントローラだけでの配置** | 配置モードの出口が手首のメニューにしかなく、そのメニューは手のひらの Transform に付くので、**手が1つも追えていないときは配置モードへ入らない** | コントローラ用の出口（コントローラのボタン、または空間に固定した操作板）を足す |
 | **HTTPS** | LAN 上の HTTP は平文。Android 側は平文 HTTP を許可してビルドしている | ペアリング時に manor の自己署名証明書の指紋を端末へ渡し、端末が固定する（TOFU。manor の ADR-017 D7） |
 
-## 3. 次
+## 3. 次（v1）
+
+調査: [`research/2026-09-13_quest3-camera-and-recognition.md`](research/2026-09-13_quest3-camera-and-recognition.md)
+（カメラ取得・認識・空間の注意表示）。献立提案は manor 側の調査（`manor/docs/reports/2026-09-13_menu-planning-research.md`）。
+
+| 段 | 何を | 済みの印 | ブランチ |
+|:--:|---|---|---|
+| **v1-c 火気の注意** | 注意の板（火気・刃物・熱い等）を配置モードで空間に置いて保存。コンロの領域を手で囲って `zones.json` に保存し、手 40cm／20cm・頭 60cm の3段で床の線と軽い注意を出す。カメラ無しで完結し、v2 の観測イベントの受け口を兼ねる | コンロに手を伸ばすと線が出て、離れると消える。再起動で板と領域が戻る | `feature/hazard-panels` |
+| **v1-d カメラの検証** | (a) `MetaOpenXRCameraSubsystem` で1枚取ってテクスチャに出す（Camera Image Support・`HEADSET_CAMERA`・minSdk 32）→ (b) 端末内 YOLO で枠 → (c) manor へ送って PC 側で判定し札に出す → (d) 「鍋が火にかかった」1事象を `Observation` として送る | (a) が実機で通ること。以降は順不同 | `feature/camera-probe` |
+| **v1-a 音声** | 「次」「戻る」「タイマー3分」。OS の音声認識から | 手を洗わずに工程を進められる | `feature/voice` |
+| **v1-b 料理長との会話** | 「代わりの材料は？」を聞ける。manor の料理長を呼ぶ薄い口 | 実機で質問して答えが返る | `feature/chef-talk` |
+| **（manor）献立提案** | 主菜に合う副菜・汁物を、3軸・栄養値・在庫の規則で採点。LLM は自由文の翻訳・理由の一文・名寄せだけ。XR は結果を読むだけ | manor の Web で上位3案と採点の内訳が見える | manor 側の ADR |
+
+### v2 以降
 
 | 段 | 何を | 済みの印 |
 |:--:|---|---|
-| **v1-a 音声** | 音声で「次」「戻る」「タイマー3分」。OS の音声認識から始め、精度が足りなければサーバ側の認識へ | 手を洗わずに工程を進められる |
-| **v1-b 料理長との会話** | 「代わりの材料は？」を聞ける。manor の料理長を呼ぶ薄い口を置く（manor 本体は変えない） | 実機で質問して答えが返る |
-| **v2 認識** | パススルーのカメラ＋軽量モデルで「鍋に入れた」「タイマー終了」等の**観測イベント**を `CookSession.Apply` へ。`completion: auto/confirm` の使い分け（`Observation → Candidate → Stable → Completed`） | 認識器を止めても手動進行が壊れない（分離の試験）。`auto` の工程が誤って進んだ回数を記録できる |
+| **v2 認識** | カメラ＋認識で「鍋に入れた」「タイマー終了」等の観測イベントを `CookSession.Apply` へ。`completion: auto/confirm` の使い分け（`Observation → Candidate → Stable → Completed`） | 認識器を止めても手動進行が壊れない。`auto` の工程が誤って進んだ回数を記録できる |
 | **v2+ 差し替え** | PICO アダプタ／WebXR 版 | `Platform/<系>/` の外に機種固有の呼び出しが無いことの検算が緑のまま |
 
-音声と認識のどちらも、**認識器は工程を進めない**（観測を送るだけ）という形は v0 の Domain に
-すでに入っています。
-</content>
+音声も認識も、**認識器は工程を進めない**（観測を送るだけ）という形は v0 の Domain にすでに入っています。
+
+## 4. 進め方
+
+- `main` は動く版だけ。機能は `feature/<名前>`、調査は `research/<名前>` で作業し、実機で済みの印を確かめてから `main` へ取り込む。文書と小さな修正は `main` に直接入れてよい。
+- 版は `main` に取り込むときに上げる（`bundleVersion` と `AndroidPlayerSetup.TargetBundleVersion` の両方）。

@@ -107,3 +107,8 @@ Tools/           エディタのレイアウト退避
 
 `.gitignore`・`.gitattributes` は Unity 公式テンプレート（CC0-1.0 ／ MIT）から取っています。
 プロジェクト本体（`Assets/KitchenXR/`・`Docs/`・`Tools/`）のライセンスは未定です。
+
+## 開発の進め方
+
+`main` は動く版だけ。機能は `feature/<名前>`、調査は `research/<名前>` のブランチで作業し、
+実機で「済みの印」を確かめてから `main` へ取り込みます。段取りは [`Docs/ROADMAP.md`](Docs/ROADMAP.md)。
