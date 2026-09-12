@@ -5,6 +5,7 @@ using KitchenXR.Domain;
 using KitchenXR.Net;
 using KitchenXR.Platform;
 using KitchenXR.Platform.ArFoundation;
+using KitchenXR.Platform.MetaCamera;
 using KitchenXR.Platform.Null;
 using KitchenXR.Presentation;
 using KitchenXR.Presentation.Video;
@@ -79,6 +80,9 @@ namespace KitchenXR.App
         private bool _pairing;
 
         private CookSession _session;
+
+        /// <summary>カメラの下見（v1-d）。動画の板の「カメラ」の釦が使う。Editor では受け皿に落ちる。</summary>
+        private CameraProbe _cameraProbe;
 
         /// <summary>今の調理の manor 側のセッション id。見本・manor 未設定のときは null。</summary>
         private int? _manorSessionId;
@@ -156,6 +160,11 @@ namespace KitchenXR.App
 
             SetUpPlacement();
 
+            // カメラの下見（v1-d）。実機は Meta の口、Editor は受け皿（札に理由が出る）。
+            // 板が無くても作る——manor への1枚の投げもここが持っているので、口は1つにしておく。
+            _cameraProbe = new CameraProbe(PassthroughCameraFactory.Create(), _manor);
+            _videoPanel?.BindCamera(_cameraProbe);
+
             // 起動の見た目は「レシピを選ぶ板」。調理の3枚は選んでから出す。
             ShowListMode();
         }
@@ -223,6 +232,8 @@ namespace KitchenXR.App
             {
                 _manor.DeviceRevoked -= HandleDeviceRevoked;
             }
+
+            _cameraProbe?.Dispose();
 
             _cts?.Cancel();
             _cts?.Dispose();

@@ -7,6 +7,12 @@
                 <ui:Label name="editorNotice" text="動画は実機で（Quest 3）" picking-mode="Ignore" class="caption video-notice" />
             </ui:VisualElement>
             <ui:VisualElement name="listBlock" class="video-block video-list-block">
+                <ui:VisualElement name="cameraWindow" picking-mode="Ignore" class="video-camera-window is-hidden" />
+                <ui:Label name="cameraStatus" text="" picking-mode="Ignore" class="caption video-camera-status is-hidden" />
+                <ui:VisualElement name="cameraRow" class="video-camera-row">
+                    <ui:Button name="cameraButton" text="カメラ" class="kitchen-button kitchen-button--secondary video-camera-button" />
+                    <ui:Button name="cameraBurstButton" text="連写2fps" class="kitchen-button kitchen-button--secondary video-camera-button" />
+                </ui:VisualElement>
                 <ui:Label name="listTitle" text="再生リスト" picking-mode="Ignore" class="caption video-list-title" />
                 <ui:ScrollView name="mediaList" mode="Vertical" horizontal-scroller-visibility="Hidden" vertical-scroller-visibility="Auto" class="video-list" />
             </ui:VisualElement>

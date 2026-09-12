@@ -40,6 +40,12 @@ namespace KitchenXR.Net
         private const string MediaPath = "/api/v1/kitchen/media";
         private const string CookSessionsPath = "/api/v1/kitchen/cook-sessions";
 
+        /// <summary>
+        /// 画像を1枚置く口（v1-d 段 (c) の下見）。manor 側にはまだ無いので 404 が返る——
+        /// 知りたいのは往復の時間なので、それで足りる。
+        /// </summary>
+        public const string VisionFramePath = "/api/v1/kitchen/vision/frame";
+
         /// <summary>ペアリングの2つの口（認証は要らない）。</summary>
         private const string PairStartPath = "/api/v1/devices/pair/start";
         private const string PairPollPath = "/api/v1/devices/pair/poll";
@@ -410,6 +416,36 @@ namespace KitchenXR.Net
             return response.IsSuccess
                 ? ManorResult<bool>.Ok(true, response.StatusCode)
                 : Failure<bool>(response);
+        }
+
+        // ---------------------------------------------------------------- 画像（下見）
+
+        /// <summary>
+        /// JPEG を1枚 <see cref="VisionFramePath"/> へ置く。<b>manor 側の受け口はまだ無い</b>ので
+        /// 404 が正常——測りたいのは「撮ってから返事が来るまで」の往復時間だけ。
+        ///
+        /// 返るのは HTTP の状態そのもの（404 も <c>Ok(404)</c> として返す）。
+        /// 成功・失敗の判定はここでは行わない——呼び出し側は札に数字を出すだけだから。
+        /// </summary>
+        public async UniTask<ManorResult<int>> PostVisionFrameAsync(
+            byte[] jpeg, CancellationToken token = default)
+        {
+            if (jpeg == null || jpeg.Length == 0)
+            {
+                return ManorResult<int>.Failed(-1, "送る絵がありません");
+            }
+
+            if (!IsConfigured)
+            {
+                return ManorResult<int>.Failed(-1, "manor の繋ぎ先か鍵がありません");
+            }
+
+            var response = await _transport.SendAsync(
+                new HttpRequest("POST", _settings.Url(VisionFramePath), AuthHeaders(), jpeg, "image/jpeg"), token);
+
+            return response.IsOffline
+                ? ManorResult<int>.Offline()
+                : ManorResult<int>.Ok(response.StatusCode, response.StatusCode);
         }
 
         // ---------------------------------------------------------------- 送り口

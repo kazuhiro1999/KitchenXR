@@ -40,7 +40,13 @@ namespace KitchenXR.Net
                 timeout = _timeoutSeconds,
             };
 
-            if (!string.IsNullOrEmpty(request.JsonBody))
+            if (request.BinaryBody != null && request.BinaryBody.Length > 0)
+            {
+                uwr.uploadHandler = new UploadHandlerRaw(request.BinaryBody);
+                uwr.SetRequestHeader("Content-Type",
+                    string.IsNullOrEmpty(request.ContentType) ? "application/octet-stream" : request.ContentType);
+            }
+            else if (!string.IsNullOrEmpty(request.JsonBody))
             {
                 uwr.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(request.JsonBody));
                 uwr.SetRequestHeader("Content-Type", "application/json");

@@ -76,6 +76,58 @@
     margin-left: 4px;
 }
 
+/*
+ * --- カメラの下見（v1-d 段 (a)・(c)） ---
+ *
+ * 小さな窓は一覧の上（動画の絵の右横）に置く。動画の絵は板の 1cm 手前に浮いた
+ * uGUI の RawImage なので、窓の中へ重ねると必ずその裏に隠れる（VideoPanel.LayoutSurface）。
+ *
+ * 50px = 10cm 角。絵は 4:3 なので枠いっぱいには広がらない（scale-to-fit で全体を見せる。
+ * 切り落とすと「写っている範囲」が分からなくなる——それを確かめるための窓なので）。
+ * 1枚も出していない間は畳む（`is-hidden`）——再生リストの行をそのぶん残すため。
+ */
+.video-camera-window {
+    width: 50px;
+    height: 50px;
+    align-self: center;
+    flex-shrink: 0;
+    margin-bottom: 2px;
+    background-color: rgba(31, 41, 55, 0.18);
+    -unity-background-scale-mode: scale-to-fit;
+    border-top-left-radius: var(--radius-medium);
+    border-top-right-radius: var(--radius-medium);
+    border-bottom-left-radius: var(--radius-medium);
+    border-bottom-right-radius: var(--radius-medium);
+}
+
+/* 実測（取得の寸法・所要 ms・内部パラメータの有無）か、失敗の理由。3行で打ち切る。 */
+.video-camera-status {
+    white-space: normal;
+    flex-shrink: 0;
+    overflow: hidden;
+    max-height: 18px;
+    margin-bottom: 1px;
+}
+
+/*
+ * 釦は2つ。幅 92px（塊の中身）には「カメラ」と「連写2fps」が横に並ばないので折り返す。
+ * 余白は 2px（既定の 5px のままだと 2 行で 60px 食い、再生リストが 1 行も残らない）。
+ * 高さ 20px（4cm）は崩さない——押す釦の最小寸法。
+ */
+.video-camera-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.video-camera-button {
+    margin-left: 2px;
+    margin-right: 2px;
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
 .video-list-title {
     -unity-text-align: middle-center;
     margin-bottom: 2px;

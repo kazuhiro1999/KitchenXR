@@ -31,6 +31,15 @@ namespace KitchenXR.Net
         /// <summary>JSON の本体。GET など本体の無い頼みでは null。</summary>
         public string JsonBody { get; }
 
+        /// <summary>
+        /// 文字にできない本体（JPEG など）。入っているときは <see cref="JsonBody"/> より優先し、
+        /// <see cref="ContentType"/> をそのまま付ける。
+        /// </summary>
+        public byte[] BinaryBody { get; }
+
+        /// <summary><see cref="BinaryBody"/> の種類（<c>image/jpeg</c> など）。</summary>
+        public string ContentType { get; }
+
         public HttpRequest(
             string method, string url,
             IReadOnlyDictionary<string, string> headers = null, string jsonBody = null)
@@ -40,6 +49,21 @@ namespace KitchenXR.Net
             Headers = headers ?? new Dictionary<string, string>();
             JsonBody = jsonBody;
         }
+
+        public HttpRequest(
+            string method, string url, IReadOnlyDictionary<string, string> headers,
+            byte[] binaryBody, string contentType)
+        {
+            Method = method;
+            Url = url;
+            Headers = headers ?? new Dictionary<string, string>();
+            BinaryBody = binaryBody;
+            ContentType = contentType;
+        }
+
+        /// <summary>本体の大きさ（バイト）。札に出す。</summary>
+        public int BodyByteCount =>
+            BinaryBody?.Length ?? (JsonBody != null ? System.Text.Encoding.UTF8.GetByteCount(JsonBody) : 0);
     }
 
     /// <summary>1回分の返り。</summary>
