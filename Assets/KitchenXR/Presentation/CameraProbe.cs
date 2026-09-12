@@ -139,30 +139,36 @@ namespace KitchenXR.Presentation
                     return;
                 }
 
-                if (frame != null)
+                // 1枚も取れないまま回し続けると、同じ理由を 2回/秒 ログへ積むだけになる。
+                // 理由は既に札に出ているので、そこで止める。
+                if (frame == null)
                 {
-                    ApplyTexture(frame);
+                    StopBurst();
+                    SetStatus($"{StatusText}（連写は止めました）");
+                    return;
+                }
 
-                    var clock = Stopwatch.StartNew();
-                    var jpeg = await EncodeJpegAsync(frame, token);
-                    clock.Stop();
+                ApplyTexture(frame);
 
-                    if (token.IsCancellationRequested)
-                    {
-                        return;
-                    }
+                var clock = Stopwatch.StartNew();
+                var jpeg = await EncodeJpegAsync(frame, token);
+                clock.Stop();
 
-                    if (jpeg == null)
-                    {
-                        Report("連写 2fps: JPEG にできませんでした");
-                    }
-                    else
-                    {
-                        Report($"連写 2fps: {frame.SizeText} JPEG {jpeg.Length / 1024f:0.0}KB"
-                               + $" / 取得 {_lastAcquireMs:0}ms + 変換 {clock.Elapsed.TotalMilliseconds:0}ms");
+                if (token.IsCancellationRequested)
+                {
+                    return;
+                }
 
-                        await TryPostOnceAsync(jpeg, token);
-                    }
+                if (jpeg == null)
+                {
+                    Report("連写 2fps: JPEG にできませんでした");
+                }
+                else
+                {
+                    Report($"連写 2fps: {frame.SizeText} JPEG {jpeg.Length / 1024f:0.0}KB"
+                           + $" / 取得 {_lastAcquireMs:0}ms + 変換 {clock.Elapsed.TotalMilliseconds:0}ms");
+
+                    await TryPostOnceAsync(jpeg, token);
                 }
 
                 await UniTask.Delay(BurstIntervalMs, ignoreTimeScale: true, cancellationToken: token)
