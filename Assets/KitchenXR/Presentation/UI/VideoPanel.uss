@@ -17,7 +17,7 @@
 /* --- 題名の列（縦。最大8件。溢れたら縦スクロール） --- */
 
 .video-list {
-    height: 48px; /* ≒ 9.6cm。8件がちょうど収まる高さ。 */
+    height: 60px; /* ≒ 12cm。行を高くしたので4件。溢れたら縦スクロール。 */
     flex-shrink: 0;
     overflow: hidden;
 }
@@ -25,7 +25,9 @@
 .video-row {
     flex-direction: row;
     align-items: center;
-    min-height: 8px;
+    /* 2026-09-13 実機: 一覧の行が押せなかった。行が 1.6cm では指先の当たりに対して薄すぎるので
+     * 2.8cm へ（ボタンの最小 4cm には届かないが、行は縦に並ぶので間隔は取れる）。 */
+    min-height: 14px;
     padding-left: 3px;
     padding-right: 3px;
     padding-top: 1px;
@@ -102,4 +104,18 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+}
+
+/* --- 中の様子の札（2026-09-13 主人「エラーや失敗時にどこかに表示してほしい」） ---
+ * 1行目: WebView／HTML／プレイヤーの状態。2行目: 最後に板がしたこと。3行目: 最後の失敗（赤）。 */
+
+.video-status-line {
+    white-space: normal;
+    flex-shrink: 0;
+    overflow: hidden;
+    margin-bottom: 0.5px;
+}
+
+.video-status-line--error {
+    color: var(--color-alarm);
 }

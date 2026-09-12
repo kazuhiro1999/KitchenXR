@@ -1,26 +1,170 @@
 /*
- * レシピの板（設計 §9・§11 追補）。
- * 縦の並びは「頭（点列と%）／本文（溢れたら縦スクロール）／ボタンの行」の3段。
- * ボタンの行を下に固定し、本文はその上の残りに収める——v1.0.2 は本文とボタンが重なっていた。
+ * レシピの板（設計 §9・§11 追補・2026-09-13 主人の実機確認 v1.0.6）。
+ *
+ * 縦の並びは「頭（点列と%）／本文／ボタンの行」の3段。**どの段もスクロールしない**——
+ * 主人「スクロールは極力なくしたい。1画面の中に進捗・画像・説明が入っていないと
+ * 毎回スクロールしなきゃいけないのは UX 低下」。
+ *
+ * そのために v1.0.6 から変えたのは3つ:
+ *   1. 頭を**点列と%だけ**に薄くした（「一覧へ」「配置」は下のボタンの行の左へ移した）。
+ *      頭が縦の 1/4 を食っていたのを 10px 程度まで落としている
+ *   2. 本文の ScrollView をやめ、**左右2列**にした。工程の画像は契約上 1:1 なので、
+ *      縦に積むと正方形が幅いっぱいまで伸びて説明を押し出す。左に正方形（高さは本文の残り全部）、
+ *      右に見出し・説明・次、とすると 260×190 の板でも全部が1画面に収まる
+ *   3. 説明は契約上 60 文字以内。右の列（約 110px ≒ 22cm）に本文 6px なら 3〜4 行で収まる。
+ *      それでも溢れる想定外のレシピのために overflow: hidden を保険に置く
  */
 
-/* 頭は横1列: [一覧へ][工程の点列][進捗%]（P3 で「一覧へ」が増えた）。 */
+/* 頭は横1列: [工程の点列][進捗%]。ここには釦を置かない（薄さが要るので）。 */
 .recipe-header {
     flex-direction: row;
     align-items: center;
     flex-shrink: 0;
 }
 
-/* 点列は頭の残りを全部もらう（「一覧へ」と「%」の間）。 */
+/* 点列は頭の残りを全部もらう（左端から「%」の手前まで）。 */
 .recipe-header .step-dots {
     flex-grow: 1;
     flex-shrink: 1;
+    justify-content: flex-start;
+    margin-top: 1px;
+    margin-bottom: 1px;
+}
+
+/* 点は 4px（8mm）。theme の 6px のままだと頭が薄くならない。 */
+.recipe-header .step-dot {
+    width: 4px;
+    height: 4px;
+    margin-left: 1.5px;
+    margin-right: 1.5px;
+    border-top-left-radius: 2px;
+    border-top-right-radius: 2px;
+    border-bottom-left-radius: 2px;
+    border-bottom-right-radius: 2px;
 }
 
 .recipe-progress-label {
     flex-shrink: 0;
     min-width: 24px;
     -unity-text-align: middle-right;
+}
+
+/* 区切りの余白も詰める（theme の 5px×2 は本文の置き場を食う）。 */
+.recipe-divider {
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
+/* 本文。余りを全部もらう。**スクロールしない**（溢れたら切る）。 */
+.recipe-content {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* 今の工程: 左に画像・右に文字。 */
+.recipe-current-section {
+    flex-direction: row;
+    flex-grow: 1;
+    min-height: 0;
+}
+
+/*
+ * 工程の画像。**正方形**（契約の工程画像は 1:1）。
+ * 一辺は「本文の高さ」に合わせる——USS に aspect-ratio が無いので
+ * RecipePanel.cs が GeometryChangedEvent で width/height を入れる。
+ * 画像が無い工程はこの地の色のままになる（材料名の札は右の列に出す）。
+ */
+.recipe-image-area {
+    flex-shrink: 0;
+    align-self: flex-start;
+    background-color: var(--color-chip-bg);
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    border-top-left-radius: var(--radius-medium);
+    border-top-right-radius: var(--radius-medium);
+    border-bottom-left-radius: var(--radius-medium);
+    border-bottom-right-radius: var(--radius-medium);
+}
+
+/* 右の列。見出し・説明・材料の札・（余白）・次。 */
+.recipe-text-column {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+    margin-left: 4px;
+    overflow: hidden;
+}
+
+.recipe-step-title {
+    flex-shrink: 0;
+    margin-bottom: 2px;
+}
+
+.recipe-instruction {
+    flex-shrink: 1;
+    white-space: normal;
+    overflow: hidden;
+}
+
+/*
+ * 今の工程で使う材料（画像が取れなかったときの代わりも兼ねる）。
+ * v1.0.6 で画像の**上から退けた**（主人の指示）——重ねると写真が読めない。
+ */
+.recipe-ingredient-chip {
+    flex-shrink: 0;
+    margin-top: 3px;
+    background-color: var(--color-chip-bg);
+    padding-left: 4px;
+    padding-right: 4px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    border-top-left-radius: var(--radius-medium);
+    border-top-right-radius: var(--radius-medium);
+    border-bottom-left-radius: var(--radius-medium);
+    border-bottom-right-radius: var(--radius-medium);
+    -unity-text-align: middle-left;
+}
+
+/* 「次: …」を右の列の**下端**へ押し下げる（説明との間が詰まって見えないように）。 */
+.recipe-text-spacer {
+    flex-grow: 1;
+    min-height: 2px;
+}
+
+.recipe-next-label {
+    flex-shrink: 0;
+}
+
+.recipe-complete-section {
+    align-items: center;
+    justify-content: center;
+    flex-grow: 1;
+}
+
+/* 最後の工程を越えたときだけ出る（設計 §7「破壊的な操作」に当たるが、
+ * 完成の後なので取り消しは要らない。1度押しでよい）。 */
+.recipe-finish-button {
+    min-width: 60px;
+    margin-top: 10px;
+}
+
+/*
+ * ボタンの行は縮まない・隠れない（設計 §11 追補「本文がボタンと重ならない」）。
+ * v1.0.6 から [一覧へ][配置] …余白… [戻る][次へ] の4つ。
+ * 左の2つ（2度押し）と右の2つ（1度押し）を余白で離してあるので、
+ * 「次へ」のつもりで「一覧へ」を触ることはない。
+ */
+.recipe-button-row {
+    flex-direction: row;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.recipe-spacer {
+    flex-grow: 1;
 }
 
 /*
@@ -32,75 +176,12 @@
 .recipe-to-list-button {
     flex-shrink: 0;
     min-width: 34px;
-    margin-left: 0;
+    margin-left: 0px;
 }
 
 .recipe-to-list-button--armed {
     background-color: var(--color-accent);
     color: var(--color-accent-text);
-}
-
-/* 最後の工程を越えたときだけ出る（設計 §7「破壊的な操作」に当たるが、
- * 完成の後なので取り消しは要らない。1度押しでよい）。 */
-.recipe-finish-button {
-    min-width: 60px;
-    margin-top: 10px;
-}
-
-/* 本文。余りを全部もらい、溢れたら縦にだけスクロールする。 */
-.recipe-content {
-    flex-grow: 1;
-    flex-shrink: 1;
-    min-height: 0;
-}
-
-.recipe-current-section {
-    flex-grow: 1;
-}
-
-.recipe-image-area {
-    height: 60px;
-    margin-top: 4px;
-    margin-bottom: 4px;
-    align-items: center;
-    justify-content: center;
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-}
-
-.recipe-ingredient-chip {
-    background-color: var(--color-chip-bg);
-    padding-left: 6px;
-    padding-right: 6px;
-    padding-top: 4px;
-    padding-bottom: 4px;
-    border-top-left-radius: var(--radius-medium);
-    border-top-right-radius: var(--radius-medium);
-    border-bottom-left-radius: var(--radius-medium);
-    border-bottom-right-radius: var(--radius-medium);
-    -unity-text-align: middle-center;
-}
-
-.recipe-next-label {
-    margin-top: 4px;
-}
-
-.recipe-complete-section {
-    align-items: center;
-    justify-content: center;
-    flex-grow: 1;
-}
-
-/* ボタンの行は縮まない・隠れない（設計 §11 追補「本文がボタンと重ならない」）。 */
-.recipe-button-row {
-    flex-direction: row;
-    justify-content: space-between;
-    flex-shrink: 0;
-}
-
-.recipe-spacer {
-    flex-grow: 1;
 }
 
 /*
@@ -111,8 +192,6 @@
 .recipe-place-button {
     flex-shrink: 0;
     min-width: 24px;
-    margin-left: var(--gap-tight);
-    margin-right: var(--gap-tight);
 }
 
 .recipe-place-button--armed {

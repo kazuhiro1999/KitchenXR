@@ -44,10 +44,20 @@ namespace KitchenXR.App.Editor
         public const float PanelLocalScale = WorldSpacePanelFactory.PanelLocalScale;
         public const float PanelPixelsPerUnit = WorldSpacePanelFactory.PanelPixelsPerUnit;
 
+        // レシピ（＝一覧と同じ寸法。重ねて出す2枚なので必ず揃える）。
+        // 2026-09-13 の主人の実機確認で「1画面に進捗・画像・説明」へ組み直したが、
+        // 左右2列にしたら 260×190 のままで収まった（PlayMode 試験 PanelLayoutTests で検算）ので広げていない。
+        // 広げるなら 280 までだが、Bootstrap の初期配置（左右 0.5m 間隔）だと
+        // 260（0.52m）の時点で既にタイマーの板と 2cm 重なっており、280 にすると 6cm になる。
         private const float RecipeWidthUnits = 260f; // 実測 ≒ 52cm
         private const float RecipeHeightUnits = 190f; // ≒ 38cm
-        private const float IngredientsWidthUnits = 150f; // ≒ 30cm
-        private const float IngredientsHeightUnits = 190f; // ≒ 38cm
+
+        // 材料（2026-09-13 主人「もうちょいパネルは大きくてもいい」「一目で全部見たい」）。
+        // 150×190 → 170×240（34cm×48cm）。行を 8px に詰めた（theme.uss）ので、
+        // 見本の炒飯（13 点）どころか 20 点程度までスクロール無しで並ぶ。
+        // 左隣（基準点から -0.5m）に置いても、右へ 0.34m なのでレシピの板（0m から）に届かない。
+        private const float IngredientsWidthUnits = 170f; // ≒ 34cm
+        private const float IngredientsHeightUnits = 240f; // ≒ 48cm
 
         // タイマーは §11 追補で「常時使える」作り口（1/3/5/10分・±30秒）と3つ積む場所が要るので、
         // 材料の板より一回り大きい（4cm角のボタンを6つ並べるのに 44cm 要る）。

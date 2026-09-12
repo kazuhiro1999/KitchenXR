@@ -32,6 +32,13 @@ namespace KitchenXR.Presentation
     public static class PokePress
     {
         /// <summary>
+        /// どこかのボタン（行）が発火した。効果音（<see cref="PressSound"/>）が聞く。
+        /// 2026-09-13 主人「押したときの効果音があればもっといい」——ホログラムには手応えが無いので、
+        /// 音が「押せた」の唯一の返事になる。振動は XRI の hover で既に出ている。
+        /// </summary>
+        public static event Action Pressed;
+
+        /// <summary>
         /// <paramref name="element"/> を「触れたら1回だけ <paramref name="action"/> を呼ぶ」状態にする。
         /// </summary>
         /// <param name="element">押される要素（Button・材料の行など）。</param>
@@ -62,6 +69,7 @@ namespace KitchenXR.Presentation
                     return;
                 }
 
+                Pressed?.Invoke();
                 action();
             }, TrickleDown.TrickleDown);
 

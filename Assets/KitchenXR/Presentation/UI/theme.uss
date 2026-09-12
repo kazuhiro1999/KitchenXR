@@ -49,6 +49,29 @@
     --gap-tight: 5px;
 }
 
+/*
+ * 文字の大きさの3段（2026-09-13 主人「設定で変更できたらもっといい」）。
+ * <see cref="KitchenXR.Presentation.DisplaySettingsApplier"/> が各板の `.root-panel` に
+ * このクラスを付け外しする。中はクラス無し（上の :root の値のまま）。
+ *
+ * **:root ではなく板の根に置く**のが肝心。カスタムプロパティは継承するので、
+ * 板の根で上書きすれば中の全ての要素（ボタン・材料の行も）が一緒に動く。
+ * 板ごとに別の大きさにしたくなったときも、ここを触らずに済む。
+ */
+.font-scale--small {
+    --font-size-heading: 8.5px;
+    --font-size-body: 5px;
+    --font-size-caption: 4.25px;
+    --font-size-ingredient: 4.75px;
+}
+
+.font-scale--large {
+    --font-size-heading: 12.5px;
+    --font-size-body: 7.5px;
+    --font-size-caption: 6.25px;
+    --font-size-ingredient: 7px;
+}
+
 .root-panel {
     flex-grow: 1;
     background-color: var(--color-panel-bg);
@@ -67,22 +90,39 @@
     background-color: var(--color-alarm-bg);
 }
 
+/*
+ * 文字の型の余白をゼロにする（2026-09-13 主人の実機確認 v1.0.6 の**大元**）。
+ *
+ * Unity 既定の runtime テーマ（UnityDefaultRuntimeTheme）は Label に
+ * **padding 上下 4px・margin 上 4px 下 2px**（＝合わせて 14px ≒ 2.8cm）を入れる。
+ * これは 1 UI px = 1 画面 px の普通の UI 向けの値で、1 UI px ≒ 2mm のこの板では
+ * **文字より余白のほうが大きい**——本文 6px（≒ 8.7px ぶんの字）の Label が 23px を占めていた。
+ * 「行間が空いている」「1画面に収まらない」「進捗が上を結構多く占めている」は全部これが元。
+ *
+ * 余白は各板の USS で**必要な場所にだけ**明示する（margin を書いた側が後勝ちで効く）。
+ */
 .heading {
     font-size: var(--font-size-heading);
     color: var(--color-text);
     white-space: normal;
+    margin: 0px;
+    padding: 0px;
 }
 
 .body-text {
     font-size: var(--font-size-body);
     color: var(--color-text);
     white-space: normal;
+    margin: 0px;
+    padding: 0px;
 }
 
 .caption {
     font-size: var(--font-size-caption);
     color: var(--color-text-muted);
     white-space: normal;
+    margin: 0px;
+    padding: 0px;
 }
 
 .caption--dim {
@@ -105,6 +145,13 @@
 .kitchen-button {
     min-width: var(--button-min);
     min-height: var(--button-min);
+    /* 既定テーマの Button の余白も落とす。落とさないと 20px（4cm）のつもりの釦が
+     * 29px（5.8cm）になり、板の縦を無駄に食う（上の Label と同じ話）。
+     * 横だけは字が縁に付かないよう 4px 残す。 */
+    padding-top: 0px;
+    padding-bottom: 0px;
+    padding-left: 4px;
+    padding-right: 4px;
     margin-left: var(--gap-tight);
     margin-right: var(--gap-tight);
     margin-top: var(--gap-tight);
@@ -190,19 +237,29 @@
 
 /* --- 材料の板（§11 追補: 横スクロール禁止・文字を一段小さく・行の高さを板の幅に合わせる） --- */
 
+/*
+ * 2026-09-13 主人「縦スクロールしないと全部の材料を一目で見れないのは UX 的に…。
+ * 行間が空いているのでもう少し詰めていい」——行を 12px → 8px（2.4cm → 1.6cm）に詰め、
+ * 行間（margin）を無くした。板を 170×240 に広げたので、見本の炒飯（13 点）でも
+ * 20 点程度でも**スクロールせずに全部見える**（PlayMode 試験 PanelLayoutTests で検算）。
+ *
+ * 設計 §7 の「最小4cm角」は**押す釦**の話で、ここは当てない——材料のチェックは
+ * 押し損ねても調理が進まないだけの見た目であり、一目で全部見えることのほうが効く
+ * （主人の指示）。押す的は行の全幅（板の幅いっぱい）なので狙い自体は難しくない。
+ */
 .ingredient-row {
     flex-direction: row;
     align-items: center;
-    min-height: 12px;
+    min-height: 8px;
     padding-left: 3px;
     padding-right: 3px;
-    padding-top: 1px;
-    padding-bottom: 1px;
+    padding-top: 0.5px;
+    padding-bottom: 0.5px;
     border-top-left-radius: var(--radius-medium);
     border-top-right-radius: var(--radius-medium);
     border-bottom-left-radius: var(--radius-medium);
     border-bottom-right-radius: var(--radius-medium);
-    margin-bottom: 1px;
+    margin-bottom: 0px;
     overflow: hidden;
     flex-shrink: 0;
 }
@@ -211,9 +268,10 @@
     background-color: var(--color-chip-bg-strong);
 }
 
+/* 行を 8px に詰めたので、印も一回り小さくする（8px だと印だけで行が膨らむ）。 */
 .ingredient-row__check {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     margin-right: 4px;
     border-width: 1px;
     border-color: var(--color-text-muted);
@@ -238,12 +296,16 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    margin: 0px;
+    padding: 0px;
 }
 
 .ingredient-row__qty {
     color: var(--color-text-muted);
     font-size: var(--font-size-caption);
+    margin: 0px;
     margin-left: 4px;
+    padding: 0px;
     flex-shrink: 0;
     white-space: nowrap;
     overflow: hidden;

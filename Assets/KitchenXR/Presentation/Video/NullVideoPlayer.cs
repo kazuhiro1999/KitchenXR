@@ -16,6 +16,13 @@ namespace KitchenXR.Presentation.Video
 
         public bool IsAvailable => false;
 
+        /// <summary>試験が差し替える（実機の WebView が返す「再生中」の代わり）。</summary>
+        public bool IsReportedPlaying { get; set; }
+
+        public string StatusLine => "Editor（動画は実機で）";
+
+        public string LastError { get; set; }
+
         /// <summary>頼まれた順の動画 id（試験が見る）。</summary>
         public IReadOnlyList<string> LoadedVideoIds => _loaded;
 
@@ -24,6 +31,8 @@ namespace KitchenXR.Presentation.Video
         public int PlayCount { get; private set; }
 
         public int PauseCount { get; private set; }
+
+        public int TapCount { get; private set; }
 
         public int Volume { get; private set; } = -1;
 
@@ -42,5 +51,7 @@ namespace KitchenXR.Presentation.Video
         public void SetVolume(int volume) => Volume = volume;
 
         public void SetAspect(VideoAspect aspect) => Aspect = aspect;
+
+        public void TapCenter() => TapCount++;
     }
 }

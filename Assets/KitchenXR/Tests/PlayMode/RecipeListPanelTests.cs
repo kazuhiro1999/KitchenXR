@@ -218,8 +218,9 @@ namespace KitchenXR.Tests.PlayMode
 
         private VisualElement Root => _panelGo.GetComponent<UIDocument>().rootVisualElement;
 
+        /// <summary>並んでいるカード（v1.0.6 で行からグリッドのカードへ変えた）。</summary>
         private List<VisualElement> Rows =>
-            Root.Query<VisualElement>(className: "recipe-row").ToList();
+            Root.Query<VisualElement>(className: "recipe-card").ToList();
 
         // ---------------------------------------------------------------- 差し替えの通信
 
@@ -289,22 +290,72 @@ namespace KitchenXR.Tests.PlayMode
             yield return Settle();
 
             var rows = Rows;
-            Assert.AreEqual(2, rows.Count, "一覧の行が並んでいません。");
+            Assert.AreEqual(2, rows.Count, "一覧のカードが並んでいません。");
 
-            var titles = rows.Select(r => r.Q<Label>(className: "recipe-row__title").text).ToList();
+            var titles = rows.Select(r => r.Q<Label>(className: "recipe-card__title").text).ToList();
             Assert.AreEqual("見本: 炒飯", titles[0], "先頭は必ず見本（manor が無くても1本は進められる）。");
             Assert.AreEqual("照り焼き", titles[1]);
 
-            var detail = rows[1].Q<Label>(className: "recipe-row__detail").text;
+            var detail = rows[1].Q<Label>(className: "recipe-card__detail").text;
             StringAssert.Contains("25分", detail);
             StringAssert.Contains("主菜", detail);
             StringAssert.Contains("420kcal", detail);
 
-            Assert.IsTrue(rows[0].ClassListContains("recipe-row--sample"), "見本の行に印がありません。");
+            Assert.IsTrue(rows[0].ClassListContains("recipe-card--sample"), "見本のカードに印がありません。");
 
             // 設計 §7「最小4cm角」。板の縮尺は 1 UI px ≒ 2mm なので 20px 以上。
             Assert.GreaterOrEqual(rows[0].resolvedStyle.height, 19.9f,
-                "行の高さが 4cm を切ると、調理中の手では狙えません（設計 §7）。");
+                "カードが 4cm を切ると、調理中の手では狙えません（設計 §7）。");
+        }
+
+        /// <summary>
+        /// v1.0.6（主人「Web のレシピサイトと同じようにグリッドで写真も」）。
+        /// 3列に折り返し、カードの上に写真の場所がある——写真が無いうちは「写真なし」の札。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 一覧が3列のグリッドで写真の場所を持つ()
+        {
+            yield return BuildRig();
+            yield return BuildPanel("RecipeListPanel", ListUxmlPath);
+
+            var panel = _panelGo.AddComponent<RecipeListPanel>();
+            var many = new List<RecipeSummary>();
+            for (var i = 0; i < 6; i++)
+            {
+                many.Add(new RecipeSummary($"r{i}", $"レシピ{i}", 20, "主菜", 400));
+            }
+
+            panel.Show(many, string.Empty);
+            yield return Settle();
+
+            var cards = Rows;
+            Assert.AreEqual(6, cards.Count);
+
+            // 先頭の3枚は同じ段（＝横に並ぶ）、4枚目は次の段へ折り返す。
+            // layout は親から見た px の矩形（worldBound は板のローカル単位なので使わない）。
+            Assert.AreEqual(cards[0].layout.y, cards[2].layout.y, 0.5f,
+                "3列に並んでいません（グリッドになっていない）。");
+            Assert.Greater(cards[3].layout.y, cards[0].layout.y + 1f,
+                "4枚目が次の段へ折り返していません。");
+            Assert.Greater(cards[1].layout.x, cards[0].layout.x + 1f,
+                "2枚目が1枚目の右に並んでいません。");
+
+            // 6件なら縦スクロール無しで全部見える（主人「6 件を超えたら縦スクロール」）。
+            // 折り返した段は容れ物の高さに出ないので、**最後のカードの下端**で測る。
+            var scroll = Root.Q<ScrollView>("recipeScroll");
+            var viewportHeight = scroll.contentViewport.resolvedStyle.height;
+            Assert.LessOrEqual(cards[5].layout.yMax, viewportHeight,
+                $"6 件目が表示領域からはみ出しています"
+                + $"（下端 {cards[5].layout.yMax}px / 枠 {viewportHeight}px）。");
+
+            var photo = cards[0].Q<VisualElement>(className: "recipe-card__photo");
+            Assert.IsNotNull(photo, "カードに写真の場所がありません。");
+            Assert.Greater(photo.resolvedStyle.height, 20f, "写真の場所が潰れています。");
+
+            var noPhoto = photo.Q<Label>(className: "recipe-card__no-photo");
+            Assert.IsNotNull(noPhoto, "写真が無いときの札がありません。");
+            Assert.AreEqual(DisplayStyle.Flex, noPhoto.resolvedStyle.display,
+                "写真が無いのに札が消えています。");
         }
 
         [UnityTest]

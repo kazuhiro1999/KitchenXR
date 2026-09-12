@@ -21,9 +21,10 @@ namespace KitchenXR.Presentation.Video
     /// <c>Assembly-CSharp</c> に入る。asmdef を持つ側（<c>KitchenXR.Runtime</c>）から
     /// <c>Assembly-CSharp</c> は参照できない（Unity の決まり）。
     /// 主人の側に asmdef を足せば型で呼べるようになるが、それは「書き換えない」の約束に反する。
-    /// そこで **型の名前で引き当てて呼ぶ**。呼ぶのは4つだけ
-    /// （<c>Load</c> / <c>Play</c> / <c>Pause</c> / <c>SetVolume</c>）で、
-    /// 見つからなければ一度だけ警告を出して黙る——板の一覧とボタンは動き続ける。
+    /// そこで **型の名前で引き当てて呼ぶ**。呼ぶのは4つ
+    /// （<c>Load</c> / <c>Play</c> / <c>Pause</c> / <c>SetVolume</c>）と、
+    /// 様子を読む3つ（<c>Initialized</c> / <c>State</c> / <c>videoId</c>）で、
+    /// 見つからなければ札に出して黙る——板の一覧とボタンは動き続ける。
     /// <c>TLabWebView</c> は asmdef（<c>com.tlabaltoh.webview.runtime</c>）を持つので、
     /// こちらは型でそのまま呼んでいる。
     ///
@@ -32,6 +33,15 @@ namespace KitchenXR.Presentation.Video
     /// だから板を作るときに <see cref="Initialize"/> で 16:9 の解像度に直してから
     /// WebView を起こし、9:16 へ切り替えるときは <c>Resize</c> と
     /// （html の器を直す）<c>EvaluateJS</c> の両方を送る。
+    ///
+    /// 2026-09-13 主人の実機確認（v1.0.6）「再生を押しても反応がない」への備え:
+    /// Android の WebView は既定で**人の操作を伴わない再生**を拒む
+    /// （<c>mediaPlaybackRequiresUserGesture</c>）。主人の SDK は WebView そのものを触って
+    /// 使う前提なので困らないが、この板は WebView に触らせず JS だけで頼んでいる。
+    /// そこで <see cref="TapCenter"/>——ページの中央に触ったことにする
+    /// （<c>TLabWebView.TouchEvent</c>。主人の <c>WebViewInputListener</c> と同じ経路）。
+    /// 動画が cue されているときの中央は YouTube の大きな再生ボタンなので、
+    /// これで再生が始まり、以後この WebView は「操作済み」になって JS の再生も通る。
     /// </summary>
     public sealed class YoutubePlayerBridge : IVideoPlayer
     {
@@ -56,6 +66,17 @@ namespace KitchenXR.Presentation.Video
         private const int PortraitTexWidth = 360;
         private const int PortraitTexHeight = 640;
 
+        // TLabWebView.TouchEvent の eventNum（主人の WebViewInputListener.WebTouchEvent と同じ）。
+        private const int TouchDown = 0;
+        private const int TouchUp = 1;
+
+        /// <summary>タップの押し下げから押し上げまで。短すぎると WebView がクリックと見なさない。</summary>
+        private const int TapHoldMs = 80;
+
+        // 主人の YoutubePlayer.PlayerState の値（youtube.html が返す YT.PlayerState と同じ）。
+        private const int StatePlaying = 1;
+        private const int StateBuffering = 3;
+
         private readonly GameObject _root;
         private readonly TLabWebView _webView;
         private readonly MonoBehaviour _player;
@@ -65,7 +86,12 @@ namespace KitchenXR.Presentation.Video
         private readonly MethodInfo _pause;
         private readonly MethodInfo _setVolume;
 
+        private readonly PropertyInfo _initialized;
+        private readonly PropertyInfo _state;
+        private readonly PropertyInfo _videoId;
+
         private bool _warned;
+        private int _tapCount;
 
         public YoutubePlayerBridge(GameObject root)
         {
@@ -85,6 +111,10 @@ namespace KitchenXR.Presentation.Video
                 _play = type.GetMethod("Play", Type.EmptyTypes);
                 _pause = type.GetMethod("Pause", Type.EmptyTypes);
                 _setVolume = type.GetMethod("SetVolume", new[] { typeof(float) });
+
+                _initialized = type.GetProperty("Initialized");
+                _state = type.GetProperty("State");
+                _videoId = type.GetProperty("videoId");
             }
         }
 
@@ -108,6 +138,46 @@ namespace KitchenXR.Presentation.Video
         /// </summary>
         public bool IsAvailable =>
             Application.platform == RuntimePlatform.Android && _player != null && _webView != null;
+
+        public string LastError { get; private set; }
+
+        /// <summary>
+        /// YouTube 側が PLAYING か BUFFERING と返しているか。
+        /// 主人の <c>isPlaying</c> は Play() を送った時点で true にする楽観値なので使わない
+        /// ——再生を拒まれたときこそ知りたい。
+        /// </summary>
+        public bool IsReportedPlaying
+        {
+            get
+            {
+                var state = ReadState();
+                return state == StatePlaying || state == StateBuffering;
+            }
+        }
+
+        public string StatusLine
+        {
+            get
+            {
+                if (_root == null)
+                {
+                    return "プレハブ未設定";
+                }
+
+                if (_player == null || _webView == null)
+                {
+                    return "YoutubePlayer が見つかりません";
+                }
+
+                var web = _webView.state.ToString();
+                var html = ReadBool(_initialized) ? "読込済" : "待ち";
+                var state = StateName(ReadState());
+                var id = ReadString(_videoId);
+                var tapped = _tapCount > 0 ? $" タップ{_tapCount}" : string.Empty;
+                var idPart = string.IsNullOrEmpty(id) ? string.Empty : " " + id;
+                return $"WebView {web} / HTML {html} / 動画 {state}{idPart}{tapped}";
+            }
+        }
 
         /// <summary>
         /// 板が組み上がったところで一度だけ呼ぶ。
@@ -200,16 +270,37 @@ namespace KitchenXR.Presentation.Video
 
             try
             {
-                // UniTask<bool>。待たないので Forget して例外を握り潰す（取れなければ絵が出ないだけ）。
                 var task = _load.Invoke(_player, new object[] { videoId, true });
                 if (task is UniTask<bool> typed)
                 {
-                    typed.Forget();
+                    // 結果は待たないが捨てない——false（10 秒待って loaded にならない）や
+                    // TimeoutException（主人の Load は 5 秒で切る）は札に出す。
+                    ObserveLoadAsync(typed, videoId).Forget();
                 }
             }
             catch (Exception e)
             {
                 Warn($"動画を読み込めませんでした（{videoId}）: {e.Message}");
+            }
+        }
+
+        private async UniTaskVoid ObserveLoadAsync(UniTask<bool> task, string videoId)
+        {
+            try
+            {
+                var ok = await task;
+                if (!ok)
+                {
+                    Warn($"読み込みの返事がありません（{videoId}）");
+                }
+            }
+            catch (TimeoutException)
+            {
+                Warn($"読み込みが 5 秒で応答なし（{videoId}）。再生を押すと窓の中央をタップします");
+            }
+            catch (Exception e)
+            {
+                Warn($"読み込みで例外（{videoId}）: {e.Message}");
             }
         }
 
@@ -265,6 +356,117 @@ namespace KitchenXR.Presentation.Video
                 "%';}})();");
         }
 
+        /// <summary>
+        /// ページの中央を一度タップする。押し下げと押し上げの間を <see cref="TapHoldMs"/> 空ける
+        /// （同じフレームで送ると WebView がクリックと見なさない）。
+        /// </summary>
+        public void TapCenter()
+        {
+            if (_webView == null)
+            {
+                return;
+            }
+
+            var x = Mathf.Max(1, _webView.webWidth / 2);
+            var y = Mathf.Max(1, _webView.webHeight / 2);
+            _tapCount++;
+
+            try
+            {
+                _webView.TouchEvent(x, y, TouchDown);
+                ReleaseLaterAsync(x, y).Forget();
+            }
+            catch (Exception e)
+            {
+                Warn($"タップを送れませんでした: {e.Message}");
+            }
+        }
+
+        private async UniTaskVoid ReleaseLaterAsync(int x, int y)
+        {
+            await UniTask.Delay(TapHoldMs);
+            try
+            {
+                if (_webView != null)
+                {
+                    _webView.TouchEvent(x, y, TouchUp);
+                }
+            }
+            catch (Exception e)
+            {
+                Warn($"タップの押し上げを送れませんでした: {e.Message}");
+            }
+        }
+
+        // ------------------------------------------------------------------ 読む側
+
+        private int ReadState()
+        {
+            if (_player == null || _state == null)
+            {
+                return int.MinValue;
+            }
+
+            try
+            {
+                return Convert.ToInt32(_state.GetValue(_player));
+            }
+            catch
+            {
+                return int.MinValue;
+            }
+        }
+
+        private bool ReadBool(PropertyInfo property)
+        {
+            if (_player == null || property == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                return property.GetValue(_player) is bool b && b;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private string ReadString(PropertyInfo property)
+        {
+            if (_player == null || property == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return property.GetValue(_player) as string;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>YT.PlayerState の番号を人の言葉に（札に出す）。</summary>
+        private static string StateName(int state)
+        {
+            switch (state)
+            {
+                case -1: return "未開始";
+                case 0: return "終了";
+                case 1: return "再生中";
+                case 2: return "一時停止";
+                case 3: return "読み込み中";
+                case 5: return "待機（cue）";
+                case int.MinValue: return "不明";
+                default: return state.ToString(CultureInfo.InvariantCulture);
+            }
+        }
+
         private bool Invokable(MethodInfo method)
         {
             if (_player == null || method == null)
@@ -293,9 +495,10 @@ namespace KitchenXR.Presentation.Video
             }
         }
 
-        /// <summary>警告は一度だけ（毎フレーム出しても直せるのは主人だけなので）。</summary>
+        /// <summary>ログは一度だけ（毎フレーム出しても直せるのは主人だけなので）。札には毎回出す。</summary>
         private void Warn(string message)
         {
+            LastError = message;
             if (_warned)
             {
                 return;

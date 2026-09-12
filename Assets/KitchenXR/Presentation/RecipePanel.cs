@@ -11,8 +11,11 @@ namespace KitchenXR.Presentation
 {
     /// <summary>
     /// レシピパネル（主。設計 §9・§11 追補）。上に**工程の数だけ**の点列と進捗%、
-    /// 中央に今の工程（見出し・画像・1〜2文・次の工程）、下にボタンの行。
+    /// 中央に今の工程（左に画像・右に見出しと説明と次の工程）、下にボタンの行。
     /// CookSession は持たない——Bootstrap から渡された状態を映すだけ。
+    ///
+    /// v1.0.6（2026-09-13 主人の実機確認）で**1画面に収める**作りへ変えた。
+    /// 中身がなぜ左右2列なのかは <c>RecipePanel.uss</c> の先頭に書いた。
     ///
     /// 「次へ／戻る」は <see cref="PokePress"/> で**押し下げ**に反応する（設計 §11 追補）。
     /// <c>Button.clicked</c>（押し上げ）は購読しない——深く突き抜けると発火しないため。
@@ -38,6 +41,9 @@ namespace KitchenXR.Presentation
         private const string PlacementLabel = "配置";
         private const string PlacementArmedLabel = "もう一度";
         private const string PlacementArmedClass = "recipe-place-button--armed";
+
+        /// <summary>工程の画像が本文の幅に占めてよい割合。残りが説明の置き場になる。</summary>
+        private const float ImageMaxWidthRatio = 0.55f;
 
         public event Action NextRequested;
         public event Action PrevRequested;
@@ -114,6 +120,10 @@ namespace KitchenXR.Presentation
             PokePress.BindButton(_backToListButton, _debounce, "toList", HandleBackToListPressed);
             PokePress.BindButton(_finishButton, _debounce, "finish", () => FinishRequested?.Invoke());
 
+            // 工程の画像を正方形に保つ（契約の工程画像は 1:1）。USS に aspect-ratio が無いので、
+            // 本文の高さが決まった瞬間に同じ値を幅へ入れる。
+            _currentSection?.RegisterCallback<GeometryChangedEvent>(_ => LayoutStepImage());
+
             // P2。「配置」も2度押し（調理の面に並んでいる釦なので、1度では動かさない）。
             _placementPress = new TwoPressButton(
                 root.Q<Button>("placementButton"), PlacementLabel, PlacementArmedLabel,
@@ -165,6 +175,38 @@ namespace KitchenXR.Presentation
 
         /// <summary>「一覧へ」が2度目を待っているか（試験用）。</summary>
         public bool IsBackToListArmed => _backToListArmedUntil > 0f && Time.unscaledTime <= _backToListArmedUntil;
+
+        /// <summary>
+        /// 工程の画像を正方形にする。一辺は**本文の高さ**（＝板の残り全部）。
+        /// ただし本文の幅の <see cref="ImageMaxWidthRatio"/> は越えない——
+        /// 文字の大きさを「大」にすると本文が縦に縮むのではなく右の列が要る幅が増えるので、
+        /// 画像が右の列を押し潰さないようにここで頭を押さえる。
+        /// </summary>
+        private void LayoutStepImage()
+        {
+            if (_currentImage == null || _currentSection == null)
+            {
+                return;
+            }
+
+            var height = _currentSection.resolvedStyle.height;
+            var width = _currentSection.resolvedStyle.width;
+            if (float.IsNaN(height) || float.IsNaN(width) || height <= 0f || width <= 0f)
+            {
+                return;
+            }
+
+            var side = Mathf.Min(height, width * ImageMaxWidthRatio);
+
+            // 同じ値を入れ直してレイアウトを揺らさない（GeometryChanged が自分で自分を呼ぶのを断つ）。
+            if (Mathf.Abs(_currentImage.resolvedStyle.width - side) < 0.5f)
+            {
+                return;
+            }
+
+            _currentImage.style.width = side;
+            _currentImage.style.height = side;
+        }
 
         /// <summary>「配置」が2度目を待っているか（試験用）。</summary>
         public bool IsPlacementArmed => _placementPress != null && _placementPress.IsArmed;
@@ -236,6 +278,10 @@ namespace KitchenXR.Presentation
             _nextLabel.text = next != null ? $"次: {next.Title}" : "次: —";
 
             ShowImageOrChip(current);
+
+            // 既にレイアウトが済んでいる板（＝2工程目以降）では GeometryChangedEvent が来ないので、
+            // ここでも一度当てる。初回は高さが未確定で、上の登録が受け持つ。
+            LayoutStepImage();
         }
 
         /// <summary>
@@ -323,12 +369,19 @@ namespace KitchenXR.Presentation
             _currentIngredientChip.style.display = DisplayStyle.None;
         }
 
+        /// <summary>
+        /// 画像の代わりの札（設計 §9）。v1.0.6 から画像の**上ではなく説明の下**に出る。
+        /// 材料が1つも無い工程は見出しと同じ文字を繰り返すだけなので、何も出さない。
+        /// </summary>
         private void ShowChip(Step step)
         {
             ReleaseShownTexture();
             _currentImage.style.backgroundImage = StyleKeyword.Null;
-            _currentIngredientChip.style.display = DisplayStyle.Flex;
-            _currentIngredientChip.text = BuildIngredientChipText(step);
+
+            var text = BuildIngredientChipText(step);
+            _currentIngredientChip.text = text;
+            _currentIngredientChip.style.display =
+                string.IsNullOrEmpty(text) ? DisplayStyle.None : DisplayStyle.Flex;
         }
 
         private void ReleaseShownTexture()
@@ -355,7 +408,7 @@ namespace KitchenXR.Presentation
         {
             if (step.IngredientsUsed.Count == 0)
             {
-                return step.Title;
+                return string.Empty;
             }
 
             var sb = new StringBuilder();

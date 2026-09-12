@@ -115,3 +115,6 @@ InitTestScene*.unity*
 
 # エディタのレイアウトの退避（Tools/editor-layout-backup.ps1 が作る。個人の設定なので入れない）
 /Tools/.layout-backup/
+
+# `unity test` が吐く結果の XML（手元の実行記録なので入れない）
+/test-results*.xml

@@ -9,6 +9,7 @@ using KitchenXR.Platform.Null;
 using KitchenXR.Presentation;
 using KitchenXR.Presentation.Video;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace KitchenXR.App
 {
@@ -58,6 +59,9 @@ namespace KitchenXR.App
         /// <summary>板の位置の控え（`panels.json`）。アンカーが使えるときも必ず書く（退避路）。</summary>
         private PanelPoseFile _panelPoseFile;
 
+        /// <summary>見え方の設定（文字と板の大きさ。2026-09-13 主人の指示）。</summary>
+        private DisplaySettings _displaySettings;
+
         private RecipeStore _recipeStore;
         private MediaStore _mediaStore;
         private ManorClient _manor;
@@ -91,6 +95,10 @@ namespace KitchenXR.App
             _eventQueue = CookEventQueue.CreateDefault();
             _lastSessionStore = LastSessionStore.CreateDefault();
 
+            // 見え方は板を立てるより先に読む（壊れていれば黙って既定に戻る）。当てるのは Start。
+            _displaySettings = DisplaySettings.CreateDefault();
+            _displaySettings.Load();
+
             LoadBundledSample();
 
             if (_recipePanel != null)
@@ -105,6 +113,11 @@ namespace KitchenXR.App
             {
                 _recipeListPanel.RecipeSelected += HandleRecipeSelected;
                 _recipeListPanel.PlacementRequested += HandlePlacementRequested;
+                _recipeListPanel.FontScaleSelected += HandleFontScaleSelected;
+                _recipeListPanel.PanelScaleSelected += HandlePanelScaleSelected;
+
+                // 一覧の写真（hero）も工程の画像と同じ経路でローカルから出す（設計 §11 追補）。
+                _recipeListPanel.Bind(_recipeStore);
             }
 
             if (_recipePanel != null)
@@ -134,6 +147,10 @@ namespace KitchenXR.App
             // 配置の板は配置モードの間だけ出る。
             PanelVisibility.SetVisible(_placementPanel, false);
 
+            // 板の縮尺は控え（panels.json）にもアンカーにも入っていない（位置と向きだけ）ので、
+            // 起動のたびにここで当て直す。文字のクラスも板の root が出来てからでないと付かない。
+            ApplyDisplaySettings();
+
             PlaceInitialPanels();
 
             _cts = new CancellationTokenSource();
@@ -162,6 +179,8 @@ namespace KitchenXR.App
             {
                 _recipeListPanel.RecipeSelected -= HandleRecipeSelected;
                 _recipeListPanel.PlacementRequested -= HandlePlacementRequested;
+                _recipeListPanel.FontScaleSelected -= HandleFontScaleSelected;
+                _recipeListPanel.PanelScaleSelected -= HandlePanelScaleSelected;
             }
 
             if (_recipePanel != null)
@@ -544,6 +563,53 @@ namespace KitchenXR.App
             await RefreshListAsync(token);
         }
 
+        // ---------------------------------------------------------------- 表示の設定
+
+        /// <summary>
+        /// 文字と板の大きさを当てる（2026-09-13 主人「設定とかで変更できたらもっといい」）。
+        ///
+        /// 当てる先は**調理と一覧の4枚**（一覧・レシピ・材料・タイマー）。
+        /// 動画の板は自分で寸法を決める（16:9 ⇄ 9:16）ので混ぜない。
+        /// 配置の操作板と手のひらメニューも、出ている間だけの板なので対象外。
+        /// </summary>
+        private void ApplyDisplaySettings()
+        {
+            if (_displaySettings == null)
+            {
+                return;
+            }
+
+            DisplaySettingsApplier.Apply(
+                _displaySettings, _recipeListPanel, _recipePanel, _ingredientsPanel, _timerPanel);
+
+            _recipeListPanel?.SetDisplaySettings(_displaySettings.FontScale, _displaySettings.PanelScale);
+        }
+
+        /// <summary>押した瞬間に反映して控える（設定の板に「決定」を置かない。設計 §7）。</summary>
+        private void HandleFontScaleSelected(DisplayScale scale)
+        {
+            if (_displaySettings == null || _displaySettings.FontScale == scale)
+            {
+                return;
+            }
+
+            _displaySettings.FontScale = scale;
+            _displaySettings.Save();
+            ApplyDisplaySettings();
+        }
+
+        private void HandlePanelScaleSelected(DisplayScale scale)
+        {
+            if (_displaySettings == null || _displaySettings.PanelScale == scale)
+            {
+                return;
+            }
+
+            _displaySettings.PanelScale = scale;
+            _displaySettings.Save();
+            ApplyDisplaySettings();
+        }
+
         // ---------------------------------------------------------------- 配置モード（P2）
 
         /// <summary>
@@ -844,7 +910,16 @@ namespace KitchenXR.App
                 return;
             }
 
-            const float timerWidthMeters = 0.44f; // KitchenSceneBuilder の TimerWidthUnits と対。
+            // タイマーの板の実幅は板そのものから読む。表示の設定（板の大きさ 小／大）で
+            // localScale が変わるので、KitchenSceneBuilder の定数（0.44m）を写すと合わなくなる。
+            var timerWidthMeters = 0.44f;
+            var timerDocument = _timerPanel != null ? _timerPanel.GetComponent<UIDocument>() : null;
+            if (timerDocument != null)
+            {
+                timerWidthMeters = timerDocument.worldSpaceSize.x
+                    / WorldSpacePanelFactory.PanelPixelsPerUnit * _timerPanel.transform.localScale.x;
+            }
+
             const float gapMeters = 0.04f;
 
             var timerCenter = basePosition + right * (_lateralSpacingMeters + timerWidthMeters / 2f);

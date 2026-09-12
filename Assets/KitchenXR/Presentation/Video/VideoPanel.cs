@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using KitchenXR.Domain;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -29,6 +30,22 @@ namespace KitchenXR.Presentation.Video
     /// （プレハブ側の <c>GraphicRaycaster</c> と <c>Button</c> は
     /// <see cref="YoutubePlayerBridge.Initialize"/> で止めてある）。
     /// 絵は板の面より手前にあるので、窓を触っても「入り」の判定には届かない。
+    ///
+    /// 2026-09-13 主人の実機確認（v1.0.6）: 「サムネイルは小さく出るが、再生を押しても反応がない。
+    /// 一覧を押しても変化がない。原因が分からないのでエラーや失敗時にどこかに表示してほしい」。
+    /// 直したこと・足したこと:
+    ///   - **札**（3行）: WebView／HTML／プレイヤーの状態、板が最後にしたこと、最後の失敗（赤）。
+    ///     Unity のログのうち動画に関わるもの（主人の <c>YoutubePlayer</c> の Debug.Log と
+    ///     <c>Player Error</c>）も拾って出す。
+    ///   - 「再生」は**選ぶ前でも押せる**（v1.0.4 は選ぶまで無効にしていた。無効の Button は
+    ///     ポークも受けないので「押しても反応がない」に見えた）。主人の <c>youtube.html</c> は
+    ///     既定の動画を cue して立つので、押せばそれが始まる。
+    ///   - 再生を頼んで <see cref="GestureFallbackDelayMs"/> 待っても YouTube が「再生中」と
+    ///     返さないとき、WebView の中央をタップする（<see cref="IVideoPlayer.TapCenter"/>。
+    ///     Android の WebView が人の操作なしの再生を拒む対策）。選んだとき（autoplay）も同じ。
+    ///   - 絵の寸法: 窓の実測（<c>worldBound</c>）は板の**ローカル単位**（UI px ÷ 100）で返る。
+    ///     v1.0.4 はここに板の縮尺 0.2 を余計に掛けていて、絵が本来の 1/5（10cm）だった。
+    ///   - 一覧の行を 1.6cm → 2.8cm に（指先の当たりに対して薄すぎた）。
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class VideoPanel : MonoBehaviour
@@ -46,13 +63,22 @@ namespace KitchenXR.Presentation.Video
         /// <summary>絵を板の面より手前へ出す量（板のローカル単位。負が手前）。実寸 0.6mm。</summary>
         private const float SurfaceOffset = -0.003f;
 
-        /// <summary>Canvas の 1px を実寸 1mm にするための縮尺（板の localScale 0.2 と合わせて 0.001m/px）。</summary>
+        /// <summary>
+        /// プレハブの根の縮尺（板のローカル単位／Canvas px）。
+        /// 板の localScale 0.2 と合わせて Canvas の 1px = 実寸 1mm。
+        /// </summary>
         private const float SurfaceCanvasScale = 0.005f;
 
         /// <summary>音量の刻み（設計 §7「押せるのは大きく疎なボタン」なので細かくしない）。</summary>
         public const int VolumeStep = 10;
 
         public const int DefaultVolume = 70;
+
+        /// <summary>再生を頼んでから「返事が無い」と見なして中央をタップするまで（ミリ秒）。</summary>
+        public const int GestureFallbackDelayMs = 900;
+
+        /// <summary>札を書き直す間隔（秒）。毎フレーム反射で読むほどの価値は無い。</summary>
+        private const float StatusRefreshSeconds = 0.5f;
 
         [SerializeField] private GameObject _playerRoot;
 
@@ -66,6 +92,9 @@ namespace KitchenXR.Presentation.Video
         private Label _notice;
         private Label _nowPlaying;
         private Label _volumeLabel;
+        private Label _statusLine;
+        private Label _actionLine;
+        private Label _errorLine;
         private Button _playPauseButton;
         private Button _aspectButton;
 
@@ -76,6 +105,12 @@ namespace KitchenXR.Presentation.Video
         private int _selected = -1;
         private int _volume = DefaultVolume;
         private bool _playing;
+
+        private string _lastAction = string.Empty;
+        private string _lastLog;
+        private string _surfaceInfo = string.Empty;
+        private float _statusClock;
+        private int _fallbackSerial;
 
         // 向きを変えても動かさない点（板の下辺の中央）。上へ伸ばすと天井に向かうので、
         // 下辺を固定して**上へ**伸ばす……のではなく、下辺を固定して高さだけ変える。
@@ -93,6 +128,9 @@ namespace KitchenXR.Presentation.Video
 
         public bool IsPlaying => _playing;
 
+        /// <summary>札の「最後にしたこと」（試験用）。</summary>
+        public string LastAction => _lastAction;
+
         private void Awake()
         {
             _document = GetComponent<UIDocument>();
@@ -103,6 +141,9 @@ namespace KitchenXR.Presentation.Video
             _notice = _root.Q<Label>("editorNotice");
             _nowPlaying = _root.Q<Label>("nowPlayingLabel");
             _volumeLabel = _root.Q<Label>("volumeLabel");
+            _statusLine = _root.Q<Label>("statusLine");
+            _actionLine = _root.Q<Label>("actionLine");
+            _errorLine = _root.Q<Label>("errorLine");
             _playPauseButton = _root.Q<Button>("playPauseButton");
             _aspectButton = _root.Q<Button>("aspectButton");
 
@@ -123,6 +164,35 @@ namespace KitchenXR.Presentation.Video
 
             ApplyAspect(Aspect);
             RefreshControls();
+            RefreshStatus();
+        }
+
+        private void OnEnable() => Application.logMessageReceived += HandleLog;
+
+        private void OnDisable() => Application.logMessageReceived -= HandleLog;
+
+        private void Update()
+        {
+            _statusClock += Time.unscaledDeltaTime;
+            if (_statusClock < StatusRefreshSeconds)
+            {
+                return;
+            }
+
+            _statusClock = 0f;
+
+            // 実機では YouTube が返す状態を正とする（押した／押していないの覚えより確か）。
+            if (_player != null && _player.IsAvailable)
+            {
+                var reported = _player.IsReportedPlaying;
+                if (reported != _playing)
+                {
+                    _playing = reported;
+                    RefreshControls();
+                }
+            }
+
+            RefreshStatus();
         }
 
         // ------------------------------------------------------------------ 配線
@@ -136,6 +206,7 @@ namespace KitchenXR.Presentation.Video
             _player.SetVolume(_volume);
             _player.SetAspect(Aspect);
             RefreshControls();
+            RefreshStatus();
         }
 
         /// <summary>一覧を貼り替える（<c>media.json</c> から。最大 8 件は <see cref="MediaJson"/> が守る）。</summary>
@@ -176,7 +247,8 @@ namespace KitchenXR.Presentation.Video
                 row.Add(title);
 
                 // 行そのものが的（材料の板と同じ流儀。Toggle は押し上げで反転するので使わない）。
-                PokePress.Bind(row, _debounce, $"video-item-{index}", () => Select(index));
+                // 押し込みの見た目も付ける——実機で「押せたか」が分かるように。
+                PokePress.BindButton(row, _debounce, $"video-item-{index}", () => Select(index));
 
                 _list.Add(row);
                 _rows.Add(row);
@@ -194,37 +266,68 @@ namespace KitchenXR.Presentation.Video
             }
 
             _selected = index;
+            SetAction($"一覧: 「{_items[index].Title}」→ 読み込み（{_items[index].VideoId}）");
             _player.Load(_items[index].VideoId);
             _player.SetVolume(_volume);
             _playing = true; // YoutubePlayer.Load は autoplay 既定。
             RefreshControls();
+            EnsurePlayingLaterAsync().Forget();
         }
 
         public void TogglePlayPause()
         {
-            if (_selected < 0)
-            {
-                return; // まだ何も選んでいない。
-            }
-
             if (_playing)
             {
+                SetAction("一時停止を頼みました");
                 _player.Pause();
                 _playing = false;
             }
             else
             {
+                // 選ぶ前でも押せる。主人の youtube.html は既定の動画を cue して立つので、それが始まる。
+                SetAction(_selected >= 0 ? "再生を頼みました" : "再生を頼みました（cue 済みの動画）");
                 _player.Play();
                 _playing = true;
+                EnsurePlayingLaterAsync().Forget();
             }
 
             RefreshControls();
+        }
+
+        /// <summary>
+        /// 再生を頼んだあと、YouTube が「再生中」と返さなければ WebView の中央をタップする。
+        /// Editor（<see cref="NullVideoPlayer"/>）では何もしない——実機の WebView の癖への対策なので。
+        /// 続けて何度も頼まれたら最後の1回だけが効く（<see cref="_fallbackSerial"/>）。
+        /// </summary>
+        private async UniTaskVoid EnsurePlayingLaterAsync()
+        {
+            if (_player == null || !_player.IsAvailable)
+            {
+                return;
+            }
+
+            var serial = ++_fallbackSerial;
+            var token = this.GetCancellationTokenOnDestroy();
+            await UniTask.Delay(GestureFallbackDelayMs, cancellationToken: token).SuppressCancellationThrow();
+            if (token.IsCancellationRequested || serial != _fallbackSerial || _player == null)
+            {
+                return;
+            }
+
+            if (!_playing || _player.IsReportedPlaying)
+            {
+                return;
+            }
+
+            SetAction("再生の返事が無いので窓の中央をタップしました（操作なしの再生を WebView が拒む対策）");
+            _player.TapCenter();
         }
 
         public void ChangeVolume(int delta)
         {
             _volume = Mathf.Clamp(_volume + delta, 0, 100);
             _player.SetVolume(_volume);
+            SetAction($"音量 {_volume}");
             RefreshControls();
         }
 
@@ -290,15 +393,16 @@ namespace KitchenXR.Presentation.Video
                 _bottomCenter - right * (widthMeters / 2f) + up * heightMeters, _rotation);
         }
 
-        private static float ToMeters(float units) =>
-            units / WorldSpacePanelFactory.PanelPixelsPerUnit * WorldSpacePanelFactory.PanelLocalScale;
+        /// <summary>UI px → 実寸（m）。板の縮尺は実際の Transform から読む（表示の設定で変わり得る）。</summary>
+        private float ToMeters(float units) =>
+            units / WorldSpacePanelFactory.PanelPixelsPerUnit * transform.localScale.x;
 
         // ------------------------------------------------------------------ 絵（WebView の板）
 
         /// <summary>
         /// 主人の RawImage を「動画の窓」に合わせる。
-        /// 窓の実測（<c>worldBound</c>＝板のローカル単位）に、目当ての比の**一番大きい矩形**を
-        /// 収める。余白の計算違いがあっても比だけは崩れない。
+        /// 窓の実測（<c>worldBound</c>＝板のローカル単位。UI px ÷ PixelsPerUnit）に、
+        /// 目当ての比の**一番大きい矩形**を収める。余白の計算違いがあっても比だけは崩れない。
         /// </summary>
         private void LayoutSurface()
         {
@@ -339,14 +443,74 @@ namespace KitchenXR.Presentation.Video
             canvas.localRotation = Quaternion.identity;
             canvas.localScale = Vector3.one;
 
-            // 板のローカル単位 → Canvas の px（1px = 1mm 実寸）。
-            var pxPerUnit = WorldSpacePanelFactory.PanelLocalScale / SurfaceCanvasScale;
+            // 板のローカル単位 → Canvas の px。根の縮尺が SurfaceCanvasScale なので、その逆数。
+            // （v1.0.4 はここに板の縮尺 0.2 を余計に掛けていて、絵が 1/5 の大きさだった。）
+            var canvasPxPerUnit = 1f / SurfaceCanvasScale;
             surface.localScale = Vector3.one;
             surface.localRotation = Quaternion.identity;
             surface.anchorMin = surface.anchorMax = new Vector2(0.5f, 0.5f);
             surface.pivot = new Vector2(0.5f, 0.5f);
             surface.anchoredPosition3D = Vector3.zero;
-            surface.sizeDelta = new Vector2(width * pxPerUnit, height * pxPerUnit);
+            surface.sizeDelta = new Vector2(width * canvasPxPerUnit, height * canvasPxPerUnit);
+
+            // 札に出す（寸法の計算違いを実機で見分けるため）。実寸は板の縮尺込み。
+            var scale = transform.localScale.x;
+            _surfaceInfo =
+                $"窓 {rect.width:0.00}×{rect.height:0.00}u → 絵 {width * scale * 1000f:0}×{height * scale * 1000f:0}mm";
+        }
+
+        // ------------------------------------------------------------------ 札
+
+        private void SetAction(string text)
+        {
+            _lastAction = text ?? string.Empty;
+            RefreshStatus();
+        }
+
+        /// <summary>
+        /// Unity のログのうち動画に関わるものを札へ。主人の <c>YoutubePlayer</c> は
+        /// 状態の変化や失敗を Debug.Log／LogError で出すので、実機ではこれが一番早い手掛かりになる。
+        /// </summary>
+        private void HandleLog(string condition, string stackTrace, LogType type)
+        {
+            if (string.IsNullOrEmpty(condition))
+            {
+                return;
+            }
+
+            if (!condition.Contains("YoutubePlayer") && !condition.Contains("Player ") &&
+                !condition.Contains("TLab") && !condition.Contains("動画の板") &&
+                !condition.Contains("html loaded") && !condition.Contains("send "))
+            {
+                return;
+            }
+
+            var mark = type == LogType.Error || type == LogType.Exception ? "！" : "・";
+            _lastLog = mark + condition.Replace("\n", " ");
+            RefreshStatus();
+        }
+
+        private void RefreshStatus()
+        {
+            if (_statusLine != null)
+            {
+                var status = _player != null ? _player.StatusLine : "—";
+                _statusLine.text = string.IsNullOrEmpty(_surfaceInfo) ? status : $"{status} / {_surfaceInfo}";
+            }
+
+            if (_actionLine != null)
+            {
+                var log = string.IsNullOrEmpty(_lastLog) ? string.Empty : $"  {_lastLog}";
+                _actionLine.text = $"{_lastAction}{log}";
+            }
+
+            if (_errorLine != null)
+            {
+                var error = _player?.LastError;
+                var has = !string.IsNullOrEmpty(error);
+                _errorLine.text = has ? $"失敗: {error}" : string.Empty;
+                _errorLine.EnableInClassList("is-hidden", !has);
+            }
         }
 
         // ------------------------------------------------------------------ 見た目
@@ -373,7 +537,8 @@ namespace KitchenXR.Presentation.Video
             if (_playPauseButton != null)
             {
                 _playPauseButton.text = _playing ? "一時停止" : "再生";
-                _playPauseButton.SetEnabled(_selected >= 0);
+                // 常に押せる（無効の Button はポークも受けず「反応がない」に見える）。
+                _playPauseButton.SetEnabled(true);
             }
 
             if (_volumeLabel != null)

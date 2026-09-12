@@ -12,6 +12,9 @@
             <ui:Label name="nowPlayingLabel" text="—" class="caption video-now-playing" />
             <ui:Label name="volumeLabel" text="音量 70" class="caption" />
         </ui:VisualElement>
+        <ui:Label name="statusLine" text="" class="caption video-status-line" />
+        <ui:Label name="actionLine" text="" class="caption video-status-line" />
+        <ui:Label name="errorLine" text="" class="caption video-status-line video-status-line--error is-hidden" />
         <ui:VisualElement name="buttonRow" class="video-button-row">
             <ui:Button name="playPauseButton" text="再生" class="kitchen-button kitchen-button--primary" />
             <ui:Button name="volumeDownButton" text="−" class="kitchen-button kitchen-button--secondary" />

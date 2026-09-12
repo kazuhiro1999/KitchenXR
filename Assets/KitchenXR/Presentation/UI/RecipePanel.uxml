@@ -3,29 +3,31 @@
     <ui:Style src="RecipePanel.uss" />
     <ui:VisualElement name="root" class="root-panel">
         <ui:VisualElement name="header" class="recipe-header">
-            <ui:Button name="backToListButton" text="一覧へ" class="kitchen-button kitchen-button--secondary recipe-to-list-button" />
-            <ui:Button name="placementButton" text="配置" class="kitchen-button kitchen-button--secondary recipe-place-button" />
             <ui:VisualElement name="stepDots" class="step-dots" />
             <ui:Label name="progressLabel" text="0%" class="caption recipe-progress-label" />
         </ui:VisualElement>
-        <ui:VisualElement class="divider" />
-        <ui:ScrollView name="contentScroll" mode="Vertical" horizontal-scroller-visibility="Hidden" vertical-scroller-visibility="Auto" class="recipe-content">
+        <ui:VisualElement class="divider recipe-divider" />
+        <ui:VisualElement name="contentArea" class="recipe-content">
             <ui:VisualElement name="currentSection" class="recipe-current-section">
-                <ui:Label name="currentTitle" text="工程の見出し" class="heading" />
-                <ui:VisualElement name="currentImage" class="recipe-image-area">
-                    <ui:Label name="currentIngredientChip" text="材料名" class="body-text recipe-ingredient-chip" />
+                <ui:VisualElement name="currentImage" class="recipe-image-area" />
+                <ui:VisualElement name="currentText" class="recipe-text-column">
+                    <ui:Label name="currentTitle" text="工程の見出し" class="heading recipe-step-title" />
+                    <ui:Label name="currentInstruction" text="工程の説明" class="body-text recipe-instruction" />
+                    <ui:Label name="currentIngredientChip" text="材料名" class="caption recipe-ingredient-chip" />
+                    <ui:VisualElement class="recipe-text-spacer" />
+                    <ui:Label name="nextLabel" text="次: —" class="caption caption--dim recipe-next-label" />
                 </ui:VisualElement>
-                <ui:Label name="currentInstruction" text="工程の説明" class="body-text" />
-                <ui:Label name="nextLabel" text="次: —" class="caption caption--dim recipe-next-label" />
             </ui:VisualElement>
             <ui:VisualElement name="completeSection" class="recipe-complete-section is-hidden">
                 <ui:Label text="お疲れさまでした。完成です！" class="heading" />
                 <ui:Button name="finishButton" text="作り終えた" class="kitchen-button kitchen-button--primary recipe-finish-button" />
             </ui:VisualElement>
-        </ui:ScrollView>
+        </ui:VisualElement>
         <ui:VisualElement name="buttonRow" class="recipe-button-row">
-            <ui:Button name="backButton" text="戻る" class="kitchen-button kitchen-button--secondary" />
+            <ui:Button name="backToListButton" text="一覧へ" class="kitchen-button kitchen-button--secondary recipe-to-list-button" />
+            <ui:Button name="placementButton" text="配置" class="kitchen-button kitchen-button--secondary recipe-place-button" />
             <ui:VisualElement class="recipe-spacer" />
+            <ui:Button name="backButton" text="戻る" class="kitchen-button kitchen-button--secondary" />
             <ui:Button name="nextButton" text="次へ" class="kitchen-button kitchen-button--primary" />
         </ui:VisualElement>
     </ui:VisualElement>

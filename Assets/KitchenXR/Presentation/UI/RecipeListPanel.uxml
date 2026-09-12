@@ -5,12 +5,29 @@
         <ui:VisualElement name="listHeader" class="recipe-list-header">
             <ui:VisualElement class="recipe-list-header-row">
                 <ui:Label text="レシピ帳" class="heading recipe-list-title" />
+                <ui:Button name="settingsButton" text="設定" class="kitchen-button kitchen-button--secondary recipe-settings-open-button" />
                 <ui:Button name="placementButton" text="配置" class="kitchen-button kitchen-button--secondary recipe-place-button" />
             </ui:VisualElement>
             <ui:Label name="statusLabel" text="" class="caption recipe-list-status" />
         </ui:VisualElement>
-        <ui:VisualElement class="divider" />
+        <ui:VisualElement class="divider recipe-list-divider" />
         <ui:ScrollView name="recipeScroll" mode="Vertical" horizontal-scroller-visibility="Hidden" vertical-scroller-visibility="Auto" class="recipe-list-scroll" />
+        <ui:VisualElement name="settingsSection" class="recipe-settings-section is-hidden">
+            <ui:Label text="文字の大きさ" class="caption recipe-settings-caption" />
+            <ui:VisualElement class="recipe-settings-row">
+                <ui:Button name="fontSmallButton" text="小" class="kitchen-button kitchen-button--secondary recipe-settings-option" />
+                <ui:Button name="fontMediumButton" text="中" class="kitchen-button kitchen-button--secondary recipe-settings-option" />
+                <ui:Button name="fontLargeButton" text="大" class="kitchen-button kitchen-button--secondary recipe-settings-option" />
+            </ui:VisualElement>
+            <ui:Label text="板の大きさ" class="caption recipe-settings-caption" />
+            <ui:VisualElement class="recipe-settings-row">
+                <ui:Button name="panelSmallButton" text="小" class="kitchen-button kitchen-button--secondary recipe-settings-option" />
+                <ui:Button name="panelMediumButton" text="中" class="kitchen-button kitchen-button--secondary recipe-settings-option" />
+                <ui:Button name="panelLargeButton" text="大" class="kitchen-button kitchen-button--secondary recipe-settings-option" />
+            </ui:VisualElement>
+            <ui:VisualElement class="recipe-settings-spacer" />
+            <ui:Button name="settingsCloseButton" text="閉じる" class="kitchen-button kitchen-button--secondary recipe-settings-close" />
+        </ui:VisualElement>
         <ui:VisualElement name="busySection" class="recipe-list-busy is-hidden">
             <ui:Label name="busyLabel" text="準備中" class="heading" />
         </ui:VisualElement>

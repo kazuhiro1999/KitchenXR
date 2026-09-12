@@ -29,3 +29,12 @@ adb push media.json /sdcard/Android/data/com.kazuhiro.kitchenxr/files/media.json
 
 **線引き。** DRM 付きの配信（Netflix・Prime 等）は WebView では再生できない
 （Widevine L1 が無い。設計 §6）。YouTube・ショーツ・一般の Web 動画は出る。
+
+**動かないときの見方（2026-09-13）。** 板の下、ボタンの上に**札が3行**出る。
+1 行目は中の様子（`WebView INITIALIZED / HTML 読込済 / 動画 待機（cue） <id> / 窓 …→ 絵 …mm`）、
+2 行目は板が最後にしたこと（「一覧: 「…」→ 読み込み」「再生を頼みました」等）と、主人の
+`YoutubePlayer` が Unity のログに出した最後の一言、3 行目（赤）は最後の失敗。
+「再生」は選ぶ前でも押せる（`youtube.html` が cue している既定の動画が始まる）。
+再生を頼んで約 1 秒しても YouTube が「再生中」と返さないときは、板が WebView の中央を一度
+タップする（Android の WebView は人の操作を伴わない再生を拒むことがあるため。1 行目の末尾に
+「タップ n」と出る）。それでも始まらないときは、この 3 行を読み上げていただければ絞り込める。
