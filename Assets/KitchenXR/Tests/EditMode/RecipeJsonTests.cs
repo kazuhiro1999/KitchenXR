@@ -6,8 +6,8 @@ using UnityEngine;
 namespace KitchenXR.Tests.EditMode
 {
     /// <summary>
-    /// 見本 <c>Docs/samples/chahan.recipe.json</c>（Resources 配下にコピー済み）の往復を確かめる。
-    /// 設計 §3 の見本どおり、9工程・3 phase・材料13 であることが契約 JSON を守れているかの検算になる。
+    /// 見本のレシピ（Resources 配下）の往復を確かめる。
+    /// 9工程・3 phase・材料13 であることが契約 JSON を守れているかの検算になる。
     /// </summary>
     public class RecipeJsonTests
     {
@@ -22,8 +22,8 @@ namespace KitchenXR.Tests.EditMode
             var recipe = ParseChahan();
 
             Assert.AreEqual("R1", recipe.Id);
-            Assert.AreEqual("パラパラ炒飯（基本）", recipe.Title);
-            Assert.AreEqual("https://oceans-nadia.com/user/253470/recipe/440737", recipe.SourceUrl);
+            Assert.AreEqual("パラパラ炒飯（見本）", recipe.Title);
+            Assert.AreEqual(string.Empty, recipe.SourceUrl, "見本は出典を持たない。");
         }
 
         [Test]
