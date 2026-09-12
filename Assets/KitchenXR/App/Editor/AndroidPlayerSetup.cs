@@ -25,10 +25,26 @@ namespace KitchenXR.App.Editor
         public const string TargetBundleVersion = "1.0.12";
 
         /// <summary>`TLabWebView` の README が求める最小 API（Android 8.0）。</summary>
-        public const int MinimumSupportedSdk = 26;
+        public const int WebViewMinimumSdk = 26;
 
-        /// <summary>読むだけ（ここからは書き換えない）。</summary>
+        /// <summary>
+        /// パススルーカメラの CPU 画像が要る最小 API（Android 12L）。
+        /// Horizon OS v74 は Android 12L 基盤なので、上げても実機で落ちる機は無い。
+        /// </summary>
+        public const int CameraMinimumSdk = 32;
+
+        /// <summary>この構成が要る最小 API（上の2つの厳しい方）。</summary>
+        public const int MinimumSupportedSdk = CameraMinimumSdk;
+
+        /// <summary>
+        /// OpenXR の設定。読むのが基本だが、カメラ画像だけはここから立てる
+        /// （<see cref="ApplyCameraImageSupport"/>。permission が付くかどうかを決めるので、
+        /// 手で入れたつもりのまま外れているのが一番困る）。
+        /// </summary>
         public const string OpenXrSettingsPath = "Assets/XR/Settings/OpenXRPackageSettings.asset";
+
+        /// <summary>「Meta Quest: Camera (Passthrough)」の feature id（Unity OpenXR: Meta）。</summary>
+        public const string CameraFeatureId = "com.unity.openxr.feature.arfoundation-meta-camera";
 
         public const string AdaptiveForegroundPath = "Assets/KitchenXR/Icons/icon_adaptive_fg.png";
         public const string AdaptiveBackgroundPath = "Assets/KitchenXR/Icons/icon_adaptive_bg.png";
@@ -40,14 +56,107 @@ namespace KitchenXR.App.Editor
             ApplyVersion();
             ApplyIcons();
             ApplyWebViewRequirements();
+            ApplyCameraImageSupport();
 
             AssetDatabase.SaveAssets();
             Debug.Log($"[KitchenXR] bundleVersion={PlayerSettings.bundleVersion} " +
                       $"bundleVersionCode={PlayerSettings.Android.bundleVersionCode}");
 
-            foreach (var issue in WebViewRequirementIssues())
+            foreach (var issue in WebViewRequirementIssues().Concat(CameraRequirementIssues()))
             {
                 Debug.LogWarning($"[KitchenXR] {issue}");
+            }
+        }
+
+        // ---------------------------------------------------------------- カメラ（v1-d）
+
+        /// <summary>
+        /// パススルーカメラの CPU 画像を有効にする。立てると Unity OpenXR: Meta のビルド hook が
+        /// manifest へ <c>horizonos.permission.HEADSET_CAMERA</c>（と
+        /// <c>android.permission.CAMERA</c>・<c>com.oculus.permission.USE_PASSTHROUGH_CAMERA</c>）を
+        /// 入れるので、<c>Plugins/Android/AndroidManifest.xml</c> は要らない。
+        ///
+        /// 触るのは Android 側だけ。型（<c>ARCameraFeature</c>）で引かずに feature id と
+        /// <see cref="SerializedObject"/> で引くのは、機種固有の SDK への参照を
+        /// <c>Platform/&lt;系&gt;/</c> の外へ出さないため（<c>PlatformIsolationTests</c> の線）。
+        /// </summary>
+        public static void ApplyCameraImageSupport()
+        {
+            var changed = false;
+            foreach (var so in AndroidCameraFeatures())
+            {
+                var support = so.FindProperty("m_CameraImageSupport");
+                if (support == null || support.boolValue)
+                {
+                    continue;
+                }
+
+                support.boolValue = true;
+                so.ApplyModifiedPropertiesWithoutUndo();
+                changed = true;
+            }
+
+            if (changed)
+            {
+                AssetDatabase.SaveAssets();
+                Debug.Log("[KitchenXR] OpenXR の Camera Image Support を立てました（HEADSET_CAMERA が manifest に入ります）。");
+            }
+        }
+
+        /// <summary>Android 側の「Meta Quest: Camera (Passthrough)」が有効で、画像取得も立っているか。</summary>
+        public static bool CameraImageSupportEnabled()
+        {
+            foreach (var so in AndroidCameraFeatures())
+            {
+                var featureEnabled = so.FindProperty("m_enabled");
+                var support = so.FindProperty("m_CameraImageSupport");
+                if (support != null && support.boolValue &&
+                    (featureEnabled == null || featureEnabled.boolValue))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>カメラ画像が取れる条件（空なら問題なし）。EditMode 試験と Apply の両方が見る。</summary>
+        public static List<string> CameraRequirementIssues()
+        {
+            var issues = new List<string>();
+
+            if (!CameraImageSupportEnabled())
+            {
+                issues.Add("OpenXR の「Meta Quest: Camera (Passthrough)」の Camera Image Support が"
+                           + "立っていません（カメラ画像が取れず、HEADSET_CAMERA も manifest に入りません）。"
+                           + $"{nameof(ApplyCameraImageSupport)} を回してください。");
+            }
+
+            if ((int)PlayerSettings.Android.minSdkVersion < CameraMinimumSdk)
+            {
+                issues.Add($"Minimum API Level が {(int)PlayerSettings.Android.minSdkVersion} です"
+                           + $"（CPU 画像は Android 12L ＝ {CameraMinimumSdk} 以上）。");
+            }
+
+            return issues;
+        }
+
+        /// <summary>Android の「Meta Quest: Camera (Passthrough)」の設定（普通は1つ）。</summary>
+        private static IEnumerable<SerializedObject> AndroidCameraFeatures()
+        {
+            foreach (var asset in AssetDatabase.LoadAllAssetsAtPath(OpenXrSettingsPath))
+            {
+                if (asset == null || !asset.name.EndsWith("Android", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var so = new SerializedObject(asset);
+                var id = so.FindProperty("featureIdInternal");
+                if (id != null && id.stringValue == CameraFeatureId)
+                {
+                    yield return so;
+                }
             }
         }
 
@@ -120,10 +229,10 @@ namespace KitchenXR.App.Editor
                 issues.Add("Android の Graphics API が空です。");
             }
 
-            if ((int)PlayerSettings.Android.minSdkVersion < MinimumSupportedSdk)
+            if ((int)PlayerSettings.Android.minSdkVersion < WebViewMinimumSdk)
             {
                 issues.Add($"Minimum API Level が {(int)PlayerSettings.Android.minSdkVersion} です"
-                           + $"（WebView のプラグインは {MinimumSupportedSdk} 以上）。");
+                           + $"（WebView のプラグインは {WebViewMinimumSdk} 以上）。");
             }
 
             if (PlayerSettings.insecureHttpOption != InsecureHttpOption.AlwaysAllowed)
