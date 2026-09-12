@@ -39,7 +39,7 @@ Unity Editor で `Assets/KitchenXR/Scenes/Kitchen.unity` を開きます。シ�
 
 # 試験
 unity test --mode EditMode      # 187 件
-unity test --mode PlayMode      #  79 件
+unity test --mode PlayMode      #  80 件
 
 # Android（Quest 3）の APK。出力は Build/KitchenXR_v<bundleVersion>.apk
 unity build --target Android --execute-method KitchenXR.App.Editor.AndroidBuilder.PerformBuild
