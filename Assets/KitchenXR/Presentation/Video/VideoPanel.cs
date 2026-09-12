@@ -992,7 +992,17 @@ namespace KitchenXR.Presentation.Video
                 return;
             }
 
-            var rect = _videoArea.worldBound;
+            // 2026-09-13 実機（v1.0.10）「動画が元の位置のずっと右上に 10 倍の大きさで出る」。
+            // v1.0.9 まで使っていた worldBound は「どの座標系で返るか」が板の構成で変わって見えた
+            // （中央にあった窓では狂いが見えなかった）。ここからは**板の根から見た px の矩形**を
+            // 自分で取り、既知の換算だけで置く: 根の (0,0) は板の Transform の原点（左上）、
+            // UI の y は下向きなので局所座標では負、1px = 1/PixelsPerUnit 局所単位。
+            var px = _videoArea.ChangeCoordinatesTo(_root, new Rect(Vector2.zero, _videoArea.layout.size));
+            var rect = new Rect(
+                px.x / WorldSpacePanelFactory.PanelPixelsPerUnit,
+                -(px.y + px.height) / WorldSpacePanelFactory.PanelPixelsPerUnit,
+                px.width / WorldSpacePanelFactory.PanelPixelsPerUnit,
+                px.height / WorldSpacePanelFactory.PanelPixelsPerUnit);
             if (rect.width <= 0f || rect.height <= 0f)
             {
                 return; // レイアウトがまだ。GeometryChangedEvent でまた来る。

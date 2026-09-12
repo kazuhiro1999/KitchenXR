@@ -29,7 +29,7 @@ namespace KitchenXR.App.Editor
     /// </summary>
     public static class AndroidPlayerSetup
     {
-        public const string TargetBundleVersion = "1.0.11";
+        public const string TargetBundleVersion = "1.0.12";
 
         /// <summary>`TLabWebView` の README が求める最小 API（Android 8.0）。</summary>
         public const int MinimumSupportedSdk = 26;
@@ -74,6 +74,11 @@ namespace KitchenXR.App.Editor
             // YouTube を開くので Internet permission を明示的に立てる
             // （UnityWebRequest を使っていれば自動で付くが、「付いているつもり」を無くす）。
             PlayerSettings.Android.forceInternetPermission = true;
+
+            // 2026-09-13 実機ログ「Insecure connection not allowed」——Unity 6 の既定は
+            // 「HTTP（非暗号）を許さない」で、manor は家の LAN に http://192.168.x.y:8789 で居る。
+            // ADR-017 D7 のとおり LAN の平文は今回受け入れる（将来 TOFU の HTTPS にしたら戻す）。
+            PlayerSettings.insecureHttpOption = InsecureHttpOption.AlwaysAllowed;
 
             if ((int)PlayerSettings.Android.minSdkVersion < MinimumSupportedSdk)
             {
@@ -127,6 +132,12 @@ namespace KitchenXR.App.Editor
             {
                 issues.Add($"Minimum API Level が {(int)PlayerSettings.Android.minSdkVersion} です"
                            + $"（WebView のプラグインは {MinimumSupportedSdk} 以上）。");
+            }
+
+            if (PlayerSettings.insecureHttpOption != InsecureHttpOption.AlwaysAllowed)
+            {
+                issues.Add("Allow downloads over HTTP が Always allowed ではありません。"
+                           + "manor（http://…:8789）へ繋げません。");
             }
 
             if (!PlayerSettings.Android.forceInternetPermission)
