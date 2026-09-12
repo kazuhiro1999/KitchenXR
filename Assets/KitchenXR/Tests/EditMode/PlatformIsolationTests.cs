@@ -22,6 +22,15 @@ namespace KitchenXR.Tests.EditMode
         /// </summary>
         private static readonly string[] WebViewMarkers = { "TLab.Android.WebView", "TLabWebView", "TLabVKeyborad" };
 
+        /// <summary>
+        /// Quest のパススルーカメラ（Unity OpenXR: Meta）の印。
+        /// 「この SDK に触れてよいのは <c>Platform/MetaCamera/</c> の中だけ」の規則に使う。
+        /// </summary>
+        private static readonly string[] MetaCameraMarkers =
+        {
+            "UnityEngine.XR.OpenXR.Features.Meta", "MetaOpenXRCameraSubsystem", "XRCpuImage",
+        };
+
         private static string KitchenXrRoot => Path.Combine(Application.dataPath, "KitchenXR");
 
         /// <summary>
@@ -35,6 +44,7 @@ namespace KitchenXR.Tests.EditMode
         {
             "/Platform/ArFoundation/",
             "/Platform/Meta/",
+            "/Platform/MetaCamera/",
             "/Platform/Pico/",
             "/Platform/WebXr/",
         };
@@ -100,6 +110,46 @@ namespace KitchenXR.Tests.EditMode
                     {
                         violations.Add($"{normalized} に '{marker}' への言及があります"
                                        + "（WebView は Presentation/Video/ の中だけで包むこと）");
+                    }
+                }
+            }
+
+            Assert.IsEmpty(violations, string.Join("\n", violations));
+        }
+
+        /// <summary>
+        /// Quest のパススルーカメラ（Unity OpenXR: Meta ＋ <c>XRCpuImage</c>）に触れてよいのは
+        /// <c>Platform/MetaCamera/</c> だけ。
+        ///
+        /// この SDK は Quest 3 にしか無い（Editor の XR Simulator でも動かない）ので、
+        /// 呼び出しが板や App へ散ると PICO・WebXR へ差し替えるときに追い切れなくなるし、
+        /// 「Editor では絶対に動かないコード」が増える。板は <c>IPassthroughCamera</c> の
+        /// 口だけを見て、Editor では <c>Platform/Null/</c> の受け皿に落ちる。
+        /// </summary>
+        [Test]
+        public void パススルーカメラのSDKへの参照はPlatformMetaCameraの中だけにある()
+        {
+            var violations = new List<string>();
+
+            foreach (var file in Directory.EnumerateFiles(KitchenXrRoot, "*.cs", SearchOption.AllDirectories))
+            {
+                var normalized = file.Replace('\\', '/');
+
+                if (normalized.Contains("/Platform/MetaCamera/") || normalized.Contains("/Tests/"))
+                {
+                    continue;
+                }
+
+                // 見るのはコードだけ（WebView の規則と同じ理由——注釈で SDK の名前を
+                // 説明するのは違反ではない。設定を触る AndroidPlayerSetup は
+                // 「なぜ feature id で引くのか」を書き残している）。
+                var content = string.Join("\n", CodeLines(file));
+                foreach (var marker in MetaCameraMarkers)
+                {
+                    if (content.Contains(marker))
+                    {
+                        violations.Add($"{normalized} に '{marker}' への言及があります"
+                                       + "（カメラの SDK は Platform/MetaCamera/ の中だけで包むこと）");
                     }
                 }
             }

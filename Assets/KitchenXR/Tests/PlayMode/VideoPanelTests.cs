@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using KitchenXR.Domain;
+using KitchenXR.Platform.Null;
 using KitchenXR.Presentation;
 using KitchenXR.Presentation.Video;
 using NUnit.Framework;
@@ -663,6 +664,53 @@ namespace KitchenXR.Tests.PlayMode
             StringAssert.Contains("戻る", _panel.LastAction, "札に「戻る」と出ていません。");
 
             yield return null;
+        }
+
+        // ---------------------------------------------------------------- カメラの下見（v1-d）
+
+        /// <summary>
+        /// 「カメラ」の釦が一覧側に在って、指で突ける。
+        /// 板は <see cref="KitchenXR.Platform.IPassthroughCamera"/> の口しか見ないので、
+        /// ここでは受け皿（<see cref="NullPassthroughCamera"/>）を挿す——Editor の実機と同じ道筋。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator カメラの釦を押すと非対応の札が出る()
+        {
+            yield return BuildAll(2);
+
+            var probe = new CameraProbe(new NullPassthroughCamera());
+            _panel.BindCamera(probe);
+
+            var button = Root.Q<Button>("cameraButton");
+            Assert.IsNotNull(button, "「カメラ」の釦がありません。");
+
+            var list = Root.Q<VisualElement>("listBlock");
+            Assert.Greater(button.worldBound.xMin, list.worldBound.xMin - 0.01f,
+                "「カメラ」の釦が一覧側にありません。");
+
+            // 釦は4cm角以上（押す的の最小寸法）。
+            var sizeCm = button.worldBound.height * WorldSpacePanelFactory.PanelLocalScale * 100f;
+            Assert.GreaterOrEqual(sizeCm, 4f - 0.2f, $"「カメラ」の釦が {sizeCm:0.0}cm しかありません。");
+
+            yield return PokeAt(WorldPositionOf(button), 0.05f);
+
+            // 受け皿は権限も取れないので、押した瞬間に理由が札へ出る。
+            var deadline = Time.unscaledTime + 2f;
+            while (Time.unscaledTime < deadline && string.IsNullOrEmpty(_panel.CameraStatus))
+            {
+                yield return null;
+            }
+
+            StringAssert.Contains("カメラ", _panel.CameraStatus, "札にカメラの理由が出ていません。");
+            StringAssert.Contains("非対応", _panel.CameraStatus,
+                $"Editor では「非対応」が出るはずです（実際の札: {_panel.CameraStatus}）。");
+
+            // 絵は出ない。窓は畳まれたまま。
+            Assert.IsNull(probe.Texture, "Editor なのに絵が出ました。");
+            Assert.IsTrue(Root.Q<VisualElement>("cameraWindow").ClassListContains("is-hidden"),
+                "絵が無いのに小さな窓が畳まれていません。");
+
+            probe.Dispose();
         }
 
         /// <summary>

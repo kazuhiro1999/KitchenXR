@@ -492,6 +492,37 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
+        /// カメラの下見（v1-d）の釦と窓が、動画の板の一覧側に在ること。
+        /// 小さな窓は 10cm 角（50px × 2mm）——実機で「写っている範囲」を見るための寸法なので、
+        /// 縮めると確かめられなくなる。
+        /// </summary>
+        [Test]
+        public void カメラの釦と窓が動画の板にある()
+        {
+            var uxml = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(),
+                "Assets/KitchenXR/Presentation/UI/VideoPanel.uxml"));
+
+            foreach (var name in new[] { "cameraButton", "cameraBurstButton", "cameraWindow", "cameraStatus" })
+            {
+                StringAssert.Contains($"name=\"{name}\"", uxml,
+                    $"VideoPanel.uxml に {name} がありません（カメラの検証ができません）。");
+            }
+
+            // 釦は一覧側（listBlock の中）に置く——動画の窓の中に置くと、
+            // 板の 1cm 手前に浮いた WebView の絵の裏に隠れる。
+            var listBlock = uxml.IndexOf("name=\"listBlock\"", System.StringComparison.Ordinal);
+            var controlBlock = uxml.IndexOf("name=\"controlBlock\"", System.StringComparison.Ordinal);
+            var cameraButton = uxml.IndexOf("name=\"cameraButton\"", System.StringComparison.Ordinal);
+            Assert.Greater(cameraButton, listBlock, "「カメラ」の釦が一覧側にありません。");
+            Assert.Less(cameraButton, controlBlock, "「カメラ」の釦が一覧側にありません。");
+
+            var uss = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(),
+                "Assets/KitchenXR/Presentation/UI/VideoPanel.uss"));
+            StringAssert.Contains("width: 50px", uss,
+                "VideoPanel.uss の .video-camera-window が 10cm 角（50px）ではありません。");
+        }
+
+        /// <summary>
         /// 指先の光る点が左右の Poke Interactor に付いていること。
         /// rig を差し替えたときに黙って 0 個になるのを防ぐ。
         /// </summary>
@@ -549,11 +580,39 @@ namespace KitchenXR.Tests.EditMode
         }
 
         [Test]
-        public void 最小APIレベルが26以上でInternetPermissionが立っている()
+        public void 最小APIレベルが足りていてInternetPermissionが立っている()
         {
-            Assert.GreaterOrEqual((int)PlayerSettings.Android.minSdkVersion, AndroidPlayerSetup.MinimumSupportedSdk);
+            Assert.GreaterOrEqual((int)PlayerSettings.Android.minSdkVersion, AndroidPlayerSetup.MinimumSupportedSdk,
+                $"WebView は {AndroidPlayerSetup.WebViewMinimumSdk} 以上、"
+                + $"パススルーカメラの CPU 画像は {AndroidPlayerSetup.CameraMinimumSdk} 以上を要ります。");
             Assert.IsTrue(PlayerSettings.Android.forceInternetPermission,
                 "YouTube を開くので Internet permission が要ります。");
+        }
+
+        // ---------------------------------------------------------------- Android（カメラの要件）
+
+        /// <summary>
+        /// パススルーカメラ（v1-d 段 (a)）の設定。落ちたときは
+        /// <see cref="AndroidPlayerSetup.ApplyCameraImageSupport"/> を回せば直る。
+        ///
+        /// Camera Image Support は「絵が取れるか」だけでなく
+        /// <c>horizonos.permission.HEADSET_CAMERA</c> が manifest に入るかも決める
+        /// （Unity OpenXR: Meta 2.5.0 以降は opt-in したときだけ入れる）。
+        /// 立て忘れると実機で権限のダイアログすら出ない。
+        /// </summary>
+        [Test]
+        public void パススルーカメラのAndroid設定が揃っている()
+        {
+            var issues = AndroidPlayerSetup.CameraRequirementIssues();
+            Assert.IsEmpty(issues, string.Join("\n", issues));
+        }
+
+        [Test]
+        public void CameraImageSupportが立っている()
+        {
+            Assert.IsTrue(AndroidPlayerSetup.CameraImageSupportEnabled(),
+                "OpenXR の「Meta Quest: Camera (Passthrough)」の Camera Image Support が立っていません"
+                + "（HEADSET_CAMERA が manifest に入らず、実機で権限のダイアログが出ません）。");
         }
 
         /// <summary>
