@@ -7,23 +7,16 @@ using UnityEngine;
 namespace KitchenXR.Net
 {
     /// <summary>
-    /// manor の繋ぎ先（<c>base_url</c>）。決まり方は3つで、優先はこの順（manor の ADR-017 D3）:
-    ///
-    ///   1. <c>Application.persistentDataPath/manor.json</c> の <c>base_url</c>（主人が明示した口。
-    ///      tailnet 越しなど**探索が届かない置き方**のために残してある上書き）
+    /// manor の繋ぎ先（<c>base_url</c>。形は <c>{"base_url": "https://…"}</c>）。
+    /// 決まり方は優先順に3つ:
+    ///   1. <c>persistentDataPath/manor.json</c> の <c>base_url</c>
+    ///      （tailnet 越しなど探索が届かない置き方のための明示の上書き）
     ///   2. 端末の控え（<see cref="ManorDeviceFile"/>）に覚えている口
     ///   3. 探索（<see cref="ManorDiscovery"/>。UDP 8791 に manor が答える）
+    /// どれも決まらなければ <see cref="IsConfigured"/> が false になり、板は見本だけを並べる。
     ///
-    /// <code>{"base_url": "https://…"}</code>
-    ///
-    /// **合言葉（<c>passcode</c>）はもう読まない**（v1.0.10・ADR-017 D6）。平文の合言葉を
-    /// ファイルに置く代わりに、起動時に番号を出して主人が manor の Web で許可し、
-    /// 端末ごとの鍵を受け取る（<see cref="ManorDeviceFile"/>）。古い <c>manor.json</c> に
-    /// <c>passcode</c> が残っていたら、黙って無視せず警告を1行出す——主人が
-    /// 「置いたのに使われない」で悩まないように。
-    ///
-    /// <c>manor.json</c> も控えも無く、探索も空振りなら <see cref="IsConfigured"/> が false になり、
-    /// 一覧の板は「manor が見つかりません（見本だけ）」の札を出して見本の炒飯だけを並べる。
+    /// 合言葉（<c>passcode</c>）は読まない（代わりに端末ごとの鍵を使う）。古い
+    /// <c>manor.json</c> に残っていたら警告を1行出す——「置いたのに使われない」で悩ませないため。
     /// </summary>
     public sealed class ManorSettings
     {
@@ -32,7 +25,7 @@ namespace KitchenXR.Net
         /// <summary>末尾の <c>/</c> は落としてある（<see cref="Url"/> が組み立てる）。</summary>
         public string BaseUrl { get; }
 
-        /// <summary>繋ぎ先の出どころ（札とログに出す。主人が場所を間違えたときに分かるように）。</summary>
+        /// <summary>繋ぎ先の出どころ（札とログに出す。場所を間違えたときに分かるように）。</summary>
         public string SourcePath { get; }
 
         private ManorSettings(string baseUrl, string sourcePath)
@@ -123,8 +116,8 @@ namespace KitchenXR.Net
         }
 
         /// <summary>
-        /// 古い使い方（v1.0.9 まで）の合言葉が残っていたら教える。
-        /// **読まない**が、黙って捨てると「置いたのに繋がらない」の理由が分からなくなる。
+        /// 古い使い方の合言葉が残っていたら教える。
+        /// 読まないが、黙って捨てると「置いたのに繋がらない」の理由が分からなくなる。
         /// </summary>
         private static void WarnIfPasscode(JObject obj)
         {
@@ -136,9 +129,9 @@ namespace KitchenXR.Net
             }
 
             Debug.LogWarning(
-                $"[KitchenXR] {FileName} の passcode は v1.0.10 で廃止しました（読みません）。"
+                $"[KitchenXR] {FileName} の passcode は廃止しました（読みません）。"
                 + "起動時に出る6桁の番号を manor の 設定 → 端末 で許可してください"
-                + "（Docs/manor-connection.md）。行は消して構いません。");
+                + "（Docs/MANOR.md）。行は消して構いません。");
         }
 
         /// <summary>

@@ -11,14 +11,9 @@ using UnityEngine.XR.Interaction.Toolkit.Interactors;
 namespace KitchenXR.Tests.PlayMode
 {
     /// <summary>
-    /// 指先の光る点（<see cref="FingertipCursor"/>）の検算。
-    /// 2026-09-13 主人の実機確認（v1.0.9）:
-    ///   「指が UI に近づいたときだけ、人差し指の先端に小さな『光るドット（カーソル）』…
-    ///     これがあるだけで、奥行きの距離感が一気につかみやすくなります」
-    ///
-    /// 確かめるのは主人の求めた2つだけ:
-    ///   1. **近づいたときだけ**出る（料理中の手にいつも点が付いて回らない）
-    ///   2. 近いほど**大きい**（これが奥行きの合図になる）
+    /// 指先の光る点（<see cref="FingertipCursor"/>）の検算。確かめるのは2つ:
+    ///   1. 近づいたときだけ出る（料理中の手にいつも点が付いて回らない）
+    ///   2. 近いほど大きい（これが奥行きの合図になる）
     /// 板の代わりは「コライダー＋ XRSimpleInteractable」——台所の板（WorldSpacePanelFactory）と
     /// 同じ形で、点が「板だけ」を相手にしていることも一緒に見る。
     /// </summary>
@@ -118,7 +113,7 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 近いほど大きい——これが奥行きの合図そのもの（主人「距離感が一気につかみやすくなります」）。
+        /// 近いほど大きい——これが奥行きの合図そのもの。
         /// </summary>
         [UnityTest]
         public IEnumerator 近いほど点が大きくなる()
@@ -163,7 +158,7 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 点の相手は**板だけ**。台所の壁や鍋（Interactable を持たないコライダー）では出ない
+        /// 点の相手は板だけ。台所の壁や鍋（Interactable を持たないコライダー）では出ない
         /// ——出てしまうと、シンクに手を伸ばすたびに点が光る。
         /// </summary>
         [UnityTest]

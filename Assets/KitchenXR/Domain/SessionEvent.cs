@@ -1,8 +1,8 @@
 namespace KitchenXR.Domain
 {
     /// <summary>
-    /// <see cref="CookSession.Apply"/> に渡すイベント。v0 は Next／Prev／タイマーの4種だけ。
-    /// v2 の認識イベント（Observation）もここに増える想定（設計 §5）だが、
+    /// <see cref="CookSession.Apply"/> に渡すイベント。今は Next／Prev／タイマーの4種だけ。
+    /// 将来の認識イベント（Observation）もここに増える想定だが、
     /// 「認識器は工程を進めない。観測を送るだけ」なので Apply の外形は変えずに済む。
     /// </summary>
     public abstract class SessionEvent
@@ -17,7 +17,7 @@ namespace KitchenXR.Domain
             public static readonly NextRequested Instance = new NextRequested();
         }
 
-        /// <summary>「戻る」。常に受け付ける（誤タッチの取り消し。設計 §5）。</summary>
+        /// <summary>「戻る」。常に受け付ける（誤タッチの取り消し）。</summary>
         public sealed class PrevRequested : SessionEvent
         {
             public static readonly PrevRequested Instance = new PrevRequested();

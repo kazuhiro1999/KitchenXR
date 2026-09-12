@@ -9,17 +9,12 @@ using UnityEngine.UIElements;
 namespace KitchenXR.App.Editor
 {
     /// <summary>
-    /// UI Toolkit 用の日本語フォント一式を作る（実機で文字が1つも描かれなかった件の直し）。
+    /// UI Toolkit 用の日本語フォント一式を作る。
     ///
-    /// 原因: `theme.uss` の `-unity-font-definition` が
-    /// `Assets/TextMesh Pro/Resources/Fonts &amp; Materials/NotoSansJP-Regular SDF.asset` を指していたが、
-    /// この資産は **TMPro.TMP_FontAsset**（TextMeshPro 用）であって
-    /// **UnityEngine.TextCore.Text.FontAsset**（UI Toolkit が要求する型）ではない。
-    /// 型が合わないので USS の font 指定が丸ごと落ち、すべての Label が font=null で描かれなかった。
-    ///
-    /// ここでは同じ TTF（`Assets/TextMesh Pro/Fonts/NotoSansJP-Regular.ttf`）から
-    /// TextCore の FontAsset を **Dynamic**（実行時に必要な字だけ焼く）で作り、
-    /// PanelTextSettings の既定／代替フォントにも据える。
+    /// `-unity-font-definition` は <c>UnityEngine.TextCore.Text.FontAsset</c> しか受け付けず、
+    /// TextMeshPro の <c>TMP_FontAsset</c> を指すと型が合わずに USS の font 指定が丸ごと落ちる
+    /// （すべての Label が font=null で描かれない）。そこで同じ TTF から TextCore の FontAsset を
+    /// Dynamic（実行時に必要な字だけ焼く）で作り、PanelTextSettings の既定／代替にも据える。
     /// Dynamic にするのは、静的な TMP 版が 8192x8192 の巨大アトラスで APK を膨らませるため。
     /// </summary>
     public static class KitchenFontAssetBuilder

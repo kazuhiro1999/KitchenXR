@@ -1,15 +1,11 @@
 namespace KitchenXR.Domain
 {
     /// <summary>
-    /// レシピ一覧の1行（manor の <c>GET /api/v1/kitchen/recipes</c> が返す行。ADR-015 D3・D9追補）。
-    ///
-    /// 契約の行は `id・title・hero_image・total_minutes・servings・tags・favorite・times_cooked・
-    /// last_cooked_at・kcal・category・main_ingredient・cuisine・updated_at` だが、
-    /// **一覧の板に出すのは題名・分・分類・kcal の4つだけ**（設計 §9「文字は極力少なく」）。
-    /// 残りは持たない——使わないものを運ぶと、契約が動いたときに壊れる面が増える。
-    ///
-    /// <see cref="Id"/> は文字列。manor 側は int だが、見本（Resources の炒飯）の id は
-    /// <c>"chahan"</c> のような文字列で、<see cref="Recipe.Id"/> も文字列なので揃えてある。
+    /// レシピ一覧の1行（manor の <c>GET /api/v1/kitchen/recipes</c> が返す行）。
+    /// 契約の行は多くの欄を持つが、板に出す題名・分・分類・kcal しか持たない——
+    /// 使わないものを運ぶと、契約が動いたときに壊れる面が増える。
+    /// <see cref="Id"/> は文字列。manor 側は int だが、見本の id は <c>"chahan"</c> のような
+    /// 文字列で、<see cref="Recipe.Id"/> も文字列なので揃えてある。
     /// </summary>
     public sealed class RecipeSummary
     {

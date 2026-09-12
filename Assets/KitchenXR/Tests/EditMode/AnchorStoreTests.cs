@@ -9,15 +9,10 @@ using UnityEngine;
 namespace KitchenXR.Tests.EditMode
 {
     /// <summary>
-    /// P2（アンカーと配置モード）の**落ちない**ことの検算。
-    ///
-    /// 実機のアンカーそのものは Editor では動かない（XR Simulation は Save／Load／Erase の
-    /// どれも非対応。AR Foundation の `simulation-anchors.md` の表）。
-    /// だからここで確かめるのは、その周りの「必ず通る道」:
-    ///   - 帳簿（`anchors.json`）と控え（`panels.json`）の書き戻し・鍵の上書き
-    ///   - **壊れたファイルで落ちない**（読めなければ「無かった」として既定へ落ちる）
-    ///   - <see cref="ArAnchorStore"/> は ARAnchorManager が無ければ false／null を返す
-    ///     （例外を投げない＝呼び出し側が退避路へ進める）
+    /// アンカーと配置モードが落ちないことの検算。実機のアンカーは Editor では動かない
+    /// （XR Simulation は Save／Load／Erase のどれも非対応）ので、帳簿（`anchors.json`）と
+    /// 控え（`panels.json`）の往復、壊れたファイルで落ちないこと、ARAnchorManager が無ければ
+    /// false／null が返ること（例外を投げない）を見る。
     /// </summary>
     public class AnchorStoreTests
     {
@@ -82,7 +77,7 @@ namespace KitchenXR.Tests.EditMode
             var read = new AnchorGuidFile(path);
             read.Load();
 
-            Assert.AreEqual(1, read.Guids.Count, "同じ鍵が2つ残っています（板1枚＝鍵1つ。設計 §4.3）。");
+            Assert.AreEqual(1, read.Guids.Count, "同じ鍵が2つ残っています（板1枚＝鍵1つ）。");
             Assert.IsTrue(read.TryGet("panel.timer", out var restored));
             Assert.AreEqual(newer, restored);
         }

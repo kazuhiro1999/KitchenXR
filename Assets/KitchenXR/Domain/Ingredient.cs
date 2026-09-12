@@ -1,8 +1,7 @@
 namespace KitchenXR.Domain
 {
     /// <summary>
-    /// 材料1点（契約 JSON §3 の ingredients[]）。分量は自由文字列のまま持つ
-    /// （正規化は料理長＝サーバの仕事になったときに考える。設計 §3）。
+    /// 材料1点（契約 JSON の ingredients[]）。分量は自由文字列のまま持つ（正規化はサーバ側の仕事）。
     /// </summary>
     public sealed class Ingredient
     {

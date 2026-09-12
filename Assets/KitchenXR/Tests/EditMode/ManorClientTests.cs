@@ -10,14 +10,13 @@ using NUnit.Framework;
 namespace KitchenXR.Tests.EditMode
 {
     /// <summary>
-    /// manor のレシピ帳と結ぶ口の検算（P3。設計 §8・manor の ADR-015 D3）。
-    /// **本物の manor へは繋がない**——通信は <see cref="IHttpTransport"/> ごと差し替える。
+    /// manor のレシピ帳と結ぶ口の検算。本物の manor へは繋がない——通信は
+    /// <see cref="IHttpTransport"/> ごと差し替える。
     ///
-    /// ここで押さえるのは一覧の写しと、**cookie の経路**（v1.0.10 以降は「試験と、
-    /// 将来 tailnet で cookie を使う場合」のために残してある道。ADR-017 D6）:
+    /// 押さえるのは一覧の写しと、cookie の経路（試験と将来 tailnet で使う場合のために残した道）:
     ///   1. <c>Set-Cookie</c> から <c>manor_session</c> を取り出して持つ
     ///   2. 以後の頼みに <c>Cookie:</c> 見出しとして自分で付ける（Android の自動 cookie に頼らない）
-    ///   3. **401 が返ったら1度だけ**入り直して同じ頼みを送り直す（2度目の 401 では諦める）
+    ///   3. 401 が返ったら1度だけ入り直して同じ頼みを送り直す（2度目の 401 では諦める）
     ///   4. 一覧は取れたら写し、取れないときはその写しを出す
     ///
     /// 端末の鍵（Bearer）とペアリングと探索は <see cref="ManorPairingTests"/>。
@@ -28,7 +27,7 @@ namespace KitchenXR.Tests.EditMode
         private const string Passcode = "あいことば";
         private const string Cookie = "s3ss10n-value";
 
-        /// <summary><c>manor.json</c> は <c>base_url</c> の上書きだけ（合言葉は v1.0.10 で廃止）。</summary>
+        /// <summary><c>manor.json</c> は <c>base_url</c> の上書きだけ（合言葉は廃止）。</summary>
         private static ManorSettings Settings() =>
             ManorSettings.Parse($"{{\"base_url\": \"{BaseUrl}\"}}");
 
@@ -299,7 +298,7 @@ namespace KitchenXR.Tests.EditMode
             var transport = new FakeTransport { Responder = (_, __) => LoginOk() };
             var client = CookieClient(transport);
 
-            // 見本（Resources）の id は "chahan" のような文字列。manor のレシピ id は整数。
+            // 見本の id は "chahan" のような文字列。manor のレシピ id は整数。
             var started = client.StartSessionAsync("chahan").GetAwaiter().GetResult();
 
             Assert.IsFalse(started.IsSuccess);
@@ -373,7 +372,7 @@ namespace KitchenXR.Tests.EditMode
 
             var items = RecipeListJson.Parse("{\"items\":[" + string.Join(",", rows) + "]}");
 
-            Assert.AreEqual(RecipeListJson.MaxItems, items.Count, "一覧は最大 20 件（主人の指示）。");
+            Assert.AreEqual(RecipeListJson.MaxItems, items.Count, "一覧は最大 20 件です。");
         }
 
         // ---------------------------------------------------------------- manor.json
@@ -394,15 +393,14 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// 古い <c>manor.json</c>（合言葉つき）が残っていても、**合言葉は読まない**
-        /// （v1.0.10・ADR-017 D6）。黙って捨てると「置いたのに繋がらない」の理由が分からないので、
-        /// 警告を1行出す。
+        /// 古い <c>manor.json</c>（合言葉つき）が残っていても、合言葉は読まない。
+        /// 黙って捨てると「置いたのに繋がらない」の理由が分からないので、警告を1行出す。
         /// </summary>
         [Test]
         public void manorJsonの合言葉は読まずに警告を出す()
         {
             UnityEngine.TestTools.LogAssert.Expect(
-                UnityEngine.LogType.Warning, new System.Text.RegularExpressions.Regex("passcode は v1.0.10 で廃止"));
+                UnityEngine.LogType.Warning, new System.Text.RegularExpressions.Regex("passcode は廃止"));
 
             var settings = ManorSettings.Parse(
                 $"{{\"base_url\": \"{BaseUrl}\", \"passcode\": \"{Passcode}\"}}");
@@ -437,7 +435,7 @@ namespace KitchenXR.Tests.EditMode
 
             Assert.IsTrue(result.IsSuccess);
             Assert.IsTrue(transport.Requests[1].Url.EndsWith("/api/v1/kitchen/media"),
-                "動画リストの口が ADR-016 と違います。");
+                "動画リストの口が契約と違います。");
             Assert.AreEqual(1, KitchenXR.Domain.MediaJson.Parse(result.Value).Count);
         }
     }

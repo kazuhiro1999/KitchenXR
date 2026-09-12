@@ -14,18 +14,11 @@ using UnityEngine.UIElements;
 namespace KitchenXR.App
 {
     /// <summary>
-    /// どのアダプタを挿すかはここだけ（設計 §4.2）。P3 からは**manor のレシピ帳と結ぶ**:
+    /// どのアダプタを挿すかはここだけ。起動 → 待ち行列を流す → 途中の調理があれば復帰 →
+    /// 無ければレシピを選ぶ板 → 選んだら JSON と画像を先に全部手元へ → 調理の3枚へ。
     ///
-    ///   起動 → 待ち行列を流す → 途中の調理があれば復帰 → 無ければレシピを選ぶ板
-    ///        → 選んだら JSON と画像を**先に全部**手元へ → 調理の3枚へ
-    ///
-    /// 通す順の約束（主人の指示・設計 §11 追補）:
-    ///   - **表示は常にローカルから**。一覧も、レシピ本体も、画像も、まず手元に写してから出す
-    ///   - **送れないことで調理を止めない**。工程の進みはまず Domain に効かせ、
-    ///     サーバへの報せは <see cref="CookEventQueue"/> に積むだけ
-    ///   - **manor.json が無ければ見本だけで動く**（文字入力は板に置かない。設計 §6）
-    ///
-    /// アンカーは P2 まで <see cref="InMemoryAnchorStore"/>。
+    /// 表示は常にローカルの写しから出し、サーバへの報せは <see cref="CookEventQueue"/> に
+    /// 積むだけ（送れないことで調理を止めない）。manor.json が無ければ見本だけで動く。
     /// </summary>
     public sealed class Bootstrap : MonoBehaviour
     {
@@ -40,24 +33,23 @@ namespace KitchenXR.App
         [SerializeField] private VideoPanel _videoPanel;
         [SerializeField] private CookingModeInputGate _cookingModeInputGate;
 
-        [Header("配置モード（P2。設計 §4.4。操作は全部 手元のメニュー側）")]
+        [Header("配置モード（操作は全部 手元のメニュー側）")]
         [SerializeField] private PanelPlacement _panelPlacement;
         [SerializeField] private PlacementMenuPanel _placementMenuPanel;
 
         /// <summary>
-        /// 手首の釦（2026-09-13 主人の実機確認 v1.0.8 の③）。メニューの出し入れを持つ。
-        /// 配置モードへ入るときは必ず開ける——レシピ／一覧の板の「配置」から入ったときに
+        /// 手首の釦。メニューの出し入れを持つ。配置モードへ入るときは必ず開ける——
         /// メニューが閉じたままだと「保存」「やめる」に手が届かず、出られなくなる。
         /// </summary>
         [SerializeField] private WristMenu _wristMenu;
 
-        [Header("初期配置（設計 §9: 頭の前0.8m・目線より少し下に3枚）")]
+        [Header("初期配置（頭の前0.8m・目線より少し下に3枚）")]
         [SerializeField] private Transform _headTransform; // 未指定なら Camera.main を使う
         [SerializeField] private float _forwardDistanceMeters = 0.8f;
         [SerializeField] private float _belowEyelineMeters = 0.08f;
         [SerializeField] private float _lateralSpacingMeters = 0.5f;
 
-        // P2 から、AR Foundation が使えるなら ArAnchorStore が挿さる（設計 §4.3）。
+        // AR Foundation が使えるなら ArAnchorStore が挿さる。
         private IAnchorStore _anchorStore;
         private IPassthroughControl _passthrough;
         private IHandInputPolicy _handInputPolicy;
@@ -65,7 +57,7 @@ namespace KitchenXR.App
         /// <summary>板の位置の控え（`panels.json`）。アンカーが使えるときも必ず書く（退避路）。</summary>
         private PanelPoseFile _panelPoseFile;
 
-        /// <summary>見え方の設定（文字と板の大きさ。2026-09-13 主人の指示）。</summary>
+        /// <summary>見え方の設定（文字と板の大きさ）。</summary>
         private DisplaySettings _displaySettings;
 
         private RecipeStore _recipeStore;
@@ -74,7 +66,7 @@ namespace KitchenXR.App
         private CookEventQueue _eventQueue;
         private LastSessionStore _lastSessionStore;
 
-        /// <summary>端末の鍵の控え（`manor-device.json`。ADR-017 D2-5）。</summary>
+        /// <summary>端末の鍵の控え（`manor-device.json`）。</summary>
         private ManorDeviceFile _deviceFile;
 
         /// <summary>
@@ -99,8 +91,8 @@ namespace KitchenXR.App
 
         private void Awake()
         {
-            // P2。AR Foundation（ARAnchorManager）が居れば ArAnchorStore、居なければ InMemory。
-            // どちらでも「控え（panels.json）へは必ず書く」ので、板の位置は失われない（設計 §4.3）。
+            // AR Foundation（ARAnchorManager）が居れば ArAnchorStore、居なければ InMemory。
+            // どちらでも控え（panels.json）へは必ず書くので、板の位置は失われない。
             _anchorStore = AnchorStoreFactory.Create();
             _panelPoseFile = PanelPoseFile.CreateDefault();
 
@@ -112,7 +104,7 @@ namespace KitchenXR.App
             _manor = ManorClient.CreateDefault();
             _deviceFile = ManorDeviceFile.CreateDefault();
 
-            // 鍵が失効したら（manor が 401 を返したら）ペアリングをやり直す（ADR-017 D6）。
+            // 鍵が失効したら（manor が 401 を返したら）ペアリングをやり直す。
             _manor.DeviceRevoked += HandleDeviceRevoked;
 
             _eventQueue = CookEventQueue.CreateDefault();
@@ -139,7 +131,7 @@ namespace KitchenXR.App
                 _recipeListPanel.FontScaleSelected += HandleFontScaleSelected;
                 _recipeListPanel.PanelScaleSelected += HandlePanelScaleSelected;
 
-                // 一覧の写真（hero）も工程の画像と同じ経路でローカルから出す（設計 §11 追補）。
+                // 一覧の写真（hero）も工程の画像と同じ経路でローカルから出す。
                 _recipeListPanel.Bind(_recipeStore);
             }
 
@@ -164,7 +156,7 @@ namespace KitchenXR.App
 
             SetUpPlacement();
 
-            // 起動の見た目は「レシピを選ぶ板」。調理の3枚は選んでから出す（主人の指示）。
+            // 起動の見た目は「レシピを選ぶ板」。調理の3枚は選んでから出す。
             ShowListMode();
         }
 
@@ -181,13 +173,12 @@ namespace KitchenXR.App
 
             _cts = new CancellationTokenSource();
 
-            // P2。覚えている場所へ戻す（アンカー → 控え → 既定）。
+            // 覚えている場所へ戻す（アンカー → 控え → 既定）。
             // 起動の道筋（一覧・復帰）とは独立に走らせる——板の位置は中身より先に決まってよい。
             RestorePlacementAsync(_cts.Token).Forget();
 
-            // 動画の一覧（`StreamingAssets/media.json` → persistentDataPath）は
-            // **manor に繋ぎ終えてから**（StartupAsync の中で）始める。v1.0.10 で順を変えた——
-            // 鍵が決まる前に走らせると、繋がっているのに手元の写しのままになる。設計 §6・ROADMAP P4。
+            // 動画の一覧は manor に繋ぎ終えてから（StartupAsync の中で）始める——
+            // 鍵が決まる前に走らせると、繋がっているのに手元の写しのままになる。
             StartupAsync(_cts.Token).Forget();
         }
 
@@ -241,15 +232,11 @@ namespace KitchenXR.App
 
         /// <summary>
         /// 起動して最初にやること。順番に意味がある:
-        ///   1. **manor の場所と鍵を決める**（`manor.json` → 控え → 探索。ADR-017 D3・D6）
-        ///   2. 動画リストを読む（娯楽の板。調理の道筋とは独立に走らせる）
-        ///   3. **溜まっている進行の記録を流す**（前回オフラインで終えた分。送れなければ残るだけ）
-        ///   4. **途中の調理を探す**（manor → 無ければ手元の控え）。あれば一覧を飛ばして続きから
-        ///   5. 無ければ一覧を出す
-        ///   6. **鍵が無ければペアリング**（番号を覆いに出す）。許可されたら 2・5 をやり直す
+        ///   1. manor の場所と鍵を決める  2. 動画リストを読む  3. 溜まっている進行の記録を流す
+        ///   4. 途中の調理があれば一覧を飛ばして続きから  5. 無ければ一覧  6. 鍵が無ければペアリング
         ///
-        /// ペアリングを**一覧を出した後**に置いているのは、主人が台所に来るまでの間も
-        /// 動画の板と見本のレシピが揃っているようにするため（覆いが出るのは番号を貰えてから）。
+        /// ペアリングを一覧の後に置いているのは、番号の板が一覧の覆いなので、
+        /// 台所に来るまでの間も動画の板と見本のレシピが揃っているようにするため。
         /// </summary>
         private async UniTaskVoid StartupAsync(CancellationToken token)
         {
@@ -271,7 +258,7 @@ namespace KitchenXR.App
             if (await TryResumeAsync(token))
             {
                 // 調理の続きが出ている。ペアリングはしない——番号の板は一覧の覆いなので、
-                // 今出しても見えないし、許可されたら一覧へ戻してしまう。次の起動で出す。
+                // 今出しても見えないし、許可されたら一覧へ戻してしまう。
                 return;
             }
 
@@ -285,19 +272,15 @@ namespace KitchenXR.App
             }
         }
 
-        /// <summary>
-        /// manor の場所と鍵を決める（ADR-017 D3・D6）。順はこう:
-        ///
-        ///   1. **繋ぎ先**: `manor.json` の `base_url`（主人が明示した上書き。tailnet 越しなど）
-        ///      → 端末の控えが覚えている口 → 探索（UDP 8791）
-        ///   2. **鍵**: 端末の控え（無ければ <see cref="PairAsync"/> が貰いに行く）
-        ///
-        /// `manor.json` を控えより先に見るのは ADR-017 D3 のとおり——探索が届かない置き方
-        /// （tailnet 越し・ポートを変えた）を主人が明示したのなら、そちらが正しい。
-        /// どれも決まらなければ札を出して**見本だけで動く**（起動そのものは止めない）。
-        /// </summary>
         private string _discoveryFailure = string.Empty;
 
+        /// <summary>
+        /// manor の場所と鍵を決める。繋ぎ先は `manor.json` の `base_url` → 端末の控え →
+        /// 探索（UDP 8791）、鍵は端末の控え（無ければ <see cref="PairAsync"/> が貰いに行く）。
+        ///
+        /// `manor.json` を控えより先に見るのは、探索が届かない置き方（tailnet 越し・ポート変更）を
+        /// 明示した指定のほうが正しいから。どれも決まらなければ札を出して見本だけで動く。
+        /// </summary>
         private async UniTask ConnectManorAsync(CancellationToken token)
         {
             var device = _deviceFile.Load();
@@ -332,8 +315,7 @@ namespace KitchenXR.App
 
             if (!_manor.HasBaseUrl)
             {
-                // manor が寝ている・ループバックで立っている・tailnet の向こうに居る。
-                // 理由（探索の失敗の言葉）を札に添える——実機で読み上げてもらえば切り分けられる。
+                // 理由（探索の失敗の言葉）を札に添える——実機で読めば切り分けられる。
                 _manorStatus = string.IsNullOrEmpty(_discoveryFailure)
                     ? "manor が見つかりません（見本だけ）"
                     : $"manor が見つかりません（見本だけ）— 探索: {_discoveryFailure}";
@@ -358,12 +340,9 @@ namespace KitchenXR.App
         }
 
         /// <summary>
-        /// ペアリング（ADR-017 D2）。番号を貰って板に大きく出し、主人が manor の Web の
-        /// 設定 → 端末 で許可するのを `poll_after` 秒おきに訊く。
-        ///
-        /// 番号は5分で失効するので、`expired` が返ったら**新しい番号を取り直す**
-        /// （主人が台所へ来るまでに何度切れても、板にはいつも生きた番号が出ている）。
-        /// 繋がらなくなったら止める——圏外で番号を出し続けても意味が無い。
+        /// ペアリング。番号を貰って板に大きく出し、manor の Web の 設定 → 端末 で許可されるのを
+        /// `poll_after` 秒おきに訊く。番号は5分で失効するので `expired` が返ったら取り直す
+        /// （何度切れても板にはいつも生きた番号が出ている）。繋がらなくなったら止める。
         /// </summary>
         private async UniTask<bool> PairAsync(CancellationToken token)
         {
@@ -457,7 +436,7 @@ namespace KitchenXR.App
 
                 if (polled.Value.IsApproved)
                 {
-                    // 鍵は**一度しか返らない**（ADR-017 D2-2）。受けた順に控えてから当てる。
+                    // 鍵は一度しか返らない。受けた順に控えてから当てる。
                     _deviceFile.Save(
                         _manor.Settings.BaseUrl, polled.Value.Token,
                         polled.Value.DeviceId, polled.Value.UserId);
@@ -479,8 +458,7 @@ namespace KitchenXR.App
         }
 
         /// <summary>
-        /// manor の 設定 → 端末 の一覧に並ぶ名前。機種を添えるのは、家に2台あるときの見分け
-        /// （<c>SystemInfo.deviceModel</c> は Quest では "Oculus Quest" のような文字列）。
+        /// manor の 設定 → 端末 の一覧に並ぶ名前。機種を添えるのは、家に2台あるときの見分け。
         /// </summary>
         private static string DeviceName()
         {
@@ -491,8 +469,8 @@ namespace KitchenXR.App
         }
 
         /// <summary>
-        /// 鍵が通らなくなった（manor が 401 を返した＝主人が Web で失効させた）。
-        /// 控えから鍵を消して**ペアリングからやり直す**（ADR-017 D6）。繋ぎ先は残す。
+        /// 鍵が通らなくなった（401＝Web で失効させた）。控えから鍵を消して
+        /// ペアリングからやり直す。繋ぎ先は残す。
         /// </summary>
         private void HandleDeviceRevoked()
         {
@@ -507,11 +485,9 @@ namespace KitchenXR.App
         }
 
         /// <summary>
-        /// やり直したペアリングが通ったら一覧を読み直す（札も書き換わる）。
-        ///
-        /// **調理の最中なら一覧へ戻さない**——工程の進みは待ち行列に積まれていて失われないので、
-        /// 鍵の入れ替えのために板を取り替えるほうが悪い（送れないことで調理を止めない。設計 §11 追補）。
-        /// 番号は一覧の板の覆いに出たままなので、調理を終えて戻れば見える。
+        /// やり直したペアリングが通ったら一覧を読み直す。
+        /// 調理の最中なら一覧へ戻さない——工程の進みは待ち行列に積まれていて失われないので、
+        /// 鍵の入れ替えのために板を取り替えるほうが悪い。番号は一覧の覆いに出たまま残る。
         /// </summary>
         private async UniTaskVoid RepairAsync(CancellationToken token)
         {
@@ -532,8 +508,7 @@ namespace KitchenXR.App
         }
 
         /// <summary>
-        /// 途中起動の復帰（設計 §5・ROADMAP P5）。
-        /// manor に未終了のセッションがあればそれを、繋がらなければ手元の控えを使う。
+        /// 途中起動の復帰。manor に未終了のセッションがあればそれを、繋がらなければ手元の控えを使う。
         /// </summary>
         private async UniTask<bool> TryResumeAsync(CancellationToken token)
         {
@@ -553,8 +528,8 @@ namespace KitchenXR.App
                 }
             }
 
-            // オフライン（または manor 未設定）。手元の控えから戻す——
-            // レシピ本体も画像も既に手元にあるので、工程番号さえあれば続きが出せる。
+            // オフライン（または manor 未設定）。レシピ本体も画像も既に手元にあるので、
+            // 工程番号さえあれば手元の控えから続きが出せる。
             var last = _lastSessionStore.Load();
             if (last == null || last.IsComplete || !_recipeStore.HasLocalRecipe(last.RecipeId))
             {
@@ -574,7 +549,7 @@ namespace KitchenXR.App
 
         /// <summary>
         /// 一覧を出し直す。取れたら <c>index.json</c> へ写し、取れなければその写しを出す。
-        /// 先頭は必ず「見本: 炒飯」（主人の指示）。
+        /// 先頭は必ず見本。
         /// </summary>
         private async UniTask RefreshListAsync(CancellationToken token)
         {
@@ -602,8 +577,8 @@ namespace KitchenXR.App
                     status = listed.IsOffline ? "manor に繋がりません（控えた一覧）" : listed.Message;
                 }
 
-                // 取れても取れなくても**読むのは写し**——経路を1本にしておくと、
-                // 「取れたときだけ出る欄」のようなものが混ざらない（設計 §11 追補と同じ流儀）。
+                // 取れても取れなくても読むのは写し——経路を1本にしておくと、
+                // 「取れたときだけ出る欄」のようなものが混ざらない。
                 var cached = _recipeStore.LoadIndexJson();
                 if (!string.IsNullOrEmpty(cached))
                 {
@@ -641,15 +616,10 @@ namespace KitchenXR.App
         }
 
         /// <summary>
-        /// 調理を始める。**manor は「未終了のセッションが1件だけ」を機構で守る**
-        /// （`recipes.start_session` は未終了があればレシピを問わずそれを返す）ので、
-        /// 別のレシピの途中が残っていると、選んだレシピの進行がそちらに記録されてしまう。
-        ///
-        /// そこで先に <c>current</c> を見て、**別のレシピの途中なら終わらせてから**始める。
-        /// 同じレシピの途中ならそのまま返るので、続きから出る（これは望ましい）。
-        ///
-        /// 手放した調理が <c>times_cooked</c> に1つ数えられるのは承知の上——
-        /// manor に「やめる」の口は無く、違うレシピの工程を別の帳簿に書き込むほうが悪い。
+        /// 調理を始める。manor は未終了のセッションを1件だけ持ち、`recipes.start_session` は
+        /// 未終了があればレシピを問わずそれを返す——別のレシピの途中が残っていると進行が
+        /// そちらに記録されてしまうので、先に <c>current</c> を見て終わらせてから始める。
+        /// 手放した調理が <c>times_cooked</c> に数えられるのは承知の上（manor に「やめる」の口は無い）。
         /// </summary>
         private async UniTask<int?> StartOrResumeSessionAsync(string recipeId, CancellationToken token)
         {
@@ -665,8 +635,8 @@ namespace KitchenXR.App
         }
 
         /// <summary>
-        /// レシピを開く。**先に全部手元へ**（主人の指示）:
-        /// 契約 JSON → <see cref="RecipeStore"/> へ写す → hero と全工程の画像 → それから調理を始める。
+        /// レシピを開く。先に全部手元へ: 契約 JSON → <see cref="RecipeStore"/> へ写す →
+        /// hero と全工程の画像 → それから調理を始める。
         /// その間、一覧の板は「準備中 n/m」の覆いを出して別の行を受け付けない。
         /// </summary>
         /// <param name="startStep">1 以上なら復帰（その工程から）。0 なら最初から。</param>
@@ -784,8 +754,8 @@ namespace KitchenXR.App
         }
 
         /// <summary>
-        /// 進行を控えて、送れるなら送る。**送れなくても調理は止まらない**——
-        /// 積むのはファイルへの追記1回で、送る試みは裏で回る（設計 §11 追補・主人の指示）。
+        /// 進行を控えて、送れるなら送る。送れなくても調理は止まらない——
+        /// 積むのはファイルへの追記1回で、送る試みは裏で回る。
         /// </summary>
         private void RecordProgress(string type)
         {
@@ -842,9 +812,8 @@ namespace KitchenXR.App
         }
 
         /// <summary>
-        /// 「一覧へ」（2度押し）。**調理をやめるのではなく、板を戻すだけ**——
-        /// manor 側のセッションは未終了のまま残るので、次の起動ではそこから復帰する
-        /// （設計 §5「途中起動の復帰」）。手元の控えもそのまま残す。
+        /// 「一覧へ」（2度押し）。調理をやめるのではなく板を戻すだけ——manor 側のセッションは
+        /// 未終了のまま残るので、次の起動ではそこから復帰する。手元の控えもそのまま残す。
         /// </summary>
         private void HandleBackToList()
         {
@@ -864,9 +833,7 @@ namespace KitchenXR.App
         // ---------------------------------------------------------------- 表示の設定
 
         /// <summary>
-        /// 文字と板の大きさを当てる（2026-09-13 主人「設定とかで変更できたらもっといい」）。
-        ///
-        /// 当てる先は**調理と一覧の4枚**（一覧・レシピ・材料・タイマー）。
+        /// 文字と板の大きさを当てる。当てる先は一覧・レシピ・材料・タイマーの4枚。
         /// 動画の板は自分で寸法を決める（16:9 ⇄ 9:16）ので混ぜない。
         /// 配置の操作板と手のひらメニューも、出ている間だけの板なので対象外。
         /// </summary>
@@ -883,7 +850,7 @@ namespace KitchenXR.App
             _recipeListPanel?.SetDisplaySettings(_displaySettings.FontScale, _displaySettings.PanelScale);
         }
 
-        /// <summary>押した瞬間に反映して控える（設定の板に「決定」を置かない。設計 §7）。</summary>
+        /// <summary>押した瞬間に反映して控える（設定の板に「決定」を置かない）。</summary>
         private void HandleFontScaleSelected(DisplayScale scale)
         {
             if (_displaySettings == null || _displaySettings.FontScale == scale)
@@ -908,11 +875,11 @@ namespace KitchenXR.App
             ApplyDisplaySettings();
         }
 
-        // ---------------------------------------------------------------- 配置モード（P2）
+        // ---------------------------------------------------------------- 配置モード
 
         /// <summary>
-        /// 板と鍵を結ぶ（設計 §4.3「保存の単位はパネル1枚＝鍵1つ」）。
-        /// 一覧はレシピと**同じ鍵**——同じ場所に重ねて出す板なので、別々に覚える意味が無い。
+        /// 板と鍵を結ぶ（保存の単位はパネル1枚＝鍵1つ）。
+        /// 一覧はレシピと同じ鍵——同じ場所に重ねて出す板なので、別々に覚える意味が無い。
         /// レシピの板を取っ手役（leader）にして、一覧はそれに付いていく。
         /// </summary>
         private void SetUpPlacement()
@@ -929,8 +896,8 @@ namespace KitchenXR.App
             _panelPlacement.Register(PanelPlacement.TimerKey, _timerPanel);
             _panelPlacement.Register(PanelPlacement.VideoKey, _videoPanel);
 
-            // 調理中もレイで操作してよいのは動画の板だけ（主人の指示。設計 §11 追補）。
-            // Register で全ての板が gate に登録された**後**に決める。
+            // 調理中もレイで操作してよいのは動画の板だけ。
+            // Register で全ての板が gate に登録された後に決める。
             _cookingModeInputGate?.AllowRayInCookingMode(_videoPanel);
 
             _panelPlacement.PlacementFinished += HandlePlacementFinished;
@@ -949,11 +916,8 @@ namespace KitchenXR.App
 
         /// <summary>
         /// 配置モードへ入る（手のひらメニュー、またはレシピ／一覧の板の「配置」2度押し）。
-        ///
-        /// **操作の板を空間に出さない**（2026-09-13・設計 §11 追補「配置とレイ」。主人の指示
-        /// 「配置の確定等も手元に表示してほしい」）。頭の前に出していた 200×90 の板は、
-        /// レシピ／一覧の板と重なって当たり判定を奪い合い、レイでも指でも押せなくなっていた。
-        /// 代わりに手のひらメニューを「保存・元に戻す・板を手元に・やめる」へ差し替える。
+        /// 操作の板は空間に出さない——頭の前に出すとレシピ／一覧の板と重なって当たり判定を
+        /// 奪い合い、レイでも指でも押せなくなる。代わりに手のひらメニューを差し替える。
         /// </summary>
         private void HandlePlacementRequested()
         {
@@ -963,7 +927,7 @@ namespace KitchenXR.App
             }
 
             // 出口（保存・やめる）は手のひらメニューにしか無い。板が無いまま入ると
-            // 配置モードから二度と出られなくなるので、入らない（設計 §7 の「行き止まりを作らない」）。
+            // 配置モードから二度と出られなくなるので、入らない。
             if (_placementMenuPanel == null)
             {
                 Debug.LogWarning(
@@ -972,8 +936,7 @@ namespace KitchenXR.App
             }
 
             // 「配置」はレシピ／一覧の板の頭からも押せる。そのときメニューが閉じていると
-            // 「保存」「やめる」が押せず配置モードから出られないので、必ず開ける
-            // （設計 §7 の「行き止まりを作らない」。v1.0.8 で手首の釦になってから要る手当て）。
+            // 「保存」「やめる」が押せず配置モードから出られないので、必ず開ける。
             // 手が1つも追えていなければ（コントローラだけのとき）メニューは出せない＝入らない。
             if (_wristMenu != null && !_wristMenu.Open())
             {
@@ -1012,15 +975,9 @@ namespace KitchenXR.App
         }
 
         /// <summary>
-        /// 「板を手元に」——迷子の板の救済（設計 §11 追補 2026-09-13。主人「壁の奥に行って
-        /// しまったらつかめないので何とかしたい」）。
-        ///
-        /// 全部の板を、**今の頭の向き**から決めた初期配置（起動時と同じ並び）へ戻す。
-        /// 壁の奥・床の下・背中側へ行った板はこれで必ず目の前に戻る。
-        /// 配置モードは**続いたまま**なので、そのまま掴み直して「保存」で確定できる。
-        ///
-        /// 設計 §7 の「取り消せない操作は2度押し」に照らして、これは**1度押しでよい**——
-        /// 「元に戻す」で配置モードに入る前の位置へ戻せる（＝取り消せる）。
+        /// 「板を手元に」——迷子の板の救済。全部の板を今の頭の向きから決めた初期配置へ戻すので、
+        /// 壁の奥・床の下・背中側へ行った板も必ず目の前に戻る。配置モードは続いたままなので、
+        /// そのまま掴み直して「保存」で確定できる。「元に戻す」で取り消せるので1度押しでよい。
         /// </summary>
         private void HandlePlacementRecall()
         {
@@ -1034,9 +991,8 @@ namespace KitchenXR.App
         }
 
         /// <summary>
-        /// 配置モードを出た（保存でも取り消しでも）。メニューを「配置」1つへ戻し、**閉じる**。
-        /// 閉じるのは主人の指示（v1.0.8 の③「手を洗ってるときなどに出ると邪魔」）——
-        /// 配置が終わればメニューの用は済んでいるので、手元に板を残さない。
+        /// 配置モードを出た（保存でも取り消しでも）。メニューを「配置」1つへ戻し、閉じる——
+        /// 手を洗っているときなどに出ていると邪魔なので、用が済んだら手元に板を残さない。
         /// </summary>
         private void HandlePlacementFinished()
         {
@@ -1084,9 +1040,9 @@ namespace KitchenXR.App
         // ---------------------------------------------------------------- 見本と動画
 
         /// <summary>
-        /// 見本（Resources）を読んでおく。**一覧の先頭に必ず並べる**ので、
-        /// manor が寝ていても合言葉が未設定でも1本は最後まで進められる。
-        /// 中身は開いたときに <see cref="RecipeStore"/> へ写す（表示の経路は1本のまま）。
+        /// 見本（Resources）を読んでおく。一覧の先頭に必ず並べるので、manor が寝ていても
+        /// 1本は最後まで進められる。中身は開いたときに <see cref="RecipeStore"/> へ写す
+        /// （表示の経路は1本のまま）。
         /// </summary>
         private void LoadBundledSample()
         {
@@ -1163,8 +1119,8 @@ namespace KitchenXR.App
                 _videoPanel.BindMedia(items);
             }
 
-            // manor に繋がるなら動画リスト（ADR-016。Web で編集した一覧）を取って手元を上書きする。
-            // 取れなければ黙って手元のまま（札に理由を出すほどのことではない。次の起動でまた試みる）。
+            // manor に繋がるなら動画リスト（Web で編集した一覧）を取って手元を上書きする。
+            // 取れなければ黙って手元のまま（次の起動でまた試みる）。
             if (_manor == null || !_manor.IsConfigured)
             {
                 return;
@@ -1187,9 +1143,8 @@ namespace KitchenXR.App
         // ---------------------------------------------------------------- 初期配置
 
         /// <summary>
-        /// 起動時に頭の前 0.8m・目線より少し下へ配る（設計 §9）。
-        /// 一覧の板は**レシピの板と同じ場所**（主人の指示。切り替えで入れ替わる）。
-        /// アンカーへの保存・復元は P2（<see cref="_anchorStore"/> は今は InMemory）。
+        /// 起動時に頭の前 0.8m・目線より少し下へ配る。
+        /// 一覧の板はレシピの板と同じ場所（切り替えで入れ替わる）。
         /// </summary>
         private void PlaceInitialPanels()
         {
@@ -1226,12 +1181,9 @@ namespace KitchenXR.App
         }
 
         /// <summary>
-        /// 4枚目（動画）は**レシピの右上＝タイマーの上**（設計 P4 の第一候補）。
-        ///
-        /// 板の原点は左上なので、タイマーの板は基準点から右下へ 44cm 伸びている。
-        /// その上辺（＝基準点の高さ）から 4cm 空けたところに、動画の板の**下辺の中央**を置く。
-        /// 下辺を留めるのは、9:16 に切り替えると板が高くなるから——
-        /// 上辺を留めると下のタイマーへ食い込む。
+        /// 4枚目（動画）はレシピの右上＝タイマーの上。板の原点は左上なので、タイマーの板は
+        /// 基準点から右下へ伸びている。その上辺から 4cm 空けて動画の板の下辺の中央を置く。
+        /// 下辺を留めるのは、9:16 に切り替えると板が高くなり、上辺を留めると下へ食い込むから。
         /// </summary>
         private void PlaceVideoPanel(Vector3 basePosition, Vector3 right, Quaternion rotation)
         {
@@ -1241,7 +1193,7 @@ namespace KitchenXR.App
             }
 
             // タイマーの板の実幅は板そのものから読む。表示の設定（板の大きさ 小／大）で
-            // localScale が変わるので、KitchenSceneBuilder の定数（0.44m）を写すと合わなくなる。
+            // localScale が変わるので、定数を写すと合わなくなる。
             var timerWidthMeters = 0.44f;
             var timerDocument = _timerPanel != null ? _timerPanel.GetComponent<UIDocument>() : null;
             if (timerDocument != null)

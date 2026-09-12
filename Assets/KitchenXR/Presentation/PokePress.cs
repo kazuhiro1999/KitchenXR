@@ -5,36 +5,25 @@ using UnityEngine.UIElements;
 namespace KitchenXR.Presentation
 {
     /// <summary>
-    /// 「触れたら反応する」ボタンの配線（設計 §11 追補・2026-09-13 主人の実機確認）。
+    /// 「触れたら反応する」ボタンの配線。押し下げ（PointerDown）で発火し、押し上げは見ない。
     ///
-    /// v1.0.2 まではボタンを <see cref="Button.clicked"/>（＝押し上げ）で受けていた。
-    /// UI Toolkit の Button は PointerDown で掴んで **PointerUp が同じ要素の上で起きたとき**に
-    /// clicked を出すので、
-    ///   - 表面をかすめてすぐ戻す  → PointerUp が板の上に戻ってきて反応する
-    ///   - 指を押し込んだままにする → PointerUp が来ないので反応しない
-    ///   - 深く突き抜ける          → 指が当たり判定から出て XRPokeInteractor が
-    ///                               <c>ResetPointerState</c> を呼び、PointerUp は板の外
-    ///                               （XRUIToolkitHandler は座標 (0,-1000,0) で ButtonReleased を出す）
-    ///                               で起きるので反応しない
-    /// という、主人の言う「触れたくらいで戻さないと反応せず、押しすぎると反応しない」挙動になる。
-    /// 手応えの無いホログラムを調理中の手で押せば深く入るのが普通なので、
-    /// **押し下げ（PointerDown）で発火し、押し上げは見ない**。
+    /// UI Toolkit の Button は PointerUp が同じ要素の上で起きたときだけ clicked を出すので、
+    /// <see cref="Button.clicked"/> で受けると「表面をかすめてすぐ戻す」以外では反応しない——
+    /// 押し込んだままだと PointerUp が来ず、深く突き抜けると指が当たり判定から出て
+    /// XRPokeInteractor が <c>ResetPointerState</c> を呼び、PointerUp が板の外で起きる。
+    /// 手応えの無いホログラムを調理中の手で押せば深く入るのが普通なので、押し上げは使えない。
     ///
-    /// 二重発火の歯止めは2つ（設計 §7）:
-    ///   1. <see cref="ClickDebounce"/> で同じ鍵の連打を 600ms 間引く
-    ///   2. 一度発火したら、その指が板の前面領域から離れる（PointerUp／PointerLeave／
-    ///      PointerOut／捕捉の解除）まで次を受けない。指を突っ込んだまま留まっても
-    ///      600ms 後にもう一度発火する、を防ぐ
-    ///
-    /// <see cref="Button.clicked"/> は購読しない（購読すると浅く押して引いたときに
-    /// PointerDown と clicked の二重発火になる）。
+    /// 二重発火の歯止めは2つ: <see cref="ClickDebounce"/> で同じ鍵の連打を 600ms 間引き、
+    /// 一度発火したらその指が板の前面領域から離れるまで次を受けない（突っ込んだまま留まって
+    /// 600ms 後に再発火する、を防ぐ）。<see cref="Button.clicked"/> は購読しない
+    /// （浅く押して引くと二重発火になる）。
     /// </summary>
     public static class PokePress
     {
         /// <summary>
         /// どこかのボタン（行）が発火した。効果音（<see cref="PressSound"/>）が聞く。
-        /// 2026-09-13 主人「押したときの効果音があればもっといい」——ホログラムには手応えが無いので、
-        /// 音が「押せた」の唯一の返事になる。振動は XRI の hover で既に出ている。
+        /// ホログラムには手応えが無いので、音が「押せた」の唯一の返事になる
+        /// （振動は XRI の hover で既に出ている）。
         /// </summary>
         public static event Action Pressed;
 

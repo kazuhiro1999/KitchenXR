@@ -12,8 +12,7 @@ using UnityEngine.UIElements;
 namespace KitchenXR.Tests.PlayMode
 {
     /// <summary>
-    /// 表示の設定が**本当に見た目に出る**ことの検算
-    /// （2026-09-13 主人「パネルサイズと文字サイズですが、設定とかで変更できたらもっといい」）。
+    /// 表示の設定が本当に見た目に出ることの検算。
     ///
     /// 設定そのものの読み書きは EditMode（DisplaySettingsTests）。ここで確かめるのは
     ///   - 文字: `.root-panel` に付くクラスが `theme.uss` の `--font-size-*` を本当に上書きするか
@@ -130,7 +129,7 @@ namespace KitchenXR.Tests.PlayMode
 
             DisplaySettingsApplier.ApplyTo(NewSettings(DisplayScale.Medium, DisplayScale.Medium), panel);
             Assert.AreEqual(baseScale, _go.transform.localScale.x, 0.0001f,
-                "中は v1.0.6 までと同じ大きさのはずです。");
+                "中は素の大きさのはずです。");
 
             DisplaySettingsApplier.ApplyTo(NewSettings(DisplayScale.Medium, DisplayScale.Large), panel);
             Assert.AreEqual(baseScale * 1.2f, _go.transform.localScale.x, 0.0001f);

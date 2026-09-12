@@ -3,8 +3,8 @@ using System.Collections.Generic;
 namespace KitchenXR.Domain
 {
     /// <summary>
-    /// レシピ全体（契約 JSON §3 と1対1）。この計画で最も長生きする成果物の
-    /// クライアント側の受け皿。クライアントは表示に徹し、内容の短さの保証はサーバ側の仕事。
+    /// レシピ全体（契約 JSON と1対1）。クライアントは表示に徹し、
+    /// 内容の短さの保証はサーバ側の仕事。
     /// </summary>
     public sealed class Recipe
     {

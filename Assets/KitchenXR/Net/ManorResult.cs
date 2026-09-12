@@ -1,10 +1,9 @@
 namespace KitchenXR.Net
 {
     /// <summary>
-    /// manor への1回の問い合わせの結末。**例外を投げない**ための器。
-    ///
-    /// オフラインは異常ではなく前提（設計 §11 追補）。だから
-    /// 「取れた」「繋がらなかった」「サーバが断った」の3つを呼び出し側が素直に分岐できるようにする。
+    /// manor への1回の問い合わせの結末。例外を投げないための器。
+    /// オフラインは異常ではなく前提なので、「取れた」「繋がらなかった」「サーバが断った」の
+    /// 3つを呼び出し側が素直に分岐できるようにする。
     /// </summary>
     public sealed class ManorResult<T>
     {
@@ -77,18 +76,18 @@ namespace KitchenXR.Net
     }
 
     /// <summary>
-    /// ペアリングの始まり（<c>pair/start</c> の返り。manor の ADR-017 D2-1）。
-    /// <see cref="Code"/> を板に大きく出し、主人が manor の Web の 設定 → 端末 に入れて許可する。
+    /// ペアリングの始まり（<c>pair/start</c> の返り）。
+    /// <see cref="Code"/> を板に大きく出し、manor の Web の 設定 → 端末 に入れて許可する。
     /// </summary>
     public sealed class PairStart
     {
-        /// <summary>番号が読めなかったときの保険（ADR-017 D2-4 の「5 分で失効」）。</summary>
+        /// <summary>番号が読めなかったときの保険（5 分で失効）。</summary>
         public const int DefaultExpiresIn = 300;
 
-        /// <summary>同じく、訊く間隔の既定（ADR-017 D2-2）。</summary>
+        /// <summary>同じく、訊く間隔の既定。</summary>
         public const int DefaultPollAfter = 2;
 
-        /// <summary>照合用（端末はこれで訊く）。主人には見せない。</summary>
+        /// <summary>照合用（端末はこれで訊く）。板には出さない。</summary>
         public string PairId { get; }
 
         /// <summary>表示用の6桁。</summary>
@@ -110,7 +109,7 @@ namespace KitchenXR.Net
     }
 
     /// <summary>
-    /// ペアリングの進み（<c>pair/poll</c> の返り）。状態は3つだけ（ADR-017 §4.2）——
+    /// ペアリングの進み（<c>pair/poll</c> の返り）。状態は3つだけ——
     /// 知らない <c>pair_id</c>・期限切れ・既に鍵を渡した後は、全部 <c>expired</c> で来る。
     /// </summary>
     public sealed class PairPoll
@@ -121,12 +120,12 @@ namespace KitchenXR.Net
 
         public string Status { get; }
 
-        /// <summary>端末の鍵。<c>approved</c> のときだけ入る（**一度しか返らない**）。</summary>
+        /// <summary>端末の鍵。<c>approved</c> のときだけ入る（一度しか返らない）。</summary>
         public string Token { get; }
 
         public string DeviceId { get; }
 
-        /// <summary>この端末が振る舞う利用者（ADR-014）。</summary>
+        /// <summary>この端末が振る舞う利用者。</summary>
         public string UserId { get; }
 
         public PairPoll(string status, string token, string deviceId, string userId)

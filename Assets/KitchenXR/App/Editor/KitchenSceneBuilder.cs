@@ -23,11 +23,12 @@ namespace KitchenXR.App.Editor
     /// テンプレートの仮想環境（Environment）を外して、レシピ／材料／タイマーの3枚の
     /// ワールド空間 UI Toolkit パネルと Bootstrap を足す。
     ///
-    /// 2026-09-12 の実機確認で見つかった3点をここで直している（詳細は各所のコメント）:
-    ///   (2) `Environment` ルートを消し忘れていたのでパススルーが見えなかった
-    ///   (3) XRI 3.5 のワールド空間 UI Toolkit に必要な受け口
-    ///       （XRUIToolkitManager・PanelInputConfiguration・bypassUIToolkitEvents=false）が無く、
-    ///       さらにパネルのコライダーが UI px のまま（100倍）で isTrigger だったので指がすり抜けた
+    /// 実機で踏んだ落とし穴を3つ、ここで塞いでいる（詳細は各所のコメント）:
+    ///   (1) 日本語フォントは PanelSettings 側にも据える（USS の指定が外れても字が出るように）
+    ///   (2) `Environment` ルートを消さないとパススルーが見えない
+    ///   (3) XRI 3.5 のワールド空間 UI Toolkit には受け口
+    ///       （XRUIToolkitManager・PanelInputConfiguration・bypassUIToolkitEvents=false）が要り、
+    ///       パネルのコライダーは UI px ではなく実寸で・isTrigger を立てずに置く
     /// </summary>
     public static class KitchenSceneBuilder
     {
@@ -38,29 +39,27 @@ namespace KitchenXR.App.Editor
         public const string UiToolkitManagerObjectName = "XR UI Toolkit Manager";
         public const string PanelInputConfigurationObjectName = "Panel Input Configuration";
 
-        // 設計 §9・§7 の実寸換算（詳細は theme.uss の先頭コメント）。
+        // 実寸換算（詳細は theme.uss の先頭コメント）。
         // PanelSettings の Pixels Per Unit = 100、板の localScale = 0.2 なので 1 UI px ≒ 2mm。
         // 実体は WorldSpacePanelFactory（PlayMode 試験と同じ組み立てを通すため）。
         public const float PanelLocalScale = WorldSpacePanelFactory.PanelLocalScale;
         public const float PanelPixelsPerUnit = WorldSpacePanelFactory.PanelPixelsPerUnit;
 
         // レシピ（＝一覧と同じ寸法。重ねて出す2枚なので必ず揃える）。
-        // 2026-09-13 の主人の実機確認で「1画面に進捗・画像・説明」へ組み直したが、
-        // 左右2列にしたら 260×190 のままで収まった（PlayMode 試験 PanelLayoutTests で検算）ので広げていない。
+        // 本文を左右2列にしたので 260×190 で収まる（PanelLayoutTests で検算）。
         // 広げるなら 280 までだが、Bootstrap の初期配置（左右 0.5m 間隔）だと
         // 260（0.52m）の時点で既にタイマーの板と 2cm 重なっており、280 にすると 6cm になる。
         private const float RecipeWidthUnits = 260f; // 実測 ≒ 52cm
         private const float RecipeHeightUnits = 190f; // ≒ 38cm
 
-        // 材料（2026-09-13 主人「もうちょいパネルは大きくてもいい」「一目で全部見たい」）。
-        // 150×190 → 170×240（34cm×48cm）。行を 8px に詰めた（theme.uss）ので、
-        // 見本の炒飯（13 点）どころか 20 点程度までスクロール無しで並ぶ。
+        // 材料（一目で全部見えるように大きめ）。170×240（34cm×48cm）。
+        // 行を 8px に詰めた（theme.uss）ので、20 点程度までスクロール無しで並ぶ。
         // 左隣（基準点から -0.5m）に置いても、右へ 0.34m なのでレシピの板（0m から）に届かない。
         private const float IngredientsWidthUnits = 170f; // ≒ 34cm
         private const float IngredientsHeightUnits = 240f; // ≒ 48cm
 
-        // タイマーは §11 追補で「常時使える」作り口（1/3/5/10分・±30秒）と3つ積む場所が要るので、
-        // 材料の板より一回り大きい（4cm角のボタンを6つ並べるのに 44cm 要る）。
+        // タイマーは作り口（1/3/5/10分・±30秒）と3つ積む場所が要るので、材料の板より一回り大きい
+        // （4cm角のボタンを6つ並べるのに 44cm 要る）。
         private const float TimerWidthUnits = 220f; // ≒ 44cm
         private const float TimerHeightUnits = 220f; // ≒ 44cm
 
@@ -68,14 +67,14 @@ namespace KitchenXR.App.Editor
         private const float VideoWidthUnits = VideoPanel.LandscapeWidthUnits;
         private const float VideoHeightUnits = VideoPanel.LandscapeHeightUnits;
 
-        // 手元のメニュー（P2 → 配置の操作を全部ここへ集めた。設計 §11 追補「配置とレイ」）。
-        // 70×36（14cm×7cm）では「保存・元に戻す・板を手元に・やめる」の4つが入らないので
-        // 130×92（26cm×18.4cm）へ広げた。中身の寸法の根拠は PlacementMenu.uss に書いた。
+        // 手元のメニュー（配置の操作を全部ここへ集めてある）。
+        // 「保存・元に戻す・板を手元に・やめる」の4つが入るよう 130×92（26cm×18.4cm）。
+        // 中身の寸法の根拠は PlacementMenu.uss に書いた。
         private const float PlacementMenuWidthUnits = 130f;
         private const float PlacementMenuHeightUnits = 92f;
 
-        // 手首の釦（2026-09-13 主人の実機確認 v1.0.8 の③）。22×22 ≒ 4.4cm 角
-        // ——設計 §7 の「押す釦は最小 4cm 角」をちょうど満たす一番小さい板（WristToggle.uss）。
+        // 手首の釦。22×22 ≒ 4.4cm 角——「押す釦は最小 4cm 角」をちょうど満たす
+        // 一番小さい板（WristToggle.uss）。
         private const float WristToggleWidthUnits = 22f;
         private const float WristToggleHeightUnits = 22f;
 
@@ -103,8 +102,8 @@ namespace KitchenXR.App.Editor
 
             var panelsRoot = new GameObject("Kitchen Panels");
 
-            // 設計 §7「パネルは手の高さより上（胸〜目線）」。正面 1.2m・高さ 1.35m を既定に、
-            // 材料を左、タイマーを右へ内向きに振る（P2 でアンカーに保存するまでの初期位置）。
+            // パネルは手の高さより上（胸〜目線）。正面 1.2m・高さ 1.35m を既定に、
+            // 材料を左、タイマーを右へ内向きに振る（アンカーに保存するまでの初期位置）。
             var recipeGo = CreatePanelObject(
                 "RecipePanel", panelsRoot.transform, panelSettings,
                 LoadUxml("Assets/KitchenXR/Presentation/UI/RecipePanel.uxml"),
@@ -112,8 +111,8 @@ namespace KitchenXR.App.Editor
                 new Vector3(0f, 1.35f, 1.2f), Quaternion.identity);
             var recipePanel = recipeGo.AddComponent<RecipePanel>();
 
-            // P3。レシピを選ぶ板は**レシピの板と同じ場所・同じ寸法**に重ねて置く
-            // （起動時はこちらが出て、選ぶと入れ替わる。主人の指示）。
+            // レシピを選ぶ板はレシピの板と同じ場所・同じ寸法に重ねて置く
+            // （起動時はこちらが出て、選ぶと入れ替わる）。
             // 出し入れは GameObject.SetActive ではなく Presentation/PanelVisibility が行う
             // ——UIDocument は無効化のたびに rootVisualElement を作り直すので、
             // 各パネルが Awake で掴んだ要素の参照が死んでしまう。
@@ -138,11 +137,10 @@ namespace KitchenXR.App.Editor
                 new Vector3(0.72f, 1.35f, 1.05f), Quaternion.Euler(0f, 25f, 0f));
             var timerPanel = timerGo.AddComponent<TimerPanel>();
 
-            // 4枚目（動画）。レシピの右上＝タイマーの上（設計 P4）。実行時の位置は
+            // 4枚目（動画）。レシピの右上＝タイマーの上。実行時の位置は
             // Bootstrap.PlaceVideoPanel が頭の向きから決め直すので、ここは Editor で見たときの目安。
-            // 動画の板だけ **Video の Interaction Layer** を名乗る（設計 §11 追補 2026-09-13。
-            // 主人「Youtube プレイヤーだけレイ操作を有効化してほしい」）。Default も残すので、
-            // 指で押す（ポーク）のと配置モードで掴むのは今までどおり。
+            // 動画の板だけ Video の Interaction Layer を名乗る（調理中もレイで操作させるため）。
+            // Default も残すので、指で押す（ポーク）のと配置モードで掴むのは今までどおり。
             // 調理モードでは Ray の interactionLayers が Video だけになるので、
             // レイが触れるのはこの板だけになる（CookingModeInputGate を見よ）。
             var videoGo = CreatePanelObject(
@@ -160,7 +158,7 @@ namespace KitchenXR.App.Editor
             var panelPlacement = panelsRoot.AddComponent<PanelPlacement>();
             WirePanelPlacementOrigin(scene, panelPlacement);
 
-            // P2 →（v1.0.8）手首の釦で出し入れするメニュー（設計 §4.4・§11 追補 2026-09-13 の③）。
+            // 手首の釦で出し入れするメニュー。
             // 揃わなければ黙って作らない——レシピ／一覧の板の頭の「配置」（2度押し）が確実な入り口。
             var placementMenuPanel = AttachWristMenu(scene, panelSettings, out var wristMenu);
 
@@ -196,9 +194,9 @@ namespace KitchenXR.App.Editor
                     continue;
                 }
 
-                // (2) パススルーが効かなかった原因。テンプレートの仮想の部屋（グリッドの床と空）。
-                // 本来はチュートリアル UI のトグルが FadeMaterial でこれを消すが、その UI を外したので
-                // 消えないまま残り、カメラの透明な背景（パススルー）を完全に覆っていた。
+                // (2) テンプレートの仮想の部屋（グリッドの床と空）。本来はチュートリアル UI の
+                // トグルが FadeMaterial でこれを消すが、その UI を外すと残り続け、
+                // カメラの透明な背景（パススルー）を完全に覆ってしまう。
                 if (root.name == "Environment")
                 {
                     Object.DestroyImmediate(root);
@@ -220,7 +218,7 @@ namespace KitchenXR.App.Editor
         /// そこで初期化が丸ごと止まる（＝この manager は最初から何もしていない。
         /// 手の遮蔽が効いて見えるのは ARShaderOcclusion 側の働き）。
         /// 起動のたびに例外を出すだけなので、参照を失っていれば止めておく。
-        /// P2 で遮蔽の切り替えを自前の UI から操作したくなったら、ここで参照を挿し直すこと。
+        /// 遮蔽の切り替えを自前の UI から操作したくなったら、ここで参照を挿し直すこと。
         /// </summary>
         private static void DisableManagersThatLostTheirUi(Scene scene)
         {
@@ -310,7 +308,7 @@ namespace KitchenXR.App.Editor
 
         /// <summary>
         /// 動画の板が名乗る Interaction Layer（Default ＋ Video）。
-        /// Default を残すのが肝心——外すと**ポークと配置モードの掴み**まで効かなくなる
+        /// Default を残すのが肝心——外すとポークと配置モードの掴みまで効かなくなる
         /// （どちらの Interactor も Default で引き当てている）。
         /// </summary>
         private static int VideoInteractionLayers =>
@@ -379,24 +377,13 @@ namespace KitchenXR.App.Editor
         }
 
         /// <summary>
-        /// モードで触れてよい層を切り替える Ray を拾って挿す（設計 §4.4・§7・§11 追補）。
+        /// モードで触れてよい層を切り替える Ray を拾って挿す。扱うのは rig の
+        /// `Near-Far Interactor` 4つ（左右の手と左右のコントローラ）だけ——手でもコントローラでも
+        /// 同じように効く。
         ///
-        /// MR テンプレートの rig（`MR Interaction Setup` の中の
-        /// `XR Origin Hands (XR Rig)` を `XR Origin (XR Rig)` に改名したもの）が持つ Interactor は
-        /// 2026-09-13 に数えたところ 7 つ:
-        ///   - `Near-Far Interactor`（NearFarInteractor）×4 —— **これだけをここで扱う**。
-        ///     `Camera Offset/` の下の `Left Hand`・`Right Hand`（ハンドトラッキング）と
-        ///     `Left Controller`・`Right Controller`（コントローラ）に1つずつ。
-        ///     つまり**手でもコントローラでも**同じように効く。
-        ///   - `Gaze Interactor`（XRGazeInteractor）×1
-        ///   - `Teleport Interactor`（XRRayInteractor）×2
-        /// ほかに左右の手に `Poke Interactor`（XRPokeInteractor）が1つずつ（ここでは触らない）。
-        ///
-        /// **視線と移動は触らない**（v1.0.7 は調理モードで一緒に止めていた）。
-        ///   - Gaze は <c>XRBaseInteractable.allowGazeInteraction</c>（既定 false）を立てた板にしか
-        ///     効かない。台所の板は誰も立てていないので、生きていても悪さをしない。
-        ///   - Teleport の <c>interactionLayers</c> は Teleport（31 番）だけ。
-        ///     ここで「配置モードでは全層」を当ててしまうと、逆に板を掴んでしまう。
+        /// Gaze と Teleport は触らない。Gaze は <c>allowGazeInteraction</c>（既定 false）を立てた
+        /// 板にしか効かず台所の板は誰も立てていない。Teleport の <c>interactionLayers</c> は
+        /// Teleport（31 番）だけなので、「配置モードでは全層」を当てると逆に板を掴んでしまう。
         ///
         /// 拾えた数と名前をログに出すのは、rig を差し替えたときに黙って 0 個になるのを防ぐため。
         /// </summary>
@@ -409,7 +396,7 @@ namespace KitchenXR.App.Editor
                 return;
             }
 
-            // 手や持ち手から前へ伸びる Ray だけ。Poke・Gaze・Teleport はそのまま（設計 §4.4・§7）。
+            // 手や持ち手から前へ伸びる Ray だけ。Poke・Gaze・Teleport はそのまま。
             var rayLike = xrOrigin.GetComponentsInChildren<NearFarInteractor>(true)
                 .Cast<Behaviour>()
                 .ToArray();
@@ -443,11 +430,9 @@ namespace KitchenXR.App.Editor
         }
 
         /// <summary>
-        /// 指先の光る点（設計 §11 追補 2026-09-13 v1.0.9 の⑤。
-        /// 主人「指が UI に近づいたときだけ、人差し指の先端に小さな『光るドット（カーソル）』…
-        /// これがあるだけで、奥行きの距離感が一気につかみやすくなります」）。
+        /// 指先の光る点（奥行きの距離感をつかみやすくするため。<see cref="FingertipCursor"/>）。
         ///
-        /// rig の <c>Poke Interactor</c>（<see cref="XRPokeInteractor"/>）**全部**——
+        /// rig の <c>Poke Interactor</c>（<see cref="XRPokeInteractor"/>）全部——
         /// つまり左右の手に1つずつ——へ子を1つ足して <see cref="FingertipCursor"/> を載せる。
         /// 点そのもの（球と材質）は実行時に作るので、プレハブも資産も増えない。
         /// 何個付けたかをログに出すのは、rig を差し替えたときに黙って 0 個になるのを防ぐため
@@ -492,34 +477,19 @@ namespace KitchenXR.App.Editor
         }
 
         /// <summary>
-        /// 遠くを指すレイの**姿勢の安定化**を緩める（2026-09-13 主人の実機確認 v1.0.8 の②の一部）。
+        /// 遠くを指すレイの姿勢の安定化を緩める（レイが正面に「吸われて」横の板へ向かない件）。
         ///
-        /// 主人の言葉:
-        ///   「Youtube のパネルはレイ操作反応しましたが、横に（正面と垂直になるように）配置した時に、
-        ///     レイが正面に吸われてしまって、Youtube パネルに近づいてもレイはそっちに向きませんでした」
+        /// XRI の far 側の caster は <c>m_AimTargetObject</c> に自分自身が挿さっているので、
+        /// <c>XRTransformStabilizer</c> が「前のフレームの着地点を保つ回転」へ寄せてしまう。
+        /// 効き幅は <c>angleStabilization × clamp(1 + ln(rayLength), 1, 3)</c> で、何にも
+        /// 当たっていないとき <c>rayEndPoint</c> は 10m 先の空なので係数は上限の 3 ——
+        /// 20° の設定が実効 60° まで広がり、空を薙いでいる間ほどレイが渋くなる。
+        /// そこで <c>m_AngleStabilization</c> を下げる（手の震え 1〜3° は吸えたまま、狙って
+        /// 振る動きは素通しになる）。位置の安定化には触らない。
         ///
-        /// 「吸われる」の**仕掛けの側の理由**はここにある。XRI の far 側の caster
-        /// （<c>CurveInteractionCaster</c>）は <c>m_EnableStabilization = 1</c> で、
-        /// <c>m_AimTargetObject</c> に**自分自身**（<c>NearFarInteractor</c>＝<c>IXRRayProvider</c>）が
-        /// 挿さっている。<c>XRTransformStabilizer</c> はこのとき
-        /// 「**前のフレームのレイの着地点を保ち続ける回転**」（<c>antiRotation</c>）を作って、
-        /// そちらへ寄せるほうが安ければそちらを選ぶ（<c>StabilizeOptimalRotation</c>）。
-        /// しかも効き幅は
-        ///   <c>targetAngleScale = angleStabilization × clamp(1 + ln(rayLength), 1, 3)</c>
-        /// で、**何にも当たっていないとき**の <c>rayEndPoint</c> は 10m 先の空
-        /// （<c>farInteractionCaster.lastSamplePoint</c>）なので係数は上限の 3 になる。
-        /// つまり 20° の設定が実効 **60°** まで広がり、空を薙いでいる間ほどレイが渋くなる。
-        ///
-        /// そこで <c>m_AngleStabilization</c> を 20 → <see cref="FarCastAngleStabilization"/> にする。
-        /// 手の震え（およそ 1〜3°）はこれでも十分に吸うが、**狙って振る動き**は素通しになる。
-        /// 位置の安定化（<c>m_PositionStabilization</c>）には触らない。
-        ///
-        /// **これは②の主因ではない**（詳しくは設計 §11 の追補）。主因は
-        /// ハンドトラッキングの aim（照準）姿勢そのもの——Meta の system aim は
-        /// 肩あたりから手を通る**体に紐づいた**向きで、手首をひねっても真横は指せない。
-        /// ここで直せるのは「振ったときの渋さ」だけで、それでも実機の手触りは変わるはず。
-        /// 効かなければ次の手は、同じ caster の <c>Aim Target Object</c> を空にすること
-        /// （着地点を保つ働きが丸ごと止まる）。
+        /// ただし主因はハンドトラッキングの aim 姿勢そのもの——Meta の system aim は肩あたりから
+        /// 手を通る体に紐づいた向きで、手首をひねっても真横は指せない。効かなければ次の手は
+        /// 同じ caster の <c>Aim Target Object</c> を空にすること。
         /// </summary>
         private const float FarCastAngleStabilization = 8f;
 
@@ -559,10 +529,9 @@ namespace KitchenXR.App.Editor
         }
 
         /// <summary>
-        /// レイの線を「指す先があるときだけ」出す（設計 §11 追補 2026-09-13 v1.0.8 の④。
-        /// 主人「レイが操作できない場合は表示を消してほしい」）。
+        /// レイの線を「指す先があるときだけ」出す。
         ///
-        /// 4つの Near-Far Interactor **全部**（左右の手・左右のコントローラ）に付ける。
+        /// 4つの Near-Far Interactor 全部（左右の手・左右のコントローラ）に付ける。
         /// 仕掛けそのものは <see cref="RayLineVisibility"/>——
         /// XRI 3.5 に「無効なときは隠す」の設定が無いので、自前で線を落とす。
         /// </summary>
@@ -580,7 +549,7 @@ namespace KitchenXR.App.Editor
                 var go = baseInteractor.gameObject;
                 var visibility = go.GetComponent<RayLineVisibility>() ?? go.AddComponent<RayLineVisibility>();
 
-                // 描き手と線は Interactor 本体ではなく **`LineVisual` という子**に載っている
+                // 描き手と線は Interactor 本体ではなく `LineVisual` という子に載っている
                 // （XRI の Left_NearFarInteractor.prefab）。子まで見ないと黙って何も挿さらない。
                 var visual = RayLineVisibility.FindLineVisual(go);
                 var line = RayLineVisibility.FindLineRenderer(go);
@@ -605,15 +574,15 @@ namespace KitchenXR.App.Editor
         }
 
         /// <summary>
-        /// 主人の <c>YoutubePlayer.prefab</c> を動画の板の中へ置く（設計 §6・ROADMAP P4）。
+        /// TLab の <c>YoutubePlayer.prefab</c> を動画の板の中へ置く。
         ///
-        /// **主人の資産は書き換えない。** ここでやるのはシーンへ実体を1つ置くことだけで、
-        /// 要らない仕掛けを止めるのも位置を合わせるのも**実行時**（<c>YoutubePlayerBridge</c>・
+        /// TLab の資産は書き換えない。ここでやるのはシーンへ実体を1つ置くことだけで、
+        /// 要らない仕掛けを止めるのも位置を合わせるのも実行時（<c>YoutubePlayerBridge</c>・
         /// <c>VideoPanel.LayoutSurface</c>）に行う——プレハブ側へ差分が戻ることが無いように。
         ///
-        /// 置いた実体は**眠らせておく**。起こすのは Android の実機だけで、
+        /// 置いた実体は眠らせておく。起こすのは Android の実機だけで、
         /// Editor では板が「動画は実機で」の札を出す（WebView は Android のプラグイン）。
-        /// 名前は <c>YoutubePlayer</c> のまま変えてはいけない——主人の <c>youtube.html</c> が
+        /// 名前は <c>YoutubePlayer</c> のまま変えてはいけない——<c>youtube.html</c> が
         /// <c>unitySendMessage('YoutubePlayer', …)</c> でこの名前へ返してくる。
         /// </summary>
         private static void AttachYoutubePlayer(VideoPanel videoPanel)
@@ -660,7 +629,7 @@ namespace KitchenXR.App.Editor
         }
 
         /// <summary>
-        /// 控え（`panels.json`）は **XR Origin 基準の相対 Pose** で持つ（設計 §4.3 の退避路）。
+        /// 控え（`panels.json`）は XR Origin 基準の相対 Pose で持つ（アンカーの退避路）。
         /// その基準になる Transform を挿す。見つからなければ世界座標をそのまま書く
         /// （部屋の原点が動くとずれるが、無いよりまし——これは退避路であってアンカーの代わりではない）。
         /// </summary>
@@ -679,27 +648,14 @@ namespace KitchenXR.App.Editor
         }
 
         /// <summary>
-        /// 手元のメニュー（設計 §4.4「入り方＝手のひらメニュー」・§11 追補 2026-09-13 v1.0.8 の③）。
+        /// 手元のメニュー。XRI の <c>HandMenu</c> は使わない（理由は <see cref="WristMenu"/>）。
+        /// 組むのは3枚: 根の <c>Wrist Menu</c>、その下に <c>WristToggle</c> ×2（左右の手首。
+        /// 4.4cm 角。常に付いている）と <c>PlacementMenu</c>（130×92。既定は眠り）。
+        /// 手のひらの Transform は <c>Left/Right Hand</c> の下の <c>Palm</c> で、左右どちらも
+        /// 欠けたら作らない。
         ///
-        /// **v1.0.8 で XRI の <c>HandMenu</c> をやめた。** 主人の言葉:
-        ///   「手のひらメニューはいい感じですが、手を横に向けているときにも表示されています。
-        ///     手を洗ってるときなどに出ると邪魔なので、要改善。手首の手のひら側にボタンを作っておいて、
-        ///     それを押すとパネルがトグルでも全然いいと思います」
-        /// <c>HandMenu</c> は手のひらの向きを合図に出し入れするが、サンプルの設定の閾値
-        /// （手のひらが上を向いている＝95.7° 以内）は水平より広いので横を向けても成立する。
-        /// 理由と代わりの仕掛けは <see cref="WristMenu"/> に書いた。
-        ///
-        /// ここで組むのは3枚:
-        ///   - <c>Wrist Menu</c>（根。<see cref="WristMenu"/> が板を手首に追わせる）
-        ///     - <c>WristToggle</c> ×2（左右の手首。4.4cm 角。**常に付いている**）
-        ///     - <c>PlacementMenu</c>（130×92。釦を押したときだけ出る。既定は眠り）
-        ///
-        /// 手のひらの Transform の取り方は <c>HandMenu</c> と同じ——
-        /// <c>Left Hand</c>／<c>Right Hand</c> の下の <c>Palm</c>。
-        /// **左右どちらも欠けたら作らない。**
-        /// 配置の「保存・元に戻す・板を手元に・やめる」は全部メニューに載っているので、
-        /// これが無いと**配置モードから出られない**。そのため <c>Bootstrap</c> は、
-        /// この板が挿さっていなければ配置モードへ入らない。
+        /// 配置の「保存・元に戻す・板を手元に・やめる」は全部メニューに載っているので、これが
+        /// 無いと配置モードから出られない——<c>Bootstrap</c> は挿さっていなければ入らない。
         /// </summary>
         private static PlacementMenuPanel AttachWristMenu(
             Scene scene, PanelSettings panelSettings, out WristMenu wristMenu)
@@ -753,10 +709,10 @@ namespace KitchenXR.App.Editor
         /// <summary>
         /// 手首の小さな板を1枚作る。
         ///
-        /// **レイの相手にしない**（主人の④と同じ筋。誤って遠くから押されないように）——
+        /// レイの相手にしない（誤って遠くから押されないように）——
         /// 物理層を <see cref="CookingModeInputGate.OffRayPhysicsLayer"/>（8 番）に置く。
         /// Ray（Near-Far Interactor）の <c>raycastMask</c> は Default(0)／UI(5)／XR Simulation(31) なので
-        /// 8 番には届かず、<c>Physics.DefaultRaycastLayers</c> には入ったままなので**指では押せる**。
+        /// 8 番には届かず、<c>Physics.DefaultRaycastLayers</c> には入ったままなので指では押せる。
         /// <see cref="CookingModeInputGate"/> には登録しない——モードで層を戻されては意味が無い。
         /// </summary>
         private static WristMenuButton CreateWristToggle(

@@ -9,14 +9,8 @@ using NUnit.Framework;
 namespace KitchenXR.Tests.EditMode
 {
     /// <summary>
-    /// 進行の記録の待ち行列の検算（P3。主人の指示「送れないことで調理を止めない」）。
-    ///
-    /// 主人は調理中に電子レンジを回す。そのとき Wi-Fi は切れる——
-    /// だから「次へ」は必ず手元で効き、manor への報せは**追記ファイルに積むだけ**。
-    /// ここで示すのは3つ:
-    ///   1. 積んだ順に送られる
-    ///   2. 送れなかったら残る（次の機会にまた先頭から）
-    ///   3. 送れた分だけ消える
+    /// 進行の記録の待ち行列の検算（送れないことで調理を止めない）。
+    /// 積んだ順に送られる・送れなかったら残る・送れた分だけ消える、の3つを示す。
     /// 本物の manor へは繋がない（<see cref="IHttpTransport"/> ごと差し替える）。
     /// </summary>
     public class CookEventQueueTests
@@ -105,7 +99,7 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// 端末の鍵で叩く <see cref="ManorClient"/>（v1.0.10。ADR-017 D1）。
+        /// 端末の鍵で叩く <see cref="ManorClient"/>。
         /// 鍵が無いと <c>IsConfigured</c> が false になり、待ち行列はそもそも送ろうとしない。
         /// </summary>
         private static ManorClient Client(IHttpTransport transport)
@@ -212,7 +206,7 @@ namespace KitchenXR.Tests.EditMode
         {
             var queue = new CookEventQueue(_path);
 
-            // 見本（Resources の炒飯）を進めているとき・manor 未設定のとき。
+            // 見本を進めているとき・manor 未設定のとき。
             queue.Enqueue(null, "next", 2);
 
             Assert.AreEqual(0, queue.PendingCount);

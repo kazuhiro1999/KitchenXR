@@ -7,12 +7,12 @@ using UnityEngine.UIElements;
 namespace KitchenXR.Presentation
 {
     /// <summary>
-    /// 材料パネル（設計 §9・§11 追補）。チェックリスト。今の工程で使う材料を強調する。
-    /// チェックの有無はこのセッション内だけの見た目（サーバに送らない。v0 の範囲外）。
+    /// 材料パネル。チェックリストで、今の工程で使う材料を強調する。
+    /// チェックの有無はこのセッション内だけの見た目（サーバには送らない）。
     ///
-    /// 行は <see cref="Toggle"/> ではなく自前の行にしてある。UI Toolkit の Toggle は
-    /// 押し**上げ**で値が変わるので、押し下げで反応させる（§11 追補）と浅く突いて戻したときに
-    /// 2回反転して元に戻ってしまう。行そのものを押せる的にすると的も大きくなる（設計 §7）。
+    /// 行は <see cref="Toggle"/> ではなく自前の行にしてある。UI Toolkit の Toggle は押し上げで
+    /// 値が変わるので、押し下げで反応させると浅く突いて戻したときに2回反転して元に戻って
+    /// しまう。行そのものを押せる的にすると的も大きくなる。
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class IngredientsPanel : MonoBehaviour
@@ -63,10 +63,10 @@ namespace KitchenXR.Presentation
                 row.Add(detailLabel);
             }
 
-            // 押し下げで反応する（設計 §11 追補）。連打の抑止は行ごと。
+            // 押し下げで反応する。連打の抑止は行ごと。
             PokePress.Bind(row, _debounce, $"ingredient-{index}", () => ToggleRow(row, check));
 
-            // 同じ名前が複数 group に出ることは無い前提（見本レシピどおり）。
+            // 同じ名前が複数 group に出ることは無い前提。
             _rowsByName[ingredient.Name] = row;
             return row;
         }

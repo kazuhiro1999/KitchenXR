@@ -6,21 +6,15 @@ using UnityEngine;
 namespace KitchenXR.App
 {
     /// <summary>
-    /// 実機のログを端末内のファイルに残す（2026-09-13 主人「実機ログが確認できるようにローカルに
-    /// ログを残すようにできませんか」）。
+    /// 実機のログを端末内のファイルに残す。Unity のログ
+    /// （<see cref="Application.logMessageReceivedThreaded"/>）を全部
+    /// <c>persistentDataPath/logs/kitchenxr.log</c> へ追記する——USB で繋いでいれば
+    /// <c>adb logcat -s Unity</c> の方が早いが、繋がっていない実機確認のあとで見返すには
+    /// ファイルが要る。
     ///
-    /// Unity のログ（<see cref="Application.logMessageReceivedThreaded"/>）を全部
-    /// <c>persistentDataPath/logs/kitchenxr.log</c> へ追記する。Quest では
-    /// <c>/sdcard/Android/data/com.kazuhiro.kitchenxr/files/logs/kitchenxr.log</c> で、
-    /// <c>adb pull</c> でも MQDH のファイル一覧でも取れる。USB で繋げるときは
-    /// <c>adb logcat -s Unity</c> の方が早いが、繋がっていない実機確認のあとで「何が起きたか」を
-    /// 見返すにはファイルが要る。
-    ///
-    /// 1MB を越えたら <c>kitchenxr.1.log</c>・<c>kitchenxr.2.log</c> へ送って、3世代だけ残す
-    /// （一晩の調理で数百 KB。溜め続けると端末の容量を食う）。書き込みは毎行 flush する
-    /// ——落ちる直前の行こそ読みたい。
-    ///
-    /// <see cref="PressSound"/> と同じく、起動時に自分で1つ立つ（シーンの組み立てに手を入れない）。
+    /// 1MB を越えたら <c>kitchenxr.1.log</c>・<c>kitchenxr.2.log</c> へ送って3世代だけ残す
+    /// （溜め続けると端末の容量を食う）。書き込みは毎行 flush する——落ちる直前の行こそ読みたい。
+    /// <see cref="PressSound"/> と同じく起動時に自分で1つ立つ（シーンの組み立てに手を入れない）。
     /// </summary>
     public sealed class FileLog : MonoBehaviour
     {

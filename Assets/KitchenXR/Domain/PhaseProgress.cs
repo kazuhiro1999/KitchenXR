@@ -1,9 +1,8 @@
 namespace KitchenXR.Domain
 {
     /// <summary>
-    /// phase 1つぶんの進捗（レシピパネル上部の点列・設計 §9 用）。
-    /// 全体の <see cref="CookSession.Progress"/>（工程単位）とは丸め方を分けている
-    /// （設計 §4.4「phase単位の丸めは PhaseProgress で別に」）。
+    /// phase 1つぶんの進捗（レシピパネル上部の点列用）。
+    /// 全体の <see cref="CookSession.Progress"/>（工程単位）とは丸め方を分けている。
     /// </summary>
     public readonly struct PhaseProgress
     {

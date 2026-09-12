@@ -10,20 +10,15 @@ using UnityEngine;
 namespace KitchenXR.Net
 {
     /// <summary>
-    /// 進行の記録（<c>next</c> / <c>prev</c> / <c>end</c>）の**追記ファイルの待ち行列**
-    /// （<c>Application.persistentDataPath/cook_events.jsonl</c>。主人の指示・設計 §11 追補）。
+    /// 進行の記録（<c>next</c> / <c>prev</c> / <c>end</c>）の追記ファイルの待ち行列
+    /// （<c>Application.persistentDataPath/cook_events.jsonl</c>）。
     ///
-    /// 調理の最中に電子レンジを回せば Wi-Fi は切れる。そのとき
-    /// **「次へ」が送れないことで調理が止まってはいけない**。だから板の操作はまず Domain に効かせ、
-    /// サーバへの報せはここへ1行積むだけにする。積むのはファイルへの追記1回なので待たせない。
+    /// 調理の最中に電子レンジを回せば Wi-Fi は切れる。そのとき「次へ」が送れないことで調理が
+    /// 止まってはいけないので、板の操作はまず Domain に効かせ、サーバへの報せはここへ
+    /// 1行積むだけにする（ファイルへの追記1回なので待たせない）。送るのは <see cref="FlushAsync"/>。
     ///
-    /// 送るのは <see cref="FlushAsync"/>。繋がっているときに**積んだ順に**送り、
-    /// 送れた分だけ消す。途中で繋がらなくなったらそこで止め、残りはファイルに残す
-    /// （次の機会に、また先頭から）。起動時にも一度呼ぶ。
-    ///
-    /// 1行1件の JSON（JSON Lines）にしてあるのは、
-    /// 途中で電源が落ちても壊れるのが最後の1行だけで済むから——
-    /// 配列の JSON だと書き直しのたびに全体を書き換えることになる。
+    /// 1行1件の JSON（JSON Lines）なのは、途中で電源が落ちても壊れるのが最後の1行だけで
+    /// 済むから——配列の JSON だと書き直しのたびに全体を書き換えることになる。
     /// </summary>
     public sealed class CookEventQueue
     {
@@ -83,18 +78,16 @@ namespace KitchenXR.Net
             }
             catch (IOException e)
             {
-                // 積めなくても調理は続く（設計の優先順位。記録は二の次）。
+                // 積めなくても調理は続く（記録は二の次）。
                 Debug.LogWarning($"[KitchenXR] 進行の記録を積めませんでした: {_path} ({e.Message})");
             }
         }
 
         /// <summary>
-        /// 溜まっているものを**積んだ順に**送る。戻り値は送れた件数。
-        ///
-        /// 止め方は3つ:
+        /// 溜まっているものを積んだ順に送る。戻り値は送れた件数。止め方は3つ:
         ///   - 繋がらない → そこで止めて残りを残す（次の機会にまた先頭から）
         ///   - サーバが 5xx → 同じく残す（manor 側の一時的な不調）
-        ///   - サーバが 4xx → **その1件だけ捨てて先へ進む**（既に終わったセッションへの
+        ///   - サーバが 4xx → その1件だけ捨てて先へ進む（既に終わったセッションへの
         ///     `next` など、何度送っても通らないもの。残すと行列が永久に詰まる）
         /// </summary>
         public async UniTask<int> FlushAsync(ManorClient client, CancellationToken token = default)

@@ -10,22 +10,15 @@ using UnityEngine.Rendering;
 namespace KitchenXR.App.Editor
 {
     /// <summary>
-    /// Android の Player Settings のうち、機械で決められるものを設定する
-    /// （結果は `ProjectSettings/ProjectSettings.asset` に入りコミットされる）。
-    /// 手で Editor を開かずに済ませるためのバッチ用ツール。
+    /// Android の Player Settings のうち機械で決められるものを設定するバッチ用ツール
+    /// （結果は `ProjectSettings/ProjectSettings.asset` に入る）。
     ///
-    /// 2026-09-13（P4）に WebView（主人の `Assets/TLab/TLabWebView`）の要件を足した。
-    /// README の要求は3つ:
-    ///   - **Vulkan で組むなら OpenGLES も要る**（プラグインの一部が GLES API に依存している。
-    ///     README「Vulkanでビルドをする場合はAndroidデバイスがVulkanだけでなくOpenGLESもサポート
-    ///     していることが必要」）。Graphics API の一覧に両方を並べる
-    ///   - **Minimum API Level 26 以上**（今は 34 なので満たしている）
-    ///   - **Internet permission**（YouTube を開くので当然要る）。あわせて OpenXR の
-    ///     Meta Quest Support にある「Force Remove Internet Permission」が**入っていない**こと
-    ///     ——これが入っていると、上で足した permission がビルド時に剥がされる
-    ///
-    /// OpenXR の設定（`Assets/XR/Settings/OpenXRPackageSettings.asset`）は主人の持ち物なので
-    /// **書き換えない。検算だけする**（<see cref="OpenXrRemovesInternetPermission"/>）。
+    /// WebView（`Assets/TLab/TLabWebView`）の README の要求も揃える: Vulkan で組むなら
+    /// OpenGLES も併記（プラグインの一部が GLES API に依存）、Minimum API Level 26 以上、
+    /// Internet permission。あわせて OpenXR の「Force Remove Internet Permission」が
+    /// 入っていないこと——入っているとビルド時に permission が剥がされる。
+    /// ただし `Assets/XR/Settings/` は書き換えず検算だけする
+    /// （<see cref="OpenXrRemovesInternetPermission"/>）。
     /// </summary>
     public static class AndroidPlayerSetup
     {
@@ -34,7 +27,7 @@ namespace KitchenXR.App.Editor
         /// <summary>`TLabWebView` の README が求める最小 API（Android 8.0）。</summary>
         public const int MinimumSupportedSdk = 26;
 
-        /// <summary>主人の持ち物。読むだけ。</summary>
+        /// <summary>読むだけ（ここからは書き換えない）。</summary>
         public const string OpenXrSettingsPath = "Assets/XR/Settings/OpenXRPackageSettings.asset";
 
         public const string AdaptiveForegroundPath = "Assets/KitchenXR/Icons/icon_adaptive_fg.png";
@@ -58,7 +51,7 @@ namespace KitchenXR.App.Editor
             }
         }
 
-        // ---------------------------------------------------------------- WebView（P4）
+        // ---------------------------------------------------------------- WebView
 
         /// <summary>WebView（`TLabWebView`）が要る Android の設定を揃える。</summary>
         public static void ApplyWebViewRequirements()
@@ -75,9 +68,9 @@ namespace KitchenXR.App.Editor
             // （UnityWebRequest を使っていれば自動で付くが、「付いているつもり」を無くす）。
             PlayerSettings.Android.forceInternetPermission = true;
 
-            // 2026-09-13 実機ログ「Insecure connection not allowed」——Unity 6 の既定は
-            // 「HTTP（非暗号）を許さない」で、manor は家の LAN に http://192.168.x.y:8789 で居る。
-            // ADR-017 D7 のとおり LAN の平文は今回受け入れる（将来 TOFU の HTTPS にしたら戻す）。
+            // Unity 6 の既定は「HTTP（非暗号）を許さない」（実機ログ「Insecure connection not
+            // allowed」）だが、manor は家の LAN に http://192.168.x.y:8789 で居る。
+            // LAN の平文は受け入れる（HTTPS にしたら戻す）。
             PlayerSettings.insecureHttpOption = InsecureHttpOption.AlwaysAllowed;
 
             if ((int)PlayerSettings.Android.minSdkVersion < MinimumSupportedSdk)
@@ -92,9 +85,8 @@ namespace KitchenXR.App.Editor
 
         /// <summary>
         /// OpenXR の Meta Quest Support が Internet permission を剥がす設定になっているか。
-        /// **読むだけ**——`Assets/XR/Settings/` は主人の持ち物なのでここからは書き換えない
-        /// （立っていたら報告して、主人に Project Settings &gt; XR Plug-in Management &gt; OpenXR の
-        /// Meta Quest Support で外してもらう）。
+        /// 読むだけ——`Assets/XR/Settings/` はここからは書き換えず、立っていたら報告する
+        /// （Project Settings &gt; XR Plug-in Management &gt; OpenXR の Meta Quest Support で外す）。
         /// </summary>
         public static bool OpenXrRemovesInternetPermission()
         {
@@ -150,7 +142,7 @@ namespace KitchenXR.App.Editor
             {
                 issues.Add("OpenXR の Meta Quest Support で「Force Remove Internet Permission」が"
                            + "入っています。ビルド時に Internet permission が剥がされるので、"
-                           + "主人が Project Settings で外してください（この設定は書き換えません）。");
+                           + "Project Settings で外してください（この設定は書き換えません）。");
             }
 
             return issues;

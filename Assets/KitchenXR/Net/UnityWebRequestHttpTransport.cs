@@ -10,13 +10,13 @@ namespace KitchenXR.Net
     /// <summary>
     /// 実機で使う HTTP の口（<see cref="UnityWebRequest"/>）。
     ///
-    /// **cookie は自分で扱う**（主人の指示）。<see cref="UnityWebRequest"/> は Android では
-    /// プラットフォームの cookie 入れを使い回すことがあり、いつ消えるか・いつ付くかが読めない。
-    /// ここでは <c>Set-Cookie</c> をそのまま呼び出し側（<see cref="ManorClient"/>）へ渡すだけにして、
+    /// cookie は自分で扱う。<see cref="UnityWebRequest"/> は Android ではプラットフォームの
+    /// cookie 入れを使い回すことがあり、いつ消えるか・いつ付くかが読めない。ここでは
+    /// <c>Set-Cookie</c> をそのまま呼び出し側（<see cref="ManorClient"/>）へ渡すだけにして、
     /// 保持と付け直しは全部あちらの仕事にする——そうすれば試験でも同じ道が通る。
     ///
-    /// **例外は投げない**。繋がらなければ <see cref="HttpResponse.Offline"/>（status 0）。
-    /// 電子レンジで Wi-Fi が切れるのは異常ではなく前提（設計 §11 追補）。
+    /// 例外は投げない。繋がらなければ <see cref="HttpResponse.Offline"/>（status 0）
+    /// ——電子レンジで Wi-Fi が切れるのは異常ではなく前提。
     /// </summary>
     public sealed class UnityWebRequestHttpTransport : IHttpTransport
     {

@@ -23,16 +23,16 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 namespace KitchenXR.Tests.PlayMode
 {
     /// <summary>
-    /// レシピを選ぶ板の検算（P3。主人の指示）。
+    /// レシピを選ぶ板の検算。
     ///
     ///   - 一覧が題名・分・分類・kcal で並ぶ（先頭は見本）
-    ///   - **行を指で突くと**、レシピが手元に保存され、調理セッションが始まり、調理の板に入れ替わる
-    ///   - レシピの板の「一覧へ」は**2度押し**でだけ戻る（誤操作防止）
+    ///   - 行を指で突くと、レシピが手元に保存され、調理セッションが始まり、調理の板に入れ替わる
+    ///   - レシピの板の「一覧へ」は2度押しでだけ戻る（誤操作防止）
     ///
     /// 本物の manor へは繋がない（<see cref="IHttpTransport"/> ごと差し替える）。
     /// 保管庫も一時フォルダへ逃がす（実機の persistentDataPath を汚さない）。
     /// 突くのは <see cref="XRPokeInteractor"/> を実際に動かして——
-    /// 「触れたら反応する」（設計 §11 追補）が新しい板でも効くことを、板越しに示す。
+    /// 「触れたら反応する」が新しい板でも効くことを、板越しに示す。
     /// </summary>
     public class RecipeListPanelTests
     {
@@ -218,7 +218,7 @@ namespace KitchenXR.Tests.PlayMode
 
         private VisualElement Root => _panelGo.GetComponent<UIDocument>().rootVisualElement;
 
-        /// <summary>並んでいるカード（v1.0.6 で行からグリッドのカードへ変えた）。</summary>
+        /// <summary>並んでいるカード。</summary>
         private List<VisualElement> Rows =>
             Root.Query<VisualElement>(className: "recipe-card").ToList();
 
@@ -261,7 +261,7 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 端末の鍵で叩く客（v1.0.10。ADR-017 D1）。鍵が無いと <c>IsConfigured</c> が false で、
+        /// 端末の鍵で叩く客。鍵が無いと <c>IsConfigured</c> が false で、
         /// 料理長の口はそもそも叩かれない。
         /// </summary>
         private ManorClient BuildManorClient(FakeManorTransport transport)
@@ -311,13 +311,12 @@ namespace KitchenXR.Tests.PlayMode
 
             Assert.IsTrue(rows[0].ClassListContains("recipe-card--sample"), "見本のカードに印がありません。");
 
-            // 設計 §7「最小4cm角」。板の縮尺は 1 UI px ≒ 2mm なので 20px 以上。
+            // 最小4cm角。板の縮尺は 1 UI px ≒ 2mm なので 20px 以上。
             Assert.GreaterOrEqual(rows[0].resolvedStyle.height, 19.9f,
-                "カードが 4cm を切ると、調理中の手では狙えません（設計 §7）。");
+                "カードが 4cm を切ると、調理中の手では狙えません。");
         }
 
         /// <summary>
-        /// v1.0.6（主人「Web のレシピサイトと同じようにグリッドで写真も」）。
         /// 3列に折り返し、カードの上に写真の場所がある——写真が無いうちは「写真なし」の札。
         /// </summary>
         [UnityTest]
@@ -348,8 +347,8 @@ namespace KitchenXR.Tests.PlayMode
             Assert.Greater(cards[1].layout.x, cards[0].layout.x + 1f,
                 "2枚目が1枚目の右に並んでいません。");
 
-            // 6件なら縦スクロール無しで全部見える（主人「6 件を超えたら縦スクロール」）。
-            // 折り返した段は容れ物の高さに出ないので、**最後のカードの下端**で測る。
+            // 6件なら縦スクロール無しで全部見える（7 件目から縦スクロール）。
+            // 折り返した段は容れ物の高さに出ないので、最後のカードの下端で測る。
             var scroll = Root.Q<ScrollView>("recipeScroll");
             var viewportHeight = scroll.contentViewport.resolvedStyle.height;
             Assert.LessOrEqual(cards[5].layout.yMax, viewportHeight,
@@ -386,8 +385,8 @@ namespace KitchenXR.Tests.PlayMode
         // ---------------------------------------------------------------- 選ぶ
 
         /// <summary>
-        /// 行を突くと、**レシピが先に手元へ保存されてから**調理セッションが始まり、板が入れ替わる
-        /// （主人の指示「先に全部保存してから調理を始める」）。
+        /// 行を突くと、レシピが先に手元へ保存されてから調理セッションが始まり、板が入れ替わる
+        /// （先に全部保存してから調理を始める）。
         /// 配線は <c>Bootstrap</c> と同じ順を試験側でなぞる（Bootstrap 自体は XR Origin を要するため）。
         /// </summary>
         [UnityTest]
@@ -483,7 +482,7 @@ namespace KitchenXR.Tests.PlayMode
             Assert.AreEqual(1, selections);
             Assert.IsTrue(listPanel.IsBusy);
 
-            // 覆いの下の別の行を突いても受けない（押し間違いを防ぐ。設計 §7）。
+            // 覆いの下の別の行を突いても受けない（押し間違いを防ぐ）。
             yield return WaitRealSeconds(0.7f);
             yield return PokeAt(WorldPositionOf(Rows[1]));
 
@@ -594,11 +593,11 @@ namespace KitchenXR.Tests.PlayMode
         // ---------------------------------------------------------------- ペアリングの番号
 
         /// <summary>
-        /// v1.0.10（manor の ADR-017 D2）。鍵が無いときは覆いに**6桁を大きく**出し、
-        /// 主人が manor の Web の 設定 → 端末 で許可する。板に文字入力は置かない（設計 §6）。
+        /// 鍵が無いときは覆いに6桁を大きく出し、manor の Web の 設定 → 端末 で許可してもらう。
+        /// 板に文字入力は置かない。
         ///
         /// 大きさを見るのは、これが「離れた所から読み上げる」ための文字だから——
-        /// 20px は実寸 4cm（theme.uss の換算）で、設計 §7 の押せる的と同じ寸法。
+        /// 20px は実寸 4cm（theme.uss の換算）で、押せる的と同じ寸法。
         /// </summary>
         [UnityTest]
         public IEnumerator 覆いにペアリングの番号が大きく出る()

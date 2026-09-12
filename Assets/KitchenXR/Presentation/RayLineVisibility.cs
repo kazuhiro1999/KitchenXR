@@ -4,34 +4,18 @@ using UnityEngine.XR.Interaction.Toolkit.Interactors;
 namespace KitchenXR.Presentation
 {
     /// <summary>
-    /// レイの線を「指す先があるときだけ」出す（2026-09-13 主人の実機確認 v1.0.8 の④）。
+    /// レイの線を「指す先があるときだけ」出す（調理中の視界に手から 25cm の線が常に伸びている
+    /// のが邪魔なため）。線を消してもレイは生きている。
     ///
-    /// 主人の言葉:
-    ///   「レイが操作できない場合は表示を消してほしいですね。
-    ///     Youtube パネルにレイが当たっているときだけ表示はできますか？」
+    /// XRI 3.5 に「無効なときは隠す」の設定は無い。<c>CurveVisualController</c> は
+    /// <c>RetractOnHitLoss</c> で短くできても消せず、component を無効にしただけでは
+    /// <c>OnDisable</c> が <c>LineRenderer</c> に触らず最後の線が固まるので、
+    /// <c>LineRenderer</c> も一緒に落とす（<c>XRInteractorLineVisual</c> は自分で落とすが、
+    /// 両方落として困ることは無い）。
     ///
-    /// 調理中の視界に、手から 25cm の線（<c>CurveVisualController.restingVisualLineLength</c>）が
-    /// 常に伸びているのが邪魔だという話。**線を消してもレイは生きている**——
-    /// 層の切り替え（<see cref="CookingModeInputGate"/>）はそのままなので、
-    /// 動画の板へ向ければ当たり、当たった瞬間に線が出る。
-    ///
-    /// **XRI 3.5 に「無効なときは隠す」の設定は無い。**
-    ///   - <c>CurveVisualController</c>（Near-Far Interactor が使うのはこちら）は
-    ///     <c>LineDynamicsMode.RetractOnHitLoss</c> で**短くする**ことはできても消せない。
-    ///     さらに悪いことに、この component を無効にしただけでは
-    ///     <c>OnDisable</c> が <c>LineRenderer</c> に触らないので、**最後の線が出たまま固まる**。
-    ///     だから <c>LineRenderer</c> も一緒に落とす。
-    ///   - <c>XRInteractorLineVisual</c>（古い口。将来 rig を差し替えたときのため）は
-    ///     <c>OnDisable</c> が自分で <c>LineRenderer</c> を落とすが、両方落として困ることは無い。
-    ///
-    /// 「指す先がある」の見方は <see cref="XRBaseInteractor.hasHover"/> ／
-    /// <see cref="XRBaseInteractor.hasSelection"/>。ここは XRI の層
-    /// （<c>interactionLayers</c>）を既に通った後なので、
-    /// **調理モードでは動画の板だけ・配置モードでは全部の板**が自然にそうなる——
-    /// モードの分岐をここに書かなくてよい。
-    ///
-    /// XRI は機種非依存のツールキットそのものなので、この配線は <c>Platform/</c> に
-    /// 閉じ込める対象ではない（設計 §4.2。<see cref="CookingModeInputGate"/> と同じ理由）。
+    /// 判定は <see cref="XRBaseInteractor.hasHover"/>／<see cref="XRBaseInteractor.hasSelection"/>。
+    /// XRI の層を既に通った後なので、調理モードでは動画の板だけ・配置モードでは全部の板が
+    /// 自然にそうなる——モードの分岐をここに書かなくてよい。
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class RayLineVisibility : MonoBehaviour
@@ -69,7 +53,7 @@ namespace KitchenXR.Presentation
         }
 
         /// <summary>
-        /// 自分が止められたら線は**出したまま**返す。XRI の既定の振る舞いへ戻すのが筋で、
+        /// 自分が止められたら線は出したまま返す。XRI の既定の振る舞いへ戻すのが筋で、
         /// 「線を消す仕掛けを外したのに線が消えたままになる」を作らないため。
         /// </summary>
         private void OnDisable() => Apply(true, force: true);
@@ -99,11 +83,11 @@ namespace KitchenXR.Presentation
         }
 
         /// <summary>
-        /// 線を描いている component を名前で**子まで見て**拾う。
+        /// 線を描いている component を名前で子まで見て拾う。
         ///
         /// 子まで見るのが肝心——XRI の `Left_NearFarInteractor.prefab` では
         /// <c>CurveVisualController</c> も <c>LineRenderer</c> も
-        /// Interactor 本体ではなく **`LineVisual` という子**に載っている。
+        /// Interactor 本体ではなく `LineVisual` という子に載っている。
         /// 同じ GameObject だけを見ると黙って何も見つからず、線は出っぱなしのままになる。
         ///
         /// 型で書かない理由は2つ——<c>CurveVisualController</c> と

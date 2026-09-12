@@ -3,7 +3,7 @@ using UnityEngine;
 namespace KitchenXR.Presentation
 {
     /// <summary>
-    /// 「同じボタンの連打を600ms抑える」（設計 §7）の共通実装。
+    /// 「同じボタンの連打を600ms抑える」の共通実装。
     /// キーごと（ボタン名や工程 index）に最後に受け付けた時刻を持つ。
     /// Domain は連打を扱わない前提なので、この抑止は必ず Presentation 側に置く。
     /// </summary>

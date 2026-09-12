@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace KitchenXR.Presentation
 {
-    /// <summary>見え方の3段（小・中・大）。中が既定で、v1.0.6 までの見た目と同じ。</summary>
+    /// <summary>見え方の3段（小・中・大）。中が既定。</summary>
     public enum DisplayScale
     {
         Small,
@@ -15,15 +15,13 @@ namespace KitchenXR.Presentation
     }
 
     /// <summary>
-    /// 表示の設定（2026-09-13 主人「パネルサイズと文字サイズですが、設定とかで変更できたらもっといい」）。
-    ///
-    /// 持つのは2つだけ——**文字の大きさ**と**板の大きさ**。どちらも小・中・大の3段で、
-    /// 自由な数値にしない。調理中の手で細かい目盛りを合わせるのは無理だし、
-    /// 中途半端な値にすると「1m 先で読める」（設計 §9）が保証できなくなる。
+    /// 表示の設定。持つのは文字の大きさと板の大きさの2つだけ。どちらも小・中・大の3段で、
+    /// 自由な数値にしない——調理中の手で細かい目盛りを合わせるのは無理だし、中途半端な値に
+    /// すると「1m 先で読める」が保証できなくなる。
     ///
     /// 置き場は <c>Application.persistentDataPath/settings.json</c>
     /// （<see cref="KitchenXR.Net.LastSessionStore"/> と同じ流儀）。
-    /// **壊れていたら黙って既定に戻す**——設定が読めないことで起動が止まってはいけない。
+    /// 壊れていたら黙って既定に戻す——設定が読めないことで起動が止まってはいけない。
     ///
     /// ここは純粋な読み書きだけ。実際に板へ当てるのは <see cref="DisplaySettingsApplier"/>。
     /// </summary>

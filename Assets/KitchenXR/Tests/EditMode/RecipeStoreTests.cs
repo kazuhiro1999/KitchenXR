@@ -10,8 +10,7 @@ using UnityEngine;
 namespace KitchenXR.Tests.EditMode
 {
     /// <summary>
-    /// オフライン前提の保管庫の検算（設計 §11 追補）。
-    /// 主人は調理中に電子レンジを使う——そのとき通信は切れる。だから
+    /// オフライン前提の保管庫の検算。調理中に電子レンジを使えば通信は切れるので、
     /// 「一度取ったものはローカルから出る」「取れなかったものは札で代える」
     /// 「同じものを何度も取りに行かない」の3つを機械で示す。
     /// ネットには出ない（<see cref="IRecipeImageDownloader"/> を差し替える）。
@@ -79,7 +78,7 @@ namespace KitchenXR.Tests.EditMode
             Assert.AreEqual("試験用レシピ", first.Title);
             Assert.IsTrue(store.HasLocalRecipe(RecipeId), "レシピ JSON が persistentDataPath 側に残っていません。");
 
-            // 2回目は見本を渡さなくても読める（＝Resources ではなくローカルを見ている）。
+            // 2回目は見本を渡さなくても読める（ローカルを見ている）。
             var second = store.LoadRecipe(RecipeId, null);
             Assert.AreEqual("試験用レシピ", second.Title);
             Assert.AreEqual(1, second.Steps.Count);

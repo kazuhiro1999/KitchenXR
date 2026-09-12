@@ -12,9 +12,9 @@ namespace KitchenXR.Net
     public interface IHttpTransport
     {
         /// <summary>
-        /// 送って返す。**例外は投げない**——通信そのものが成立しなかったときは
+        /// 送って返す。例外は投げない——通信そのものが成立しなかったときは
         /// <see cref="HttpResponse.Offline"/>（status 0）を返す。
-        /// オフラインは異常ではなく前提なので、呼び出し側は分岐で扱う（設計 §11 追補）。
+        /// オフラインは異常ではなく前提なので、呼び出し側は分岐で扱う。
         /// </summary>
         UniTask<HttpResponse> SendAsync(HttpRequest request, CancellationToken token);
     }
@@ -45,7 +45,7 @@ namespace KitchenXR.Net
     /// <summary>1回分の返り。</summary>
     public sealed class HttpResponse
     {
-        /// <summary>HTTP の状態。**0 は「繋がらなかった」**（サーバの答えではない）。</summary>
+        /// <summary>HTTP の状態。0 は「繋がらなかった」（サーバの答えではない）。</summary>
         public int StatusCode { get; }
 
         public string Body { get; }

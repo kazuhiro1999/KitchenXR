@@ -8,7 +8,7 @@ namespace KitchenXR.Platform.Null
     /// </summary>
     public sealed class DefaultHandInputPolicy : IHandInputPolicy
     {
-        // 起動時・配置を「保存」した後は調理モードが既定（設計 §4.4）。
+        // 起動時・配置を「保存」した後は調理モードが既定。
         public HandInputMode CurrentMode { get; private set; } = HandInputMode.CookingMode;
 
         public event Action<HandInputMode> ModeChanged;

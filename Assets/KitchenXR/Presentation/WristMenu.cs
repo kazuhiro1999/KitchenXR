@@ -4,40 +4,18 @@ using UnityEngine.UIElements;
 namespace KitchenXR.Presentation
 {
     /// <summary>
-    /// 手首の釦とメニュー（2026-09-13 主人の実機確認 v1.0.8 の③）。
+    /// 手首の釦とメニュー。
     ///
-    /// 主人の言葉:
-    ///   「手のひらメニューはいい感じですが、手を横に向けているときにも表示されています。
-    ///     手を洗ってるときなどに出ると邪魔なので、要改善。手首の手のひら側にボタンを作っておいて、
-    ///     それを押すとパネルがトグルでも全然いいと思います」
+    /// XRI の <c>HandMenu</c> は手のひらの向きで出し入れするが、閾値（`Menu Hands Follow
+    /// Preset` の 75.7° と 95.7°）の後者は水平より広く、手を横に向けても成立してしまう。
+    /// 閾値を詰めても、手の姿勢を合図にしている限り料理中の手は必ず合図を出す。そこで合図を
+    /// やめ、左右の手首に 4.4cm 角の板を付けっぱなしにして、反対の手で押したときだけメニューを
+    /// 出す（左右どちらでも押せ、最後に押した側の手に付いて出る）。
     ///
-    /// v1.0.8 までは XRI の <c>HandMenu</c>（`Runtime/UI/BodyUI/HandMenu.cs`）が
-    /// **手のひらの向き**でメニューを出し入れしていた。判定は
-    /// 「手のひらが自分を向いている」かつ「手のひらが上を向いている」の2つで、
-    /// サンプルの設定（`Menu Hands Follow Preset`）の閾値は 75.7° と **95.7°**——
-    /// 後者は水平より広いので**手を横に向けても成立してしまう**。
-    /// 閾値を詰めても「洗い物の途中で偶然出る」は無くならない。
-    /// 手の姿勢を合図にしている限り、料理中の手は必ずどこかで合図を出す（設計 §7 の原則
-    /// 「料理中の手は UI 操作の意図ではない」）。
-    ///
-    /// そこで**合図をやめて釦にした**。左右の手首の手のひら側に 4.4cm 角の板を1枚ずつ
-    /// 付けっぱなしにし、反対の手でそれを押したときだけメニューが出る。
-    /// 手を洗っていても横を向いていても、出るものは何も無い。
-    /// 左右どちらでも押せるのは <c>HandMenu</c> の既定（<c>MenuHandedness.Either</c>）と同じで、
-    /// メニューは**最後に押した側の手**に付いて出る。
-    ///
-    /// **手のひらの Transform の取り方は XRI の <c>HandMenu</c> と同じ**——
-    /// MR テンプレートの <c>Left Hand</c>／<c>Right Hand</c> の下にある <c>Palm</c>
-    /// （<c>TrackedPoseDriver</c> が XR Hands の手のひらの姿勢で動かしている）を挿す。
-    /// <c>XRInputModalityManager</c> は手を追えていないときに
-    /// <c>Left Hand</c>／<c>Right Hand</c> ごと眠らせるので、
-    /// <c>Palm</c> の <c>activeInHierarchy</c> が「今この手が見えているか」になる。
-    ///
-    /// **手のひらの軸**（XRI の `Menu Hands Follow Preset` が <c>palmReferenceAxis: 4</c>＝Down を
-    /// 手のひらの向きとして使い、メニューを z:+0.1 へ押し出していることから読める）:
-    ///   - 手のひらの面が向く先 ＝ <c>-palm.up</c>
-    ///   - 指先の方 ＝ <c>+palm.forward</c>
-    ///   - 手首の方 ＝ <c>-palm.forward</c>
+    /// 手のひらの Transform は <c>HandMenu</c> と同じ <c>Left/Right Hand</c> の下の <c>Palm</c>
+    /// を挿す。<c>XRInputModalityManager</c> は手を追えていないとき <c>Left/Right Hand</c> ごと
+    /// 眠らせるので、<c>Palm</c> の <c>activeInHierarchy</c> が「今この手が見えているか」になる。
+    /// 軸は 手のひらの面＝<c>-palm.up</c>・指先＝<c>+palm.forward</c>・手首＝<c>-palm.forward</c>。
     /// </summary>
     public sealed class WristMenu : MonoBehaviour
     {
@@ -78,10 +56,9 @@ namespace KitchenXR.Presentation
         /// 手のひらの面から 14cm 浮かせた「掌の上の空間」で、指先の方へ 10cm。
         /// 26cm×18.4cm の板なので、ここに置くと腕に被らず、反対の手で押せる距離に来る。
         ///
-        /// **手首の釦から 17cm 離す**のが肝心（釦は z = -0.07、メニューは z = +0.10）。
+        /// 手首の釦から 17cm 離すのが肝心（釦は z = -0.07、メニューは z = +0.10）。
         /// 近すぎると、釦を押しに来た指がメニューの当たり判定（板の裏へ 24cm の箱）に
-        /// 先に触れて、釦が押せなくなる——PlayMode 試験
-        /// 「手首の釦をポークするとメニューがトグルで出入りする」がこれを踏んだ。
+        /// 先に触れて、釦が押せなくなる。
         /// </summary>
         [SerializeField]
         private Vector3 _menuLocalOffset = new Vector3(0f, -0.14f, 0.10f);
@@ -100,7 +77,7 @@ namespace KitchenXR.Presentation
         {
             SubscribeAll();
 
-            // 起動時は閉じている（主人の指示「手を洗ってるときなどに出ると邪魔」）。
+            // 起動時は閉じている（手を洗っているときなどに出ていると邪魔）。
             SetMenuOpen(false);
         }
 
@@ -157,8 +134,8 @@ namespace KitchenXR.Presentation
         }
 
         /// <summary>
-        /// その手の釦が押された。出ていて**同じ手**なら閉じ、
-        /// 閉じているか**反対の手**なら、その手にメニューを出し直す。
+        /// その手の釦が押された。出ていて同じ手なら閉じ、
+        /// 閉じているか反対の手なら、その手にメニューを出し直す。
         /// </summary>
         public void ToggleFrom(Transform anchor)
         {
@@ -177,11 +154,9 @@ namespace KitchenXR.Presentation
         /// 「配置」はレシピ／一覧の板の頭からも押せるので、そのときメニューが閉じたままだと
         /// 「保存」「やめる」に手が届かない＝配置モードから出られなくなる。
         ///
-        /// **手が1つも追えていなければ出せない**（false を返す）。
-        /// この板は手に付いているので、手が無ければ置く場所が無い——
-        /// コントローラだけで使っているときがこれに当たる。
-        /// 呼び側（<c>Bootstrap</c>）はこのとき配置モードへ**入らない**
-        /// （設計 §7「行き止まりを作らない」）。
+        /// 手が1つも追えていなければ出せない（false を返す）。この板は手に付いているので、
+        /// 手が無ければ置く場所が無い——コントローラだけで使っているときがこれに当たる。
+        /// 呼び側（<c>Bootstrap</c>）はこのとき配置モードへ入らない（行き止まりを作らない）。
         /// </summary>
         /// <returns>メニューが出ているか。</returns>
         public bool Open()
@@ -258,8 +233,8 @@ namespace KitchenXR.Presentation
         }
 
         /// <summary>
-        /// 手首の釦を手のひらの面と平行に置く。板の「表」は local -Z（設計 §9・Bootstrap と同じ）
-        /// なので、+Z を手のひらの**裏**（<c>+palm.up</c>）へ向ければ表が手のひら側を向く。
+        /// 手首の釦を手のひらの面と平行に置く。板の「表」は local -Z（Bootstrap と同じ）なので、
+        /// +Z を手のひらの裏（<c>+palm.up</c>）へ向ければ表が手のひら側を向く。
         /// 板の上は指先の方（<c>+palm.forward</c>）——手を返して見たときに字が正しく立つ。
         ///
         /// 手が追えていなければ板ごと眠らせる（宙に置き去りにしない）。
@@ -288,7 +263,7 @@ namespace KitchenXR.Presentation
         }
 
         /// <summary>
-        /// メニューは掌の上の空間に、**視線の側を向けて**出す。
+        /// メニューは掌の上の空間に、視線の側を向けて出す。
         /// 手のひらと同じ向きにすると、手首をひねった角度がそのまま板の角度になって読みづらい。
         /// 板の表は local -Z なので、+Z を頭と反対へ向ける（＝ <c>LookRotation(menu - head)</c>）。
         /// </summary>
@@ -318,7 +293,7 @@ namespace KitchenXR.Presentation
         }
 
         /// <summary>
-        /// 板の**中心**を <paramref name="center"/> に合わせる。
+        /// 板の中心を <paramref name="center"/> に合わせる。
         /// 板の原点は左上（<see cref="WorldSpacePanelFactory.PanelPivot"/>）で右下へ伸びるので、
         /// 中心から左へ幅の半分・上へ高さの半分ずらした点が Transform の位置になる。
         /// 寸法は <see cref="UIDocument.worldSpaceSize"/>（UI px）から、板の縮尺込みで実寸へ直す。

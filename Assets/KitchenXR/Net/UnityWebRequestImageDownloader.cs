@@ -7,8 +7,8 @@ using UnityEngine.Networking;
 namespace KitchenXR.Net
 {
     /// <summary>
-    /// 実機で使う取得口。<c>UnityWebRequestTexture</c> で取り、**そのままの中身**を返す
-    /// （<see cref="RecipeStore"/> がそれをローカルへ保存する。次からは通信しない。設計 §11 追補）。
+    /// 実機で使う取得口。<c>UnityWebRequestTexture</c> で取り、そのままの中身を返す
+    /// （<see cref="RecipeStore"/> がそれをローカルへ保存する。次からは通信しない）。
     /// 電子レンジ等で通信が切れているときは null を返し、呼び出し側が札で代える。
     /// </summary>
     public sealed class UnityWebRequestImageDownloader : IRecipeImageDownloader

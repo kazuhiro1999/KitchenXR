@@ -8,23 +8,16 @@ using UnityEngine;
 namespace KitchenXR.Presentation.Video
 {
     /// <summary>
-    /// 一覧の行に出す絵（サムネイル）の保管庫（2026-09-13 主人の実機確認 v1.0.9）。
+    /// 一覧の行に出す絵（サムネイル）の保管庫。絵は動画 id ごとに決まる場所（<c>i.ytimg.com</c>）に
+    /// あり一度取れば変わらないので、手元に置いて次からは通信しない。
     ///
-    /// 主人「再生リストは…右横に置いて縦スクロールできた方がいいかも（YouTube を Web で見るときの
-    /// 画面みたいにサムネ＋タイトル）」。絵は動画 id ごとに決まる場所にあり（<c>i.ytimg.com</c>）、
-    /// 一度取れば変わらないので**手元に置いて次からは通信しない**。
+    /// 流儀は <see cref="RecipeStore"/> の画像と同じ——通信は <see cref="IRecipeImageDownloader"/>
+    /// の裏（試験では差し替える）、置き場は <c>persistentDataPath/media-thumbs/</c>、失敗は黙る
+    /// （絵が出ないだけで一覧は選べる）。<see cref="RecipeStore"/> 自体を使わないのは、あちらが
+    /// 「レシピ id ＋ 画像の鍵」で掘る作りだから。
     ///
-    /// 流儀は <see cref="RecipeStore"/> の画像と同じ（設計 §11 追補）——
-    /// 通信は <see cref="IRecipeImageDownloader"/> の裏（試験ではこれを差し替える）、
-    /// 置き場は <c>persistentDataPath/media-thumbs/&lt;video_id&gt;.jpg</c>、
-    /// **失敗は黙る**（絵が出ないだけで一覧は選べる。台所で通信が切れるのは普通のこと）。
-    ///
-    /// <see cref="RecipeStore"/> をそのまま使わないのは、あちらが「レシピ id ＋ 画像の鍵」で
-    /// 掘る作りで、`Net/` は別担当の持ち物だから（動画のために触りたくない）。
-    /// 取ってくる口（<see cref="IRecipeImageDownloader"/>）だけ借りる。
-    ///
-    /// **作った <see cref="Texture2D"/> は呼び出し側のもの**——板が消えるときに
-    /// <see cref="VideoPanel"/> が捨てる（ここは持ち続けない。板を作り直すたびに増えていく）。
+    /// 作った <see cref="Texture2D"/> は呼び出し側のもの——ここは持ち続けず、板が消えるときに
+    /// <see cref="VideoPanel"/> が捨てる。
     /// </summary>
     public sealed class MediaThumbnailCache
     {
@@ -121,7 +114,7 @@ namespace KitchenXR.Presentation.Video
             }
             catch (IOException)
             {
-                // 書けなくても絵は出せる……が、次も通信することになる。黙って諦める（設計 §7 の流儀）。
+                // 書けなくても絵は出せる（次も通信することになるだけ）。黙って諦める。
                 _failedUrls.Add(url);
                 return false;
             }

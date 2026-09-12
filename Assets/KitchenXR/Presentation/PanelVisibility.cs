@@ -5,20 +5,13 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 namespace KitchenXR.Presentation
 {
     /// <summary>
-    /// 板の出し入れ（P3。一覧の板 ⇄ 調理の板の切り替え）。
+    /// 板の出し入れ（一覧の板 ⇄ 調理の板の切り替え）。
     ///
-    /// **<c>GameObject.SetActive</c> では切り替えない。** <see cref="UIDocument"/> は
-    /// 無効になるときに <c>rootVisualElement</c> を手放し、有効になるときに作り直すので、
-    /// <c>Awake</c> で <c>Q&lt;&gt;</c> して掴んでおいた要素の参照が全部死ぬ
-    /// （各パネルは Awake で1度だけ引いて持つ作りになっている）。
-    ///
-    /// 代わりに3つを一緒に切る:
-    ///   1. 板の中身（<c>rootVisualElement</c> の display）——見えなくする
-    ///   2. <see cref="BoxCollider"/>——指が当たらなくする
-    ///   3. <see cref="XRSimpleInteractable"/>——ホバーの色と振動も出さない
-    ///
-    /// 2 と 3 を一緒に切るのが肝心。見えない板が当たり判定だけ残っていると、
-    /// 一覧を選んだ直後に指が「まだそこにある透明な板」を突いてしまう（設計 §7 の誤操作）。
+    /// <c>GameObject.SetActive</c> では切り替えない——<see cref="UIDocument"/> は無効になるとき
+    /// <c>rootVisualElement</c> を手放して作り直すので、各パネルが <c>Awake</c> で掴んだ要素の
+    /// 参照が全部死ぬ。代わりに3つを一緒に切る: 中身の display・<see cref="BoxCollider"/>・
+    /// <see cref="XRSimpleInteractable"/>。後ろ2つを一緒に切るのが肝心で、見えない板が当たり
+    /// 判定だけ残っていると、一覧を選んだ直後に指が「まだそこにある透明な板」を突いてしまう。
     /// </summary>
     public static class PanelVisibility
     {

@@ -7,19 +7,14 @@ using UnityEngine;
 namespace KitchenXR.Net
 {
     /// <summary>
-    /// 端末の控え（<c>Application.persistentDataPath/manor-device.json</c>。manor の ADR-017 D2-5）。
-    ///
+    /// 端末の控え（<c>persistentDataPath/manor-device.json</c>）。形は
     /// <code>{"base_url":"http://…","token":"…","device_id":"…","user_id":"…","paired_at":"…"}</code>
     ///
-    /// ここに**この端末の鍵**が入る。鍵はペアリング（主人が manor の Web で番号を許可する）で
-    /// 一度だけ降りてくるもので、manor 側はハッシュしか持たない——**落としたら取り直すしかない**ので、
-    /// 受け取った瞬間に書く。以後 <c>manor.json</c> の合言葉は見ない（v1.0.10 で廃止）。
+    /// 鍵はペアリングで一度だけ降りてくるもので manor 側はハッシュしか持たない——落としたら
+    /// 取り直すしかないので、受け取った瞬間に書く。<c>base_url</c> も覚えるのは、探索で見つけた
+    /// 口を次の起動で先に試せるようにするため。
     ///
-    /// <c>base_url</c> も一緒に覚える。探索（ADR-017 D3）で見つけた口を次の起動で先に試せるようにする
-    /// ためで、PC の LAN の住所が変わっても「一度繋がった先」から始められる。
-    ///
-    /// 壊れていれば**無かったことにする**（落ちない・消さない）。鍵だけが読めなければペアリングから
-    /// やり直せばよく、主人の手を借りるのは番号を許可する一手だけで済む。
+    /// 壊れていれば無かったことにする（落ちない・消さない）——ペアリングからやり直せばよい。
     /// </summary>
     public sealed class ManorDeviceFile
     {
@@ -121,8 +116,8 @@ namespace KitchenXR.Net
         }
 
         /// <summary>
-        /// 繋ぎ先だけを書き換える（探索で見つけ直したとき。ADR-017 D3）。
-        /// **鍵は触らない**——PC の住所が変わっただけで鍵を捨てさせない。
+        /// 繋ぎ先だけを書き換える（探索で見つけ直したとき）。
+        /// 鍵は触らない——PC の住所が変わっただけで鍵を捨てさせない。
         /// </summary>
         public void SaveBaseUrl(string baseUrl)
         {
@@ -149,8 +144,8 @@ namespace KitchenXR.Net
         }
 
         /// <summary>
-        /// 鍵を捨てる（manor が 401 を返した＝主人が Web で失効させた）。
-        /// **繋ぎ先は残す**——同じ manor にもう一度ペアリングするのだから、探索をやり直す必要はない。
+        /// 鍵を捨てる（manor が 401 を返した＝Web で失効させられた）。
+        /// 繋ぎ先は残す——同じ manor にもう一度ペアリングするのだから、探索をやり直す必要はない。
         /// </summary>
         public void ForgetToken()
         {
@@ -219,7 +214,7 @@ namespace KitchenXR.Net
 
         public string DeviceId { get; }
 
-        /// <summary>この端末が振る舞う利用者（ADR-014）。札や記録に出すだけで、送りはしない。</summary>
+        /// <summary>この端末が振る舞う利用者。札や記録に出すだけで、送りはしない。</summary>
         public string UserId { get; }
 
         public string PairedAt { get; }

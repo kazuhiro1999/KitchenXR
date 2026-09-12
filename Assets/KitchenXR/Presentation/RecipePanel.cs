@@ -10,17 +10,14 @@ using UnityEngine.UIElements;
 namespace KitchenXR.Presentation
 {
     /// <summary>
-    /// レシピパネル（主。設計 §9・§11 追補）。上に**工程の数だけ**の点列と進捗%、
-    /// 中央に今の工程（左に画像・右に見出しと説明と次の工程）、下にボタンの行。
-    /// CookSession は持たない——Bootstrap から渡された状態を映すだけ。
+    /// レシピパネル（主）。上に工程の数だけの点列と進捗%、中央に今の工程（左に画像・右に
+    /// 見出しと説明と次の工程）、下にボタンの行。CookSession は持たない——Bootstrap から
+    /// 渡された状態を映すだけ。中身がなぜ左右2列なのかは <c>RecipePanel.uss</c> の先頭に書いた。
     ///
-    /// v1.0.6（2026-09-13 主人の実機確認）で**1画面に収める**作りへ変えた。
-    /// 中身がなぜ左右2列なのかは <c>RecipePanel.uss</c> の先頭に書いた。
-    ///
-    /// 「次へ／戻る」は <see cref="PokePress"/> で**押し下げ**に反応する（設計 §11 追補）。
+    /// 「次へ／戻る」は <see cref="PokePress"/> で押し下げに反応する。
     /// <c>Button.clicked</c>（押し上げ）は購読しない——深く突き抜けると発火しないため。
     ///
-    /// 画像は <see cref="RecipeStore"/> 越しに**ローカルから**読む（オフライン前提。§11 追補）。
+    /// 画像は <see cref="RecipeStore"/> 越しにローカルから読む（オフライン前提）。
     /// 無ければその場で取りに行き、取れなければ材料名の淡い札で代える。
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
@@ -51,14 +48,14 @@ namespace KitchenXR.Presentation
         public event Action NextRequested;
         public event Action PrevRequested;
 
-        /// <summary>「一覧へ」が**2度**押された（P3。1度目は身構えるだけ）。</summary>
+        /// <summary>「一覧へ」が2度押された（1度目は身構えるだけ）。</summary>
         public event Action BackToListRequested;
 
-        /// <summary>「作り終えた」が押された（P3。完了したときだけ出るボタン）。</summary>
+        /// <summary>「作り終えた」が押された（完了したときだけ出るボタン）。</summary>
         public event Action FinishRequested;
 
         /// <summary>
-        /// 「配置」が**2度**押された（P2。板を置き直すモードへ。設計 §4.4）。
+        /// 「配置」が2度押された（板を置き直すモードへ）。
         /// 手のひらメニューが実機で出ないときの、確実な入り口を兼ねる。
         /// </summary>
         public event Action PlacementRequested;
@@ -127,7 +124,7 @@ namespace KitchenXR.Presentation
             // 本文の高さが決まった瞬間に同じ値を幅へ入れる。
             _currentSection?.RegisterCallback<GeometryChangedEvent>(_ => LayoutStepImage());
 
-            // P2。「配置」も2度押し（調理の面に並んでいる釦なので、1度では動かさない）。
+            // 「配置」も2度押し（調理の面に並んでいる釦なので、1度では動かさない）。
             _placementPress = new TwoPressButton(
                 root.Q<Button>("placementButton"), PlacementLabel, PlacementArmedLabel,
                 BackToListConfirmSeconds, PlacementArmedClass);
@@ -139,14 +136,12 @@ namespace KitchenXR.Presentation
         }
 
         /// <summary>
-        /// 「一覧へ」は**2度押し**（主人の指示。長押しではない）。
-        ///
-        /// 調理の途中で一覧へ戻るのは、進めていた工程を画面から失う操作にあたる。
-        /// 1度目は身構えるだけ（文字が「もう一度」に変わり色が付く）で、
+        /// 「一覧へ」は2度押し（長押しではない）。調理の途中で一覧へ戻るのは、進めていた工程を
+        /// 画面から失う操作にあたる。1度目は身構えるだけ（文字が「もう一度」に変わり色が付く）で、
         /// 猶予（<see cref="BackToListConfirmSeconds"/>）の間にもう1度押されたときだけ戻る。
         ///
-        /// 長押しにしなかったのは、押し下げ発火（設計 §11 追補）と噛み合わないため——
-        /// 手応えの無い板を押せば指は深く入って留まるので、「長押し」が普通の1回押しと区別できない。
+        /// 長押しにしないのは押し下げ発火と噛み合わないため——手応えの無い板を押せば指は深く
+        /// 入って留まるので、「長押し」が普通の1回押しと区別できない。
         /// </summary>
         private void HandleBackToListPressed()
         {
@@ -180,7 +175,7 @@ namespace KitchenXR.Presentation
         public bool IsBackToListArmed => _backToListArmedUntil > 0f && Time.unscaledTime <= _backToListArmedUntil;
 
         /// <summary>
-        /// 工程の画像を正方形にする。一辺は**本文の高さ**（＝板の残り全部）。
+        /// 工程の画像を正方形にする。一辺は本文の高さ（＝板の残り全部）。
         /// ただし本文の幅の <see cref="ImageMaxWidthRatio"/> は越えない——
         /// 文字の大きさを「大」にすると本文が縦に縮むのではなく右の列が要る幅が増えるので、
         /// 画像が右の列を押し潰さないようにここで頭を押さえる。
@@ -207,8 +202,8 @@ namespace KitchenXR.Presentation
                 return;
             }
 
-            // 主人（2026-09-13）「画像が少し大きすぎ。少しだけ余白を」——正方形の一辺から余白ぶんを引く
-            // （余白そのものは USS の margin。ここで引かないと余白の分だけ列がはみ出る）。
+            // 正方形の一辺から余白ぶんを引く（余白そのものは USS の margin。
+            // ここで引かないと余白の分だけ列がはみ出る）。
             side = Mathf.Max(20f, side - ImageInsetUnits * 2f);
             _currentImage.style.width = side;
             _currentImage.style.height = side;
@@ -235,7 +230,7 @@ namespace KitchenXR.Presentation
             ReleaseShownTexture();
         }
 
-        /// <summary>画像の出どころを挿す（Bootstrap から。P3 でサーバに変わってもここは変わらない）。</summary>
+        /// <summary>画像の出どころを挿す（Bootstrap から）。</summary>
         public void Bind(RecipeStore store, string recipeId)
         {
             var changed = _recipeId != recipeId;
@@ -244,7 +239,7 @@ namespace KitchenXR.Presentation
 
             if (changed)
             {
-                // P3。別のレシピに差し替わった——同じ工程番号でも絵は別物なので、
+                // 別のレシピに差し替わった——同じ工程番号でも絵は別物なので、
                 // 「今出している絵」の覚えを捨てて必ず読み直させる。
                 _imageLoadCts?.Cancel();
                 _imageLoadCts?.Dispose();
@@ -262,7 +257,7 @@ namespace KitchenXR.Presentation
             var isComplete = session.IsComplete;
             SetHidden(_currentSection, isComplete);
             SetHidden(_completeSection, !isComplete);
-            // 戻るは常に可能（設計 §5）。次へは完了後に押しても Domain 側で無視されるだけなので、
+            // 戻るは常に可能。次へは完了後に押しても Domain 側で無視されるだけなので、
             // 工程が1つも無いレシピ（想定外）のときだけ押せなくする。
             _nextButton.SetEnabled(session.Recipe.Steps.Count > 0);
 
@@ -291,7 +286,7 @@ namespace KitchenXR.Presentation
         }
 
         /// <summary>
-        /// 工程の数だけ点を出す（設計 §11 追補。v1.0.2 は phase の3つしか出していなかった）。
+        /// 工程の数だけ点を出す（phase の数ではない）。
         /// 今までを塗り、今の工程は大きく。phase の変わり目は点の間隔で見せる。
         /// </summary>
         private void RefreshStepDots(CookSession session)
@@ -340,7 +335,7 @@ namespace KitchenXR.Presentation
 
             if (_store == null || string.IsNullOrEmpty(step.Image))
             {
-                return; // URL の無い工程は材料名の札のまま（設計 §9）。
+                return; // URL の無い工程は材料名の札のまま。
             }
 
             _imageLoadCts = new CancellationTokenSource();
@@ -376,7 +371,7 @@ namespace KitchenXR.Presentation
         }
 
         /// <summary>
-        /// 画像の代わりの札（設計 §9）。v1.0.6 から画像の**上ではなく説明の下**に出る。
+        /// 画像の代わりの札。画像の上ではなく説明の下に出る（重ねると写真が読めない）。
         /// 材料が1つも無い工程は見出しと同じ文字を繰り返すだけなので、何も出さない。
         /// </summary>
         private void ShowChip(Step step)

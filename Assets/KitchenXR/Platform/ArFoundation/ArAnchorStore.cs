@@ -8,28 +8,17 @@ using UnityEngine.XR.ARSubsystems;
 namespace KitchenXR.Platform.ArFoundation
 {
     /// <summary>
-    /// AR Foundation 6.5 の**永続アンカー**で板の位置を覚える（設計 §4.3・ROADMAP P2）。
-    ///
-    /// 段取りは文書 `com.unity.xr.arfoundation/Documentation~/features/anchors/persistent-anchors.md`
-    /// のとおり:
-    ///   保存 = <c>ARAnchorManager.TryAddAnchorAsync(worldPose)</c> でアンカーを1つ作り、
+    /// AR Foundation 6.5 の永続アンカーで板の位置を覚える。
+    ///   保存 = <c>TryAddAnchorAsync(worldPose)</c> でアンカーを1つ作り、
     ///          <c>TrySaveAnchorAsync(anchor)</c> が返す <c>SerializableGuid</c> を
-    ///          <see cref="AnchorGuidFile"/>（anchors.json）へ鍵ごとに控える
-    ///   復元 = 控えた GUID で <c>TryLoadAnchorAsync(guid)</c>。返ったアンカーの Transform が
-    ///          「前と同じ場所」。板をその Pose へ置く
+    ///          <see cref="AnchorGuidFile"/> へ鍵ごとに控える
+    ///   復元 = 控えた GUID で <c>TryLoadAnchorAsync(guid)</c>。返ったアンカーの Pose へ板を置く
     ///   消去 = 同じ鍵を保存し直すときは、先に <c>TryEraseAnchorAsync(古い GUID)</c>
     ///
-    /// **例外を投げない。** マネージャが無い・サブシステムが保存に対応しない・呼び出しが失敗した
-    /// ——どれも <see langword="false"/>／<see langword="null"/> を返すだけにする。
-    /// 呼び出し側（<c>Presentation/PanelPlacement</c>）は退避路（`panels.json`）へ落ちる。
-    /// アンカーは**土台**（設計 §0 A）だが、土台が無い機でもアプリは立つ、が設計の原則。
-    ///
-    /// 対応の有無（文書で確かめた）:
-    ///   - Meta Quest（Unity OpenXR: Meta 2.5）: Save／Load／Erase **対応**。
-    ///     Get Saved Anchor Ids は**非対応**なので、GUID は自分で持つほかない
-    ///   - Editor の XR Simulation: Save／Load／Erase いずれも**非対応**
-    ///     （`xr-simulation/simulation-features/simulation-anchors.md` の表）。
-    ///     だからエディタでは必ず控えの側を通る
+    /// 例外を投げない。マネージャが無い・保存に対応しない・呼び出しが失敗した——どれも
+    /// false／null を返すだけにして、呼び出し側は退避路（`panels.json`）へ落ちる。
+    /// Meta Quest は Get Saved Anchor Ids が非対応なので GUID は自分で持つほかなく、
+    /// Editor の XR Simulation はいずれも非対応なので必ず控えの側を通る。
     /// </summary>
     public sealed class ArAnchorStore : IAnchorStore
     {
@@ -60,7 +49,7 @@ namespace KitchenXR.Platform.ArFoundation
         }
 
         /// <summary>
-        /// マネージャを**探さない**個体（試験用）。「AR Foundation が居ない機」を再現する——
+        /// マネージャを探さない個体（試験用）。「AR Foundation が居ない機」を再現する——
         /// EditMode 試験はシーンが開いたままのことがあるので、探しに行かせると結果が揺れる。
         /// </summary>
         public static ArAnchorStore CreateWithoutManager(AnchorGuidFile guidFile = null) =>
@@ -70,7 +59,7 @@ namespace KitchenXR.Platform.ArFoundation
 
         /// <summary>
         /// シーンに <c>ARAnchorManager</c> が在るか（<c>Bootstrap</c> がどちらの実装を挿すか決めるのに使う）。
-        /// **これは「アンカーが使える」の保証ではない**——サブシステムが保存に対応しているかは
+        /// これは「アンカーが使える」の保証ではない——サブシステムが保存に対応しているかは
         /// 起動直後には分からない（AR Session が立ち上がるまで descriptor が無い）ので、
         /// 実際の可否は <see cref="SaveAsync"/>／<see cref="LoadAsync"/> の中で毎回見る。
         /// </summary>

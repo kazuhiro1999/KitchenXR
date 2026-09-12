@@ -6,21 +6,21 @@ using UnityEngine.UIElements;
 namespace KitchenXR.Presentation
 {
     /// <summary>
-    /// タイマーパネル（設計 §9・§11 追補「タイマーは常時使える」）。
+    /// タイマーパネル（調理中は常時使える）。
     ///
     /// 上の作り口で長さを決めて「開始」。動いているものは下に縦へ積む（同時に3つまで）。
     /// 工程に <c>timer_sec</c> があれば、その工程に入ったときに既定値として入る。
     /// 終わったら音（その場で作った短い合成音）と板の点滅で知らせる。
     ///
     /// 時間の計算そのものは Domain の <see cref="CookTimer"/> の仕事——
-    /// ここは時計（<c>Time.unscaledTime</c>）を渡して結果を映すだけ（設計 §4.2）。
+    /// ここは時計（<c>Time.unscaledTime</c>）を渡して結果を映すだけ。
     /// 「停止」は Domain に一時停止の概念が無いので、止めた瞬間の残りを Presentation が覚えておき、
     /// 「再開」でその残りを持つ <see cref="CookTimer"/> を作り直す。
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class TimerPanel : MonoBehaviour
     {
-        /// <summary>同時に持てるタイマーの数（設計 §11 追補）。</summary>
+        /// <summary>同時に持てるタイマーの数。</summary>
         public const int MaxTimers = 3;
 
         private const double MinSeconds = 30;
@@ -109,7 +109,7 @@ namespace KitchenXR.Presentation
             }
         }
 
-        /// <summary>工程が変わったら timer_sec を既定値に入れる（設計 §11 追補）。</summary>
+        /// <summary>工程が変わったら timer_sec を既定値に入れる。</summary>
         public void Refresh(CookSession session)
         {
             var current = session.CurrentStep;
@@ -345,7 +345,7 @@ namespace KitchenXR.Presentation
         }
 
         /// <summary>
-        /// 短い知らせの音をその場で作る（外部の音源は持ち込まない。設計 §11 追補）。
+        /// 短い知らせの音をその場で作る（外部の音源は持ち込まない）。
         /// 880Hz の点を3つ、指数で減衰させる——調理中の音に紛れにくい高さにしてある。
         /// </summary>
         private static AudioClip CreateChime()

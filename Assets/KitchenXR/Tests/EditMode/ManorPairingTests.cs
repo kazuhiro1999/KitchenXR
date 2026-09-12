@@ -9,15 +9,13 @@ using NUnit.Framework;
 namespace KitchenXR.Tests.EditMode
 {
     /// <summary>
-    /// 端末のペアリング（v1.0.10。manor の ADR-017 D1・D2・D3・D6）の検算。
-    /// **本物の manor へは繋がない**——通信は <see cref="IHttpTransport"/> ごと差し替える。
-    ///
-    /// 押さえるのは契約の要所:
+    /// 端末のペアリングの検算。本物の manor へは繋がない——通信は
+    /// <see cref="IHttpTransport"/> ごと差し替える。押さえるのは契約の要所:
     ///   1. 控え（`manor-device.json`）の往復・壊れた JSON・鍵の破棄
-    ///   2. 探索の応答（UDP 8791 の返り）の読み——**純粋関数**なのでここで見る
-    ///   3. 鍵があれば <c>Authorization: Bearer</c> で送り、**cookie のログインはしない**
+    ///   2. 探索の応答（UDP 8791 の返り）の読み——純粋関数なのでここで見る
+    ///   3. 鍵があれば <c>Authorization: Bearer</c> で送り、cookie のログインはしない
     ///   4. 401 なら鍵を捨てて <c>DeviceRevoked</c> を上げる（Bootstrap がやり直す）
-    ///   5. `pair/start` → `pair/poll` の JSON が ADR のとおりに読める
+    ///   5. `pair/start` → `pair/poll` の JSON が契約のとおりに読める
     /// </summary>
     public class ManorPairingTests
     {
@@ -161,8 +159,8 @@ namespace KitchenXR.Tests.EditMode
             Assert.IsEmpty(ManorDiscovery.ParseBaseUrl(string.Empty));
             Assert.IsEmpty(ManorDiscovery.ParseBaseUrl(null));
 
-            Assert.AreEqual("manor-discover v1", ManorDiscovery.Probe, "探索の文言が ADR-017 D3 と違います。");
-            Assert.AreEqual(8791, ManorDiscovery.Port, "探索の口が ADR-017 D3 と違います。");
+            Assert.AreEqual("manor-discover v1", ManorDiscovery.Probe, "探索の文言が契約と違います。");
+            Assert.AreEqual(8791, ManorDiscovery.Port, "探索の口が契約と違います。");
         }
 
         // ---------------------------------------------------------------- 鍵で叩く
@@ -183,7 +181,7 @@ namespace KitchenXR.Tests.EditMode
             Assert.IsTrue(result.IsSuccess);
             Assert.AreEqual(1, transport.Requests.Count, "鍵があるのに合言葉で入ろうとしました。");
             Assert.AreEqual($"Bearer {Token}", transport.HeaderOf(0, "Authorization"),
-                "Authorization: Bearer が付いていません（ADR-017 D1）。");
+                "Authorization: Bearer が付いていません。");
             Assert.IsNull(transport.HeaderOf(0, "Cookie"), "鍵の経路に cookie は付けません。");
             Assert.IsFalse(client.IsLoggedIn);
         }
@@ -245,7 +243,7 @@ namespace KitchenXR.Tests.EditMode
             Assert.AreEqual(2, started.Value.PollAfterSeconds);
 
             Assert.AreEqual($"{BaseUrl}/api/v1/devices/pair/start", transport.Requests[0].Url,
-                "ペアリングの口が ADR-017 D2 と違います。");
+                "ペアリングの口が契約と違います。");
             Assert.IsNull(transport.HeaderOf(0, "Authorization"), "ペアリングに認証は要りません。");
             StringAssert.Contains("\"kind\":\"kitchenxr\"", transport.Requests[0].JsonBody);
             StringAssert.Contains("Quest 3", transport.Requests[0].JsonBody);

@@ -7,7 +7,7 @@ namespace KitchenXR.Presentation.Video
     ///
     /// WebView は Android のプラグイン（`Assets/TLab/TLabWebView/Plugins/Android`）なので
     /// Editor では絵が出ない。Editor ではこれを挿しておき、板は「動画は実機で」の札を出す。
-    /// 一覧もボタンも**そのまま動く**——頼まれたことを覚えるだけなので、PlayMode 試験の
+    /// 一覧もボタンもそのまま動く——頼まれたことを覚えるだけなので、PlayMode 試験の
     /// 「選ぶと Load が呼ばれる」の受け手も兼ねる。
     /// </summary>
     public sealed class NullVideoPlayer : IVideoPlayer

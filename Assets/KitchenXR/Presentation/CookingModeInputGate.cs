@@ -7,53 +7,18 @@ using UnityEngine.XR.Interaction.Toolkit.Interactors;
 namespace KitchenXR.Presentation
 {
     /// <summary>
-    /// 2つのモードで手の入力を切り替える（設計 §4.4・§7・§11 追補 2026-09-13）。
+    /// 2つのモードで手の入力を切り替える。Ray が届く板は「配置＝全部／調理＝動画の板だけ」、
+    /// 調理の板の UI は「配置＝効かない／調理＝効く」。
     ///
-    /// | | 配置モード | 調理モード（既定） |
-    /// |---|---|---|
-    /// | Ray（NearFar・XRRay）そのもの | 生きる | **生きる**（v1.0.7 までは切っていた） |
-    /// | Ray が届く板 | 全部 | **動画の板だけ** |
-    /// | 調理の板の UI（ポークで押す釦） | **効かない** | 効く |
+    /// Interactor は切らず、板の側で絞る。ポークを切ると手のひらメニューも押せず配置モードから
+    /// 出られなくなるので、調理の板の UI は板ガラスで覆う（掴むコライダーは生きたまま）。
     ///
-    /// XRI は機種非依存のツールキットそのものなので、この配線は Platform/ に閉じ込める対象では
-    /// ない（設計 §4.2）。
-    ///
-    /// **ポークの Interactor そのものは切らない**（P2 でのずらし。理由を残す）:
-    /// 配置モードで切ってしまうと手のひらメニューも指で押せなくなり、
-    /// レイが実機で UI に届かなかったときに配置モードから出られなくなる。
-    /// 代わりに**調理の板の UI を効かなくする**（板ガラスをかぶせる）——
-    /// 狙い（設計 §4.4「配置モードでは Poke のボタンは効かない」＝誤って工程が進まない）は
-    /// これで満たしつつ、掴む（コライダー）は生きたままにできる。
-    ///
-    /// ---------------------------------------------------------------------------
-    /// 2026-09-13 主人の実機確認（v1.0.7）でここを作り直した。主人の言葉:
-    ///   「Youtube プレイヤーだけレイ操作を有効化してほしい（基本、料理中は前面にレシピを
-    ///     出すのでレイは邪魔だが、Youtube は少し離れた場所に置くので、逆に遠隔から操作したい）」
-    ///   「壁の奥に行ってしまったらつかめないので何とかしたい」
-    ///
-    /// Ray を丸ごと on/off するのをやめ、**層で分ける**。層は2種類を重ねてある——
-    /// 片方だけでは足りないので、両方要る:
-    ///
-    ///   1. **Interaction Layer**（XRI の層。<c>InteractionLayerSettings</c> の 1 番 = "Video"）
-    ///      調理モードでは Ray の <c>interactionLayers</c> を Video だけにする。
-    ///      これで XRI の掴み・ホバー・振動が動画の板以外に効かなくなる。
-    ///
-    ///   2. **物理の層**（8 番 "Kitchen Panel Off Ray"。この用途のために足した）
-    ///      Interaction Layer は **UI Toolkit の当たり**には効かない——XRI のワールド空間 UI
-    ///      （<c>XRUIToolkitHandler</c>）は「レイが当たったコライダーに UIDocument が付いているか」
-    ///      だけを見ていて、Interactable も Interaction Layer も通らない。
-    ///      つまり 1 だけだと、調理中にレイを向けて摘まむだけでレシピの「次へ」が押せてしまう。
-    ///      そこで調理モードの間、**動画以外の板の GameObject を 8 番へ移す**。
-    ///      MR テンプレートの Ray（Near-Far Interactor）の far 側の raycastMask は
-    ///      Default(0)／UI(5)／XR Simulation(31) の3つだけなので、8 番はレイに引っ掛からない。
-    ///      配置モードでは元の層（Default）へ戻すので、壁の奥の板もレイで掴める。
-    ///
-    ///      **2 番 "Ignore Raycast" ではだめ**（2026-09-13 に PlayMode 試験で踏んだ）。
-    ///      ポークの UI は XRI が座標を投げ、その先で **UI Toolkit 自身**がワールド空間の板を
-    ///      引き当てる。そこは <c>Physics.DefaultRaycastLayers</c>（＝2 番だけを外した全部）で
-    ///      当たりを取るので、板を 2 番へ移すと**指でも押せなくなる**。
-    ///      8 番なら DefaultRaycastLayers には入ったまま（＝ポークは効く）で、
-    ///      Ray の raycastMask からは外れる（＝レイは届かない）。
+    /// Ray は層で絞り、層は2種類要る。XRI の Interaction Layer（1 番 "Video"）だけでは
+    /// UI Toolkit の当たりに効かず（<c>XRUIToolkitHandler</c> はコライダーに UIDocument が
+    /// 付いているかだけを見る）、レイで摘まむだけで「次へ」が押せてしまうので、物理層
+    /// （8 番 "Kitchen Panel Off Ray"）へも移す。8 番は Ray の raycastMask（0/5/31）から外れ、
+    /// <c>Physics.DefaultRaycastLayers</c> には入ったまま——2 番 "Ignore Raycast" だと後者からも
+    /// 外れて指でも押せなくなる。
     /// </summary>
     public sealed class CookingModeInputGate : MonoBehaviour
     {
@@ -91,7 +56,7 @@ namespace KitchenXR.Presentation
         /// <summary>板ごとの元の物理層。調理モードで移した板を配置モードで戻すのに要る。</summary>
         private readonly Dictionary<GameObject, int> _panelHomeLayer = new Dictionary<GameObject, int>();
 
-        /// <summary>調理中もレイが届いてよい板（動画の板。主人の指示）。</summary>
+        /// <summary>調理中もレイが届いてよい板（動画の板）。</summary>
         private GameObject _rayReachableWhileCooking;
 
         private IHandInputPolicy _policy;
@@ -142,7 +107,7 @@ namespace KitchenXR.Presentation
         }
 
         /// <summary>
-        /// 調理中もレイで操作してよい板を決める（動画の板。主人「Youtube だけ遠隔から操作したい」）。
+        /// 調理中もレイで操作してよい板を決める（動画の板）。
         /// この板だけは調理モードでも元の物理層に残る。
         /// Interaction Layer の側（Video を名乗らせる）は板を組み立てるときに決めてある
         /// （<see cref="WorldSpacePanelFactory.Configure"/> の <c>interactionLayers</c>）。
@@ -178,8 +143,7 @@ namespace KitchenXR.Presentation
                     continue;
                 }
 
-                // v1.0.7 まではここで enabled を切っていた。切ると壁の奥へ行った板に手が届かない
-                // （主人「壁の奥に行ってしまったらつかめない」）ので、常に生かして層で絞る。
+                // enabled を切ると壁の奥へ行った板に手が届かないので、常に生かして層で絞る。
                 interactor.enabled = true;
 
                 if (interactor is XRBaseInteractor rayLike)
@@ -220,7 +184,7 @@ namespace KitchenXR.Presentation
         /// <summary>
         /// 板の UI が入力を受けるか。掴む側（コライダー）には触らない。
         ///
-        /// やり方は**板ガラス**（板全体を覆う、当たるだけで何もしない要素）を1枚かぶせること。
+        /// やり方は板ガラス（板全体を覆う、当たるだけで何もしない要素）を1枚かぶせること。
         /// <c>pickingMode = Ignore</c> を根に立てても子は拾われてしまうし、
         /// <c>SetEnabled(false)</c> は既定テーマの「無効」の見た目（薄い灰）を全部に付けてしまう。
         /// 板ガラスなら、当たり判定だけを確実に奪って見た目は変えない。

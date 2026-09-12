@@ -21,19 +21,16 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 namespace KitchenXR.Tests.PlayMode
 {
     /// <summary>
-    /// 配置モードの検算（ROADMAP P2・設計 §4.4・§11 追補 2026-09-13）。
-    ///
-    /// 見るのは4つ:
-    ///   1. **配置モードでは調理の板が指で押せない**（指を突っ込んでも工程が進まない）。
-    ///      Ray は**どちらのモードでも生きたまま**で、触れてよい層だけが変わる
-    ///      （調理モード＝動画の板だけ／配置モード＝全部。2026-09-13 に作り直した）
-    ///   2. **重ねた2枚のうち「見えている板」に掴む仕掛けと枠が付く**
-    ///      （v1.0.7 の「メインパネルがつかめない」の直し）
-    ///   3. **「保存」で調理モードへ戻り**、控え（panels.json）に全ての鍵が書かれる
-    ///   4. **起動時の復元順**——アンカー → 控え → 既定
+    /// 配置モードの検算。見るのは4つ:
+    ///   1. 配置モードでは調理の板が指で押せない（指を突っ込んでも工程が進まない）。
+    ///      Ray はどちらのモードでも生きたままで、触れてよい層だけが変わる
+    ///      （調理モード＝動画の板だけ／配置モード＝全部）
+    ///   2. 重ねた2枚のうち「見えている板」に掴む仕掛けと枠が付く
+    ///   3. 「保存」で調理モードへ戻り、控え（panels.json）に全ての鍵が書かれる
+    ///   4. 起動時の復元順——アンカー → 控え → 既定
     ///
     /// 板の組み立ては Kitchen.unity と同じ <see cref="WorldSpacePanelFactory"/> を通す
-    /// （シーンと試験で別の組み方をしない、という P1 からの約束）。
+    /// （シーンと試験で別の組み方をしない）。
     /// </summary>
     public class PlacementModeTests
     {
@@ -196,7 +193,7 @@ namespace KitchenXR.Tests.PlayMode
             };
             _recipePanel.Refresh(_session);
 
-            // 一覧の板（レシピと**同じ場所に重ねる**2枚目）と、動画の板（離れた所）。
+            // 一覧の板（レシピと同じ場所に重ねる2枚目）と、動画の板（離れた所）。
             // 既定は「調理中」——レシピが出ていて一覧は引っ込んでいる。
             // 起動直後（一覧が出ている）の並びは、それを見る試験の中で入れ替える。
             _listPanelGo = BuildBarePanel("RecipeListPanel", panelSettings, uxml, null, Vector3.zero);
@@ -244,7 +241,7 @@ namespace KitchenXR.Tests.PlayMode
         /// <summary>
         /// Bootstrap と同じ組み立て（アンカーは InMemory・控えは一時の場所）。
         ///
-        /// Ray は**実物の Interactor**を使う——ゲートが見るのは <c>enabled</c> だけでなく
+        /// Ray は実物の Interactor を使う——ゲートが見るのは <c>enabled</c> だけでなく
         /// <c>interactionLayers</c>（XRI の層）にもなったので、身代わりの Behaviour では足りない。
         /// </summary>
         private IEnumerator BuildPlacement()
@@ -268,7 +265,7 @@ namespace KitchenXR.Tests.PlayMode
 
             _placement.Bind(_anchors, _poseFile, _policy, _gate, _originGo.transform);
 
-            // Kitchen.unity と同じ結び方: レシピ（取っ手役）に一覧が付いていく＝**同じ鍵で2枚**。
+            // Kitchen.unity と同じ結び方: レシピ（取っ手役）に一覧が付いていく＝同じ鍵で2枚。
             _placement.Register(PanelPlacement.RecipeKey, _recipePanel, _listPanelGo.transform);
             _placement.Register(PanelPlacement.VideoKey, _videoPanelGo.transform);
             _gate.AllowRayInCookingMode(_videoPanelGo.transform);
@@ -341,14 +338,14 @@ namespace KitchenXR.Tests.PlayMode
 
             Assert.AreEqual(HandInputMode.CookingMode, _policy.CurrentMode, "既定は調理モードのはずです。");
 
-            // 2026-09-13: Ray は切らない（切ると壁の奥の板に手が届かない）。触れてよい層で絞る。
+            // Ray は切らない（切ると壁の奥の板に手が届かない）。触れてよい層で絞る。
             Assert.IsTrue(_rayLike.enabled, "調理モードで Ray が止まっています（動画の板を遠隔操作できません）。");
             Assert.AreEqual(CookingModeInputGate.CookingRayInteractionLayers,
                 (int)_rayLike.interactionLayers,
-                "調理モードの Ray が Video 以外の層にも触れます（設計 §11 追補 2026-09-13）。");
+                "調理モードの Ray が Video 以外の層にも触れます。");
 
             Assert.IsTrue(CookingModeInputGate.IsRayReachable(_videoPanelGo),
-                "調理モードで動画の板にレイが届きません（主人「Youtube だけ遠隔から操作したい」）。");
+                "調理モードで動画の板にレイが届きません。");
             Assert.IsFalse(CookingModeInputGate.IsRayReachable(_panelGo),
                 "調理モードでレシピの板にレイが届きます（レイで『次へ』が押せてしまいます）。");
 
@@ -377,7 +374,7 @@ namespace KitchenXR.Tests.PlayMode
                 "配置モードの Ray が一部の層にしか触れません（壁の奥の板を掴めません）。");
 
             Assert.IsTrue(CookingModeInputGate.IsRayReachable(_panelGo),
-                "配置モードでレシピの板にレイが届きません（主人「配置のときはレイ操作を有効にしてほしい」）。");
+                "配置モードでレシピの板にレイが届きません。");
             Assert.IsTrue(CookingModeInputGate.IsRayReachable(_videoPanelGo),
                 "配置モードで動画の板にレイが届きません。");
 
@@ -386,7 +383,7 @@ namespace KitchenXR.Tests.PlayMode
 
             yield return PokeAt(target, 0.05f);
 
-            Assert.AreEqual(0, _nextCount, "配置モードで『次へ』が発火しました（設計 §4.4）。");
+            Assert.AreEqual(0, _nextCount, "配置モードで『次へ』が発火しました。");
             Assert.AreEqual(1, _session.Current, "配置モードで工程が進みました。");
         }
 
@@ -400,7 +397,7 @@ namespace KitchenXR.Tests.PlayMode
             _placement.Enter();
             yield return null;
 
-            Assert.IsTrue(PanelPlacement.HasFrame(_panelGo), "配置モードで枠が出ていません（設計 §4.4）。");
+            Assert.IsTrue(PanelPlacement.HasFrame(_panelGo), "配置モードで枠が出ていません。");
 
             var grab = _panelGo.GetComponent<XRGrabInteractable>();
             var simple = _panelGo.GetComponent<XRSimpleInteractable>();
@@ -418,8 +415,8 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 2026-09-13 主人「メインパネルが移動（つかむことすら）できないことがある」の直し。
-        /// 同じ鍵に重ねた2枚（レシピと一覧）のうち、**見えている板**が取っ手役になること。
+        /// 同じ鍵に重ねた2枚（レシピと一覧）のうち、見えている板が取っ手役になること
+        /// （さもないと掴めない板を掴もうとすることになる）。
         /// 起動直後は一覧の板が出ているので、掴む仕掛けと黄色い枠は一覧の板に付かねばならない。
         /// </summary>
         [UnityTest]
@@ -442,7 +439,7 @@ namespace KitchenXR.Tests.PlayMode
 
             var listGrab = _listPanelGo.GetComponent<XRGrabInteractable>();
             Assert.IsNotNull(listGrab, "一覧の板に掴む仕掛けが足されていません。");
-            Assert.IsTrue(listGrab.enabled, "一覧の板が掴めません（v1.0.7 の「つかむことすらできない」）。");
+            Assert.IsTrue(listGrab.enabled, "一覧の板が掴めません。");
 
             // 重なっている見えない板は引っ込めておく。当たり判定を奪い合うと引き当てが運任せになる。
             Assert.IsFalse(PanelVisibility.IsVisible(_recipePanel),
@@ -478,7 +475,7 @@ namespace KitchenXR.Tests.PlayMode
             _placement.Enter();
             yield return null;
 
-            // 主人が掴んで動かした、のかわりに板を直接動かす。
+            // 掴んで動かした、のかわりに板を直接動かす。
             var moved = new Pose(new Vector3(0.4f, 1.5f, 1.1f), Quaternion.Euler(0f, -20f, 0f));
             _panelGo.transform.SetPositionAndRotation(moved.position, moved.rotation);
 
@@ -489,10 +486,10 @@ namespace KitchenXR.Tests.PlayMode
             }
 
             Assert.IsFalse(_placement.IsPlacing, "保存しても配置モードのままです。");
-            Assert.AreEqual(HandInputMode.CookingMode, _policy.CurrentMode, "保存で調理モードへ戻りません（設計 §4.4）。");
+            Assert.AreEqual(HandInputMode.CookingMode, _policy.CurrentMode, "保存で調理モードへ戻りません。");
             Assert.IsTrue(CookingModeInputGate.IsUiEnabled(_panelGo), "調理モードに戻ったのに板の UI が止まっています。");
 
-            // 控えは**必ず**書く（アンカーが使えるかどうかに関わらず。設計 §4.3 の退避路）。
+            // 控えは必ず書く（アンカーが使えるかどうかに関わらず）。
             var read = new PanelPoseFile(Path.Combine(_directory, PanelPoseFile.FileName));
             read.Load();
             Assert.IsTrue(read.TryGet(PanelPlacement.RecipeKey, out var stored), "控えに鍵がありません。");
@@ -532,7 +529,7 @@ namespace KitchenXR.Tests.PlayMode
             var anchorPose = new Pose(new Vector3(1f, 1.4f, 0.5f), Quaternion.identity);
             _anchors.SaveAsync(PanelPlacement.RecipeKey, anchorPose).GetAwaiter().GetResult();
 
-            // 控えには**別の**場所を入れておく。アンカーが勝つことを見るため。
+            // 控えには別の場所を入れておく。アンカーが勝つことを見るため。
             _poseFile.Set(PanelPlacement.RecipeKey, new Pose(new Vector3(-3f, 0f, 0f), Quaternion.identity));
             _poseFile.Save();
             _poseFile.Load();
@@ -549,7 +546,7 @@ namespace KitchenXR.Tests.PlayMode
         {
             yield return BuildAll();
 
-            // 控えは **XR Origin 基準の相対**。基準を動かして、相対で戻ることも一緒に見る。
+            // 控えは XR Origin 基準の相対。基準を動かして、相対で戻ることも一緒に見る。
             _originGo.transform.position = new Vector3(10f, 0f, 0f);
 
             _poseFile.Set(PanelPlacement.RecipeKey, new Pose(new Vector3(0.2f, 1.3f, 1.2f), Quaternion.identity));
@@ -561,7 +558,7 @@ namespace KitchenXR.Tests.PlayMode
             Assert.AreEqual(PanelPlacement.SourceFile, _placement.RestoreSources[PanelPlacement.RecipeKey],
                 "控えから戻していません。");
             Assert.AreEqual(10.2f, _panelGo.transform.position.x, 1e-2f,
-                "控えが XR Origin 基準の相対で戻っていません（設計 §4.3 の退避路）。");
+                "控えが XR Origin 基準の相対で戻っていません。");
         }
 
         [UnityTest]

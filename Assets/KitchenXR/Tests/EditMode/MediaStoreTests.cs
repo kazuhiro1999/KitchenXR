@@ -8,10 +8,8 @@ using NUnit.Framework;
 namespace KitchenXR.Tests.EditMode
 {
     /// <summary>
-    /// 動画の一覧の保管庫（設計 §6・ROADMAP P4）。
-    /// 「初回だけ同梱の見本を写し、以後は手元のものだけを読む」——主人が PC から
-    /// `persistentDataPath/media.json` を差し替えれば、アプリを入れ直さずに一覧が変わる
-    /// （書き方は `Docs/media-json.md`）。
+    /// 動画の一覧の保管庫。「初回だけ同梱の見本を写し、以後は手元のものだけを読む」——
+    /// `persistentDataPath/media.json` を差し替えれば、アプリを入れ直さずに一覧が変わる。
     /// </summary>
     public class MediaStoreTests
     {
@@ -59,12 +57,12 @@ namespace KitchenXR.Tests.EditMode
             var store = Create(reader);
             store.LoadAsync().GetAwaiter().GetResult(); // ここで控えができる。
 
-            // 主人が adb で端末側を書き換えた、の想定。
-            File.WriteAllText(LocalPath, @"[{""title"":""主人が入れたもの"",""video_id"":""ZZZZZZZZZZZ""}]");
+            // adb で端末側を書き換えた、の想定。
+            File.WriteAllText(LocalPath, @"[{""title"":""端末側で入れたもの"",""video_id"":""ZZZZZZZZZZZ""}]");
 
             var items = store.LoadAsync().GetAwaiter().GetResult();
 
-            Assert.AreEqual("主人が入れたもの", items[0].Title, "端末側で直したものが同梱に上書きされました。");
+            Assert.AreEqual("端末側で入れたもの", items[0].Title, "端末側で直したものが同梱に上書きされました。");
             Assert.IsTrue(File.Exists(store.BundledCopyPath), "同梱の控えが作られていません。");
         }
 
@@ -116,7 +114,7 @@ namespace KitchenXR.Tests.EditMode
             var second = new FakeBundledTextReader(@"[{""title"":""新しい見本"",""video_id"":""bbbbbbbbbbb""}]");
             var items = Create(second).LoadAsync().GetAwaiter().GetResult();
 
-            Assert.AreEqual("新しい見本", items[0].Title, "APK を入れ替えたのに古い一覧のままです（主人の 2026-09-13 の指摘）。");
+            Assert.AreEqual("新しい見本", items[0].Title, "APK を入れ替えたのに古い一覧のままです。");
         }
 
         [Test]
@@ -124,12 +122,12 @@ namespace KitchenXR.Tests.EditMode
         {
             var first = new FakeBundledTextReader(@"[{""title"":""見本"",""video_id"":""abcdefghijk""}]");
             Create(first).LoadAsync().GetAwaiter().GetResult();
-            File.WriteAllText(LocalPath, @"[{""title"":""主人が入れたもの"",""video_id"":""ZZZZZZZZZZZ""}]");
+            File.WriteAllText(LocalPath, @"[{""title"":""端末側で入れたもの"",""video_id"":""ZZZZZZZZZZZ""}]");
 
             var second = new FakeBundledTextReader(@"[{""title"":""新しい見本"",""video_id"":""bbbbbbbbbbb""}]");
             var items = Create(second).LoadAsync().GetAwaiter().GetResult();
 
-            Assert.AreEqual("主人が入れたもの", items[0].Title, "端末側で直したものが同梱に上書きされました。");
+            Assert.AreEqual("端末側で入れたもの", items[0].Title, "端末側で直したものが同梱に上書きされました。");
         }
 
         [Test]
@@ -150,7 +148,7 @@ namespace KitchenXR.Tests.EditMode
         [Test]
         public void 控えが無ければ同梱を正として手元を入れ替える()
         {
-            // v1.0.7 以前から上げた想定: 手元はあるが控えが無い。
+            // 古い版から上げた想定: 手元はあるが控えが無い。
             File.WriteAllText(LocalPath, @"[{""title"":""古い版の見本"",""video_id"":""ZZZZZZZZZZZ""}]");
 
             var reader = new FakeBundledTextReader(@"[{""title"":""見本"",""video_id"":""abcdefghijk""}]");
@@ -158,7 +156,7 @@ namespace KitchenXR.Tests.EditMode
             var items = store.LoadAsync().GetAwaiter().GetResult();
 
             Assert.AreEqual("見本", items[0].Title,
-                "控えが無い（古い版から上げた）のに手元を守っています（v1.0.8 で主人が踏んだ穴）。");
+                "控えが無い（古い版から上げた）のに手元を守っています。");
             Assert.IsTrue(File.Exists(store.BundledCopyPath), "同梱の控えが作られていません。");
         }
     }

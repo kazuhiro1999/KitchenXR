@@ -8,52 +8,39 @@ using UnityEngine;
 namespace KitchenXR.Net
 {
     /// <summary>
-    /// manor の料理長のレシピ帳を読む口（設計 §8・manor の ADR-015 D3・ADR-017）。
-    /// **読む側**に徹する——登録・取り込み・編集は manor の Web（`/kitchen/recipes`）の仕事で、
-    /// XR からは行わない（依存は kitchen-xr → manor の一方向。設計 §0）。
-    ///
-    /// ## 端末の鍵（v1.0.10。ADR-017 D1・D6）
+    /// manor のレシピ帳を読む口。読む側に徹する——登録・取り込み・編集は manor の Web の仕事
+    /// （依存は kitchen-xr → manor の一方向）。
     ///
     /// 主役は <c>Authorization: Bearer &lt;鍵&gt;</c>。鍵はペアリング（<see cref="PairStartAsync"/>
-    /// で6桁の番号を貰い、主人が manor の Web で許可し、<see cref="PairPollAsync"/> で受け取る）で
-    /// 降りてきて、<see cref="ManorDeviceFile"/> に控える。合言葉は**もう平文で持たない**。
+    /// で6桁の番号を貰い、Web で許可され、<see cref="PairPollAsync"/> で受け取る）で降りてきて、
+    /// <see cref="ManorDeviceFile"/> に控える。401 が返ったら鍵を捨てて
+    /// <see cref="DeviceRevoked"/> を上げるだけ——やり直しは番号を出す仕事なので、
+    /// 板を持っている <c>Bootstrap</c> が行う。
     ///
-    /// **鍵で叩いて 401 が返ったら鍵を捨てて <see cref="DeviceRevoked"/> を上げる**
-    /// （主人が Web で失効させた・manor の home を作り直した）。入り直しはここではやらない——
-    /// やり直しとは「番号を出して主人に許可してもらう」ことなので、板を持っている
-    /// <c>Bootstrap</c> の仕事である。
+    /// cookie の経路（<c>POST /api/v1/auth/login {passcode}</c> → <c>Set-Cookie</c>。寿命 24 時間）
+    /// は <see cref="UseCookieLogin"/> を呼んだときだけ通り、401 で1度だけ入り直す。Android の
+    /// <see cref="UnityEngine.Networking.UnityWebRequest"/> はプラットフォームの cookie 入れを
+    /// 使い回して「いつ付くか・いつ消えるか」が見えないので、値を自分で持って
+    /// <c>Cookie:</c> 見出しを手で付ける。
     ///
-    /// ## cookie の経路も残してある
-    ///
-    /// manor は <c>POST /api/v1/auth/login {passcode}</c> に <c>Set-Cookie: manor_session=…</c>
-    /// で答える（ADR-005 §2 D4。寿命 24 時間）。この道を通るのは
-    /// <see cref="UseCookieLogin"/> を呼んだときだけで、**<c>manor.json</c> の合言葉は読まない**
-    /// （v1.0.10 で廃止）。残しているのは試験と、将来 tailnet 越しに cookie を使う場合のため。
-    /// <see cref="UnityEngine.Networking.UnityWebRequest"/> は Android ではプラットフォームの
-    /// cookie 入れを使い回して「いつ付くか・いつ消えるか」が見えないので、<c>Set-Cookie</c> から
-    /// 値だけを取り出して自分で持ち、頼みに <c>Cookie:</c> 見出しとして手で付ける（主人の指示）。
-    /// この経路だけは 401 で**1度だけ入り直して**同じ頼みを送り直す（cookie は 24 時間で切れる）。
-    ///
-    /// ## 例外を投げない
-    ///
-    /// オフラインは前提（設計 §11 追補）。全ての口は <see cref="ManorResult{T}"/> を返し、
+    /// 例外は投げない。全ての口は <see cref="ManorResult{T}"/> を返し、
     /// 呼び出し側は「取れた／繋がらない／断られた」で分岐する。
     /// </summary>
     public sealed class ManorClient
     {
         public const string SessionCookieName = "manor_session";
 
-        /// <summary>端末の種類（ADR-017 D1 の <c>web_device.kind</c>）。manor 側はこの語で束ねる。</summary>
+        /// <summary>端末の種類（<c>web_device.kind</c>）。manor 側はこの語で束ねる。</summary>
         public const string DeviceKind = "kitchenxr";
 
         private const string LoginPath = "/api/v1/auth/login";
         private const string RecipesPath = "/api/v1/kitchen/recipes";
 
-        /// <summary>動画リスト（manor ADR-016）。XR が読むのは一覧だけで、編集は Web 側。</summary>
+        /// <summary>動画リスト。XR が読むのは一覧だけで、編集は Web 側。</summary>
         private const string MediaPath = "/api/v1/kitchen/media";
         private const string CookSessionsPath = "/api/v1/kitchen/cook-sessions";
 
-        /// <summary>ペアリングの2つの口（ADR-017 D2。**認証は要らない**）。</summary>
+        /// <summary>ペアリングの2つの口（認証は要らない）。</summary>
         private const string PairStartPath = "/api/v1/devices/pair/start";
         private const string PairPollPath = "/api/v1/devices/pair/poll";
 
@@ -140,7 +127,7 @@ namespace KitchenXR.Net
 
         /// <summary>
         /// cookie の経路を使う（試験と、将来 tailnet 越しに cookie を使う場合）。
-        /// **<c>manor.json</c> の合言葉からここへ入ることはない**（v1.0.10 で廃止）。
+        /// <c>manor.json</c> の合言葉からここへ入ることはない。
         /// </summary>
         public void UseCookieLogin(string passcode)
         {
@@ -151,7 +138,7 @@ namespace KitchenXR.Net
         // ---------------------------------------------------------------- ペアリング
 
         /// <summary>
-        /// 番号を貰う（ADR-017 D2-1。**認証は要らない**——主人が Web で許可しない限り何も起きない）。
+        /// 番号を貰う。認証は要らない——Web で許可されない限り何も起きない。
         /// 繋ぎ先さえ決まっていれば叩ける（鍵はまだ無い）。
         /// </summary>
         public async UniTask<ManorResult<PairStart>> PairStartAsync(
@@ -191,9 +178,9 @@ namespace KitchenXR.Net
         }
 
         /// <summary>
-        /// 許可されたかを訊く（ADR-017 D2-2。<c>poll_after</c> 秒おきに叩く約束）。
-        /// 返る語は <c>pending</c> / <c>approved</c> / <c>expired</c> の3つだけ（ADR-017 §4.2）。
-        /// <c>approved</c> の鍵は**一度しか返らない**ので、受けたら必ず控える。
+        /// 許可されたかを訊く（<c>poll_after</c> 秒おきに叩く約束）。
+        /// 返る語は <c>pending</c> / <c>approved</c> / <c>expired</c> の3つだけ。
+        /// <c>approved</c> の鍵は一度しか返らないので、受けたら必ず控える。
         /// </summary>
         public async UniTask<ManorResult<PairPoll>> PairPollAsync(
             string pairId, CancellationToken token = default)
@@ -275,7 +262,7 @@ namespace KitchenXR.Net
         /// 実際に返るのは
         /// <c>manor_session=abc123; HttpOnly; Path=/; SameSite=lax; Max-Age=86400</c> のような1行。
         /// <see cref="UnityEngine.Networking.UnityWebRequest.GetResponseHeaders"/> は同じ名前の見出しを
-        /// カンマで繋いで1つにしてしまうので、**セミコロンとカンマの両方を区切りとして見る**。
+        /// カンマで繋いで1つにしてしまうので、セミコロンとカンマの両方を区切りとして見る。
         /// 属性（Path・Expires など）は捨てる——送り返すのは名前と値だけでよい。
         /// </summary>
         public static string ExtractSessionCookie(string setCookieHeader)
@@ -338,14 +325,14 @@ namespace KitchenXR.Net
 
         /// <summary>
         /// 調理開始。manor は「同じ利用者の未終了セッションがあればそれを返す」ので、
-        /// ここで二重に作られることはない（ADR-015 D3・`recipes.start_session`）。
+        /// ここで二重に作られることはない。
         /// </summary>
         public async UniTask<ManorResult<CookSessionRef>> StartSessionAsync(
             string recipeId, CancellationToken token = default)
         {
             if (!int.TryParse(recipeId, out var numericId))
             {
-                // 見本（Resources の炒飯）の id は文字列。manor に無いものなので送らない。
+                // 見本の id は文字列。manor に無いものなので送らない。
                 return ManorResult<CookSessionRef>.Failed(-1, "manor のレシピではありません");
             }
 
@@ -394,8 +381,8 @@ namespace KitchenXR.Net
         }
 
         /// <summary>
-        /// 途中起動の復帰（設計 §5・ROADMAP P5）。未終了が無ければ
-        /// manor は <c>{"id": null, "recipe_id": null, "current": null}</c> を返す
+        /// 途中起動の復帰。未終了が無ければ manor は
+        /// <c>{"id": null, "recipe_id": null, "current": null}</c> を返す
         /// ——その場合 <see cref="CookSessionRef.Exists"/> が false。
         /// </summary>
         public async UniTask<ManorResult<CookSessionRef>> CurrentSessionAsync(CancellationToken token = default)
@@ -428,10 +415,10 @@ namespace KitchenXR.Net
         // ---------------------------------------------------------------- 送り口
 
         /// <summary>
-        /// 認証を付けて送る。道は2本で、**鍵があれば鍵だけ**を使う（cookie のログインはしない）。
+        /// 認証を付けて送る。道は2本で、鍵があれば鍵だけを使う（cookie のログインはしない）。
         ///
-        ///   - 端末の鍵: <c>Authorization: Bearer</c>。401 なら**鍵を捨てて
-        ///     <see cref="DeviceRevoked"/>**（入り直しはできない。番号を出して主人に許可してもらう）
+        ///   - 端末の鍵: <c>Authorization: Bearer</c>。401 なら鍵を捨てて
+        ///     <see cref="DeviceRevoked"/>（入り直しはできない。番号を出して許可してもらう）
         ///   - cookie: 401 なら1度だけ入り直して同じ頼みを送り直す（寿命 24 時間）
         /// </summary>
         private async UniTask<HttpResponse> SendWithAuthAsync(
@@ -447,7 +434,7 @@ namespace KitchenXR.Net
                 var bearer = await _transport.SendAsync(new HttpRequest(method, url, AuthHeaders(), body), token);
                 if (bearer.IsUnauthorized)
                 {
-                    // 主人が Web で失効させた（ADR-017 D1）。持っていても二度と通らないので捨てる。
+                    // Web で失効させられた。持っていても二度と通らないので捨てる。
                     Debug.LogWarning("[KitchenXR] 端末の鍵が通りませんでした。ペアリングをやり直します。");
                     ForgetDeviceToken();
                     DeviceRevoked?.Invoke();
@@ -456,7 +443,7 @@ namespace KitchenXR.Net
                 return bearer;
             }
 
-            // まだ一度も入っていなければ先に入る（cookie の経路。設計 §8）。
+            // まだ一度も入っていなければ先に入る（cookie の経路）。
             if (!IsLoggedIn)
             {
                 await LoginAsync(token);
@@ -468,7 +455,7 @@ namespace KitchenXR.Net
                 return response;
             }
 
-            // cookie の寿命は 24 時間。切れていたら入り直して**1回だけ**送り直す。
+            // cookie の寿命は 24 時間。切れていたら入り直して1回だけ送り直す。
             Debug.Log("[KitchenXR] manor の合言葉の期限が切れていたので入り直します。");
             SessionCookie = string.Empty;
             IsLoggedIn = false;

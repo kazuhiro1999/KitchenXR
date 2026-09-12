@@ -4,8 +4,8 @@ using System.Linq;
 namespace KitchenXR.Domain
 {
     /// <summary>
-    /// 工程の状態機械（設計 §5）。Unity 非依存の純粋な C#。
-    /// v0 は NextRequested／PrevRequested／タイマーの4イベントだけを扱う。
+    /// 工程の状態機械。Unity 非依存の純粋な C#。
+    /// NextRequested／PrevRequested／タイマーの4イベントだけを扱う。
     /// 同じイベントの連打抑止（600ms）は Presentation の仕事——ここでは扱わない。
     /// </summary>
     public sealed class CookSession
@@ -30,7 +30,7 @@ namespace KitchenXR.Domain
         /// <summary>今の工程。完了後や工程が無いレシピでは null。</summary>
         public Step CurrentStep => IsComplete || Current <= 0 ? null : Recipe.Steps[Current - 1];
 
-        /// <summary>次の工程（見出しだけ薄く出す用。設計 §9）。無ければ null。</summary>
+        /// <summary>次の工程（見出しだけ薄く出す用）。無ければ null。</summary>
         public Step NextStep => !IsComplete && Current > 0 && Current < Recipe.Steps.Count
             ? Recipe.Steps[Current]
             : null;
@@ -52,11 +52,10 @@ namespace KitchenXR.Domain
         }
 
         /// <summary>
-        /// 途中起動の復帰（設計 §5・ROADMAP P5）。manor の <c>cook-sessions/current</c> か、
-        /// オフラインなら手元の控え（<c>last_session.json</c>）から戻した工程番号を入れる。
-        ///
-        /// 範囲外は 1..<c>Steps.Count</c> に丸める——サーバの数を無条件に信じない
-        /// （レシピが manor 側で編集されて工程が減っていることがある）。
+        /// 途中起動の復帰。manor の <c>cook-sessions/current</c> か、オフラインなら
+        /// 手元の控え（<c>last_session.json</c>）から戻した工程番号を入れる。
+        /// 範囲外は 1..<c>Steps.Count</c> に丸める——レシピが manor 側で編集されて
+        /// 工程が減っていることがあるので、サーバの数を無条件に信じない。
         /// </summary>
         public void SeekTo(int stepIndex)
         {
@@ -110,7 +109,7 @@ namespace KitchenXR.Domain
 
         private void ApplyPrev()
         {
-            // 戻るは常に可能（誤タッチの取り消し。設計 §5・§7）。
+            // 戻るは常に可能（誤タッチの取り消し）。
             if (IsComplete)
             {
                 IsComplete = false;
@@ -152,7 +151,7 @@ namespace KitchenXR.Domain
         /// <summary>工程 index に紐づくタイマー。開始していなければ null。</summary>
         public CookTimer GetTimer(int stepIndex) => _timers.TryGetValue(stepIndex, out var timer) ? timer : null;
 
-        /// <summary>いま動いている（Stop されていない）タイマーをすべて返す。複数同時が前提（設計 §9）。</summary>
+        /// <summary>いま動いている（Stop されていない）タイマーをすべて返す。複数同時が前提。</summary>
         public IReadOnlyList<CookTimer> ActiveTimers => _timers.Values.Where(t => t.IsRunning).ToList();
 
         /// <summary>このセッションで一度でも開始したタイマーをすべて返す（停止済み・時間切れも含む）。</summary>
@@ -160,7 +159,7 @@ namespace KitchenXR.Domain
 
         /// <summary>
         /// phase 単位に丸めた進捗（レシピパネル上部の点列用）。
-        /// 全体の <see cref="Progress"/>（工程単位の割合）とは別の丸め方を持つ（設計 §4.4）。
+        /// 全体の <see cref="Progress"/>（工程単位の割合）とは別の丸め方を持つ。
         /// </summary>
         public IReadOnlyList<PhaseProgress> PhaseProgressList()
         {

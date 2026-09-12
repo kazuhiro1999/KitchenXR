@@ -15,23 +15,18 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 namespace KitchenXR.Net
 {
     /// <summary>
-    /// manor を家の中で探す（manor の ADR-017 D3）。
+    /// manor を家の中で探す（PC の LAN の住所は変わり得るので URL を固定で書かせない）。
+    /// UDP <see cref="Port"/> へ <see cref="Probe"/> の1行を投げると、manor が
+    /// <c>{"kind":"manor","base_url":…,…}</c> を自分宛の unicast で返す。返す IP は「その
+    /// 問い合わせが届いた口のアドレス」なので、PC に NIC が複数あっても正しい方が来る。
+    /// Android の許可は <c>INTERNET</c> だけで足りる（受けるのは自分宛の返り）。
     ///
-    /// PC の LAN の住所は変わり得る——だから URL を固定で書かせない。UDP <see cref="Port"/> へ
-    /// <see cref="Probe"/> の1行を投げると、manor が
-    /// <c>{"kind":"manor","name":…,"base_url":"http://<![CDATA[<受けた口の IP>:<port>]]>","version":…}</c>
-    /// を**自分宛の unicast で**返す。返す IP は「その問い合わせが届いた口のアドレス」なので、
-    /// PC に NIC が複数あっても正しい方が来る。
-    ///
-    /// Android の許可は <c>INTERNET</c> だけで足りる（投げるのはブロードキャストだが、
-    /// 受けるのは自分宛の返り）。Editor でも同じ道が通る——同じ PC で manor が待っていれば答える。
-    ///
-    /// **見つからないのは異常ではない**（manor が寝ている・ループバックで立っている・
+    /// 見つからないのは異常ではない（manor が寝ている・ループバックで立っている・
     /// tailnet の向こうに居る）。空の文字列を返すだけで、呼び出し側は見本だけで動く。
     /// </summary>
     public sealed class ManorDiscovery
     {
-        /// <summary>manor が待っている口（ADR-017 D3）。</summary>
+        /// <summary>manor が待っている口。</summary>
         public const int Port = 8791;
 
         /// <summary>投げる1行。manor はこの文字列にだけ答える。</summary>
@@ -44,14 +39,14 @@ namespace KitchenXR.Net
         public const int DefaultAttempts = 3;
 
         /// <summary>
-        /// 最後に探索が投げられなかった理由（札に出す。主人が実機で読める言葉）。
+        /// 最後に探索が投げられなかった理由（札に出す。実機で読める言葉で）。
         /// 見つかったとき・まだ投げていないときは空。
         /// </summary>
         public string LastFailure { get; private set; } = string.Empty;
 
         /// <summary>
         /// 探す。見つかれば <c>base_url</c>（末尾の <c>/</c> は落とす）、見つからなければ空。
-        /// **例外は投げない**——Wi-Fi が無い・許可が無い・口が塞がっているのは全部「見つからない」。
+        /// 例外は投げない——Wi-Fi が無い・許可が無い・口が塞がっているのは全部「見つからない」。
         /// </summary>
         public async UniTask<string> FindBaseUrlAsync(
             int attempts = DefaultAttempts, CancellationToken token = default)
@@ -158,7 +153,7 @@ namespace KitchenXR.Net
         /// 1回だけ投げて <see cref="WaitMilliseconds"/> 待つ。
         ///
         /// 受けるのは <c>UdpClient.Available</c> を見ながらの細かい待ち合わせにしている——
-        /// <c>Receive</c> をそのまま呼ぶと返りが来るまで**主スレッドが止まる**ので、
+        /// <c>Receive</c> をそのまま呼ぶと返りが来るまで主スレッドが止まるので、
         /// 「届いているものだけを取る」形にして 50ms ずつ譲る。
         /// </summary>
         private async UniTask<string> ProbeOnceAsync(CancellationToken token)
@@ -169,10 +164,9 @@ namespace KitchenXR.Net
                 udp = new UdpClient(new IPEndPoint(IPAddress.Any, 0)) { EnableBroadcast = true };
                 var payload = Encoding.UTF8.GetBytes(Probe);
 
-                // 2026-09-13 実機: 「探しています」も出ずに「見つかりません」——Android では
-                // 255.255.255.255（限定ブロードキャスト）の送信が経路無しで失敗することがある。
-                // 自分の IPv4 から**サブネット向けのブロードキャスト**（192.168.0.255 等）も組んで、
-                // 両方へ投げる。片方が失敗しても続ける。1つも出せなければ理由を残して諦める。
+                // Android では 255.255.255.255（限定ブロードキャスト）の送信が経路無しで失敗する
+                // ことがあるので、自分の IPv4 からサブネット向けのブロードキャスト（192.168.0.255
+                // 等）も組んで両方へ投げる。1つも出せなければ理由を残して諦める。
                 var sent = 0;
                 var failures = new StringBuilder();
                 foreach (var target in BroadcastTargets())
@@ -248,7 +242,7 @@ namespace KitchenXR.Net
         }
 
         /// <summary>
-        /// 返りの JSON から <c>base_url</c> を取る（**純粋関数**。EditMode 試験はここを通る）。
+        /// 返りの JSON から <c>base_url</c> を取る（純粋関数。EditMode 試験はここを通る）。
         /// <c>kind</c> が <c>"manor"</c> でなければ空——同じ口に別の何かが答えても拾わない。
         /// </summary>
         public static string ParseBaseUrl(string json) => ParseAnnouncement(json)?.BaseUrl ?? string.Empty;

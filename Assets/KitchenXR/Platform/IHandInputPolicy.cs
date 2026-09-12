@@ -3,9 +3,9 @@ using System;
 namespace KitchenXR.Platform
 {
     /// <summary>
-    /// いま調理モードか配置モードかを持つだけの口（設計 §4.3・§4.4）。
+    /// いま調理モードか配置モードかを持つだけの口。
     /// 実際に Ray Interactor を止める配線は Presentation 側（XRI は機種非依存の
-    /// ツールキットそのものなので Platform に閉じ込める対象ではない。設計 §4.2）。
+    /// ツールキットそのものなので Platform に閉じ込める対象ではない）。
     /// </summary>
     public interface IHandInputPolicy
     {

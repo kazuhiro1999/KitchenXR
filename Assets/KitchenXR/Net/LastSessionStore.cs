@@ -9,10 +9,8 @@ namespace KitchenXR.Net
     /// <summary>
     /// 最後に開いていた調理（<c>Application.persistentDataPath/last_session.json</c>）。
     ///
-    /// 途中起動の復帰（設計 §5・ROADMAP P5）は本来 manor の
-    /// <c>GET /api/v1/kitchen/cook-sessions/current</c> が受け持つ。けれど**オフラインのときは
-    /// それが読めない**——手を洗っている間にヘッドセットを外し、戻ったら Wi-Fi が切れていた、
-    /// というのは十分ありうる。そのときはここから戻す（レシピ本体と画像は
+    /// 途中起動の復帰は本来 manor の <c>GET /api/v1/kitchen/cook-sessions/current</c> が
+    /// 受け持つが、オフラインだとそれが読めない——そのときはここから戻す（レシピ本体と画像は
     /// <see cref="RecipeStore"/> に既に揃っているので、工程番号さえあれば続きが出せる）。
     ///
     /// 書くのは「工程が動いたとき」と「調理を始めたとき」。消すのは調理を終えたとき。

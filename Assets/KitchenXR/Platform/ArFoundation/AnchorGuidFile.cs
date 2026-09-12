@@ -9,18 +9,15 @@ using UnityEngine;
 namespace KitchenXR.Platform.ArFoundation
 {
     /// <summary>
-    /// 永続アンカーの鍵の帳簿（`Application.persistentDataPath/anchors.json`。設計 §4.3）。
-    ///
-    /// 形は <c>{ "panel.recipe": "1f0a…-…", … }</c>——**板1枚＝鍵1つ**で、値は
+    /// 永続アンカーの鍵の帳簿（`Application.persistentDataPath/anchors.json`）。
+    /// 形は <c>{ "panel.recipe": "1f0a…-…", … }</c>——板1枚＝鍵1つで、値は
     /// <c>ARAnchorManager.TrySaveAnchorAsync</c> が返す <c>SerializableGuid</c> の文字列。
     ///
-    /// これを自分で持つ理由: AR Foundation の「保存済みアンカー ID の一覧」は**任意の機能**で、
-    /// Meta Quest（Unity OpenXR: Meta 2.5）は `supportsGetSavedAnchorIds` を実装していない。
-    /// つまり GUID を落とすと、保存したアンカーを二度と読み出せない（文書
-    /// `features/anchors/persistent-anchors.md` の IMPORTANT）。
+    /// 自分で持つのは、AR Foundation の「保存済みアンカー ID の一覧」が任意の機能で、
+    /// Meta Quest が `supportsGetSavedAnchorIds` を実装していないため——GUID を落とすと
+    /// 保存したアンカーを二度と読み出せない。
     ///
-    /// この型は AR Foundation の型に触れない（文字列の出し入れだけ）ので、
-    /// 実機なしの EditMode 試験でそのまま回せる。
+    /// AR Foundation の型に触れない（文字列の出し入れだけ）ので、実機なしの EditMode 試験で回せる。
     /// </summary>
     public sealed class AnchorGuidFile
     {

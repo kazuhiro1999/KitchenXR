@@ -6,8 +6,7 @@ namespace KitchenXR.Platform.Null
 {
     /// <summary>
     /// アンカー非対応機（Editor・シミュレータ）向けの受け皿。プロセス内メモリに置くだけで、
-    /// アプリを落とすと消える。P2 で <c>ArFoundation/ArAnchorStore</c> に差し替わるまでの土台
-    /// （設計 §4.3 の「対応機が無いとき」の退避路）。
+    /// アプリを落とすと消える（対応機が無いときの退避路）。
     /// </summary>
     public sealed class InMemoryAnchorStore : IAnchorStore
     {

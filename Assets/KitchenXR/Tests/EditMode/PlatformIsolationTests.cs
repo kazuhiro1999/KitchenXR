@@ -8,7 +8,7 @@ using UnityEngine;
 namespace KitchenXR.Tests.EditMode
 {
     /// <summary>
-    /// 「機種・SDK 固有の呼び出しは Platform/&lt;系&gt;/ の中だけ」（設計 §4.2）の検算。
+    /// 「機種・SDK 固有の呼び出しは Platform/&lt;系&gt;/ の中だけ」の検算。
     /// UnityEngine.XR.ARFoundation・OVR・PXR への言及が Platform/ フォルダの外の .cs に
     /// 現れたらこの試験が落ちる。
     /// </summary>
@@ -17,17 +17,16 @@ namespace KitchenXR.Tests.EditMode
         private static readonly string[] VendorMarkers = { "UnityEngine.XR.ARFoundation", "OVR", "PXR" };
 
         /// <summary>
-        /// 主人の WebView SDK（`Assets/TLab/`）の印。P4 で足した規則
-        /// （主人 2026-09-13「`TLab.Android.WebView` への参照は `Presentation/Video/` の中だけ」）。
+        /// WebView SDK（`Assets/TLab/`）の印。
+        /// 「`TLab.Android.WebView` への参照は `Presentation/Video/` の中だけ」の規則に使う。
         /// </summary>
         private static readonly string[] WebViewMarkers = { "TLab.Android.WebView", "TLabWebView", "TLabVKeyborad" };
 
         private static string KitchenXrRoot => Path.Combine(Application.dataPath, "KitchenXR");
 
         /// <summary>
-        /// 規則は設計 §4.2 のとおり **`Platform/&lt;系&gt;/` の中だけ**。
-        /// P2 で `Platform/ArFoundation/` に本物の実装（<c>ArAnchorStore</c>）が入ったので、
-        /// 例外を `Platform/` 全体から `Platform/ArFoundation/` へ**狭めた**——
+        /// 規則は `Platform/&lt;系&gt;/` の中だけ。例外は `Platform/` 全体ではなく
+        /// `Platform/ArFoundation/` に狭めてある——
         /// <c>Platform/PanelPoseFile.cs</c> のような系に依らない部品や、
         /// <c>Platform/Null/</c> の受け皿に AR Foundation が混ざると、
         /// PICO・WebXR へ差し替えるときに追い切れなくなる。
@@ -70,7 +69,7 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// 主人の WebView SDK に触れてよいのは <c>Presentation/Video/</c> だけ（P4 の約束）。
+        /// WebView SDK に触れてよいのは <c>Presentation/Video/</c> だけ。
         ///
         /// WebView は Android にしか無い（`Assets/TLab/TLabWebView/Plugins/Android`）。
         /// 呼び出しが板の外へ散ると、PICO・WebXR へ差し替えるときに追い切れなくなるし、
@@ -91,7 +90,7 @@ namespace KitchenXR.Tests.EditMode
                     continue;
                 }
 
-                // 見るのは**コードだけ**。注釈で SDK の名前を説明するのは違反ではない
+                // 見るのはコードだけ。注釈で SDK の名前を説明するのは違反ではない
                 // （例: AndroidPlayerSetup は「なぜ OpenGLES3 も並べるのか」を README の
                 //  文言ごと書き残している。それを禁じると理由が失われる）。
                 var content = string.Join("\n", CodeLines(file));

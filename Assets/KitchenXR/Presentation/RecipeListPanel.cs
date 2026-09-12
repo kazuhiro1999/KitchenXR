@@ -10,29 +10,16 @@ using UnityEngine.UIElements;
 namespace KitchenXR.Presentation
 {
     /// <summary>
-    /// レシピを選ぶ板（P3。主人の指示）。起動したら**レシピの板の場所に**これが出る。
+    /// レシピを選ぶ板（起動したらレシピの板の場所にこれが出る）。3列のグリッドで、
+    /// 上に写真・下に題名と「25分 ・ 中華 ・ 620kcal」。頭の「設定」は一覧と入れ替わりで
+    /// 表示の設定を出す（板を増やさない）。先頭は必ず見本。
     ///
-    /// v1.0.6（2026-09-13 主人の実機確認）から**写真付きのグリッド**
-    /// 「最初の一覧表示の際も、Web のレシピサイトと同じようにグリッドで写真も表示してほしい」。
-    /// 3列・上に写真・下に題名と「25分 ・ 中華 ・ 620kcal」。出す文字は今までどおり
-    /// 題名・分・分類・kcal の4つだけ（設計 §9「文字は極力少なく」）。
+    /// 写真は <see cref="RecipeStore"/> 越しにローカルから読み、取れなければ黙って下地のまま
+    /// ——一覧が出ないことのほうが困る。押すのは <see cref="Toggle"/> や <see cref="Button"/>
+    /// ではなくカードそのもの（的が大きく、押し下げ発火と相性が良い）。
     ///
-    /// 写真は <see cref="RecipeStore"/> 越しに**ローカルから**読む（オフライン前提。§11 追補）。
-    /// 手元に無ければその場で取りに行き、取れなければ黙って下地のまま——
-    /// 一覧が出ないことのほうが困るので、写真の失敗で何も止めない。
-    ///
-    /// 先頭は必ず「見本: 炒飯」——manor が寝ていても、合言葉が未設定でも、
-    /// ここから1本は最後まで進められる。
-    ///
-    /// 押すのは**カードそのもの**（材料の板と同じ流儀。§11 追補 (a)）。
-    /// <see cref="Toggle"/> や <see cref="Button"/> より的が大きく、
-    /// <see cref="PokePress"/> の押し下げ発火と相性が良い。
-    ///
-    /// 選んだあとは「準備中 n/m」の覆いを出す——
-    /// レシピの JSON と画像を**先に全部**手元へ落としてから調理を始めるので、その間に
-    /// 別のカードを押されないようにする（設計 §7「押し間違いを防ぐ」）。
-    ///
-    /// 頭の「設定」は、一覧と**入れ替わりで**表示の設定（文字と板の大きさ）を出す。
+    /// 選んだあとは「準備中 n/m」の覆いを出す——JSON と画像を先に全部手元へ落としてから
+    /// 調理を始めるので、その間に別のカードを押されないようにする。
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class RecipeListPanel : MonoBehaviour
@@ -43,7 +30,7 @@ namespace KitchenXR.Presentation
         public event Action<RecipeSummary> RecipeSelected;
 
         /// <summary>
-        /// 「配置」が**2度**押された（P2。設計 §4.4）。
+        /// 「配置」が2度押された。
         /// 起動直後はこの板が出ているので、調理を始める前に板を置き直せる入り口がここに要る。
         /// </summary>
         public event Action PlacementRequested;
@@ -61,7 +48,7 @@ namespace KitchenXR.Presentation
         private const string PrimaryClass = "kitchen-button--primary";
         private const string SecondaryClass = "kitchen-button--secondary";
 
-        /// <summary>番号の下に添える手順（manor の ADR-017 D2-3。主人がどこへ入れるかを迷わないように）。</summary>
+        /// <summary>番号の下に添える手順（どこへ入れるかで迷わないように）。</summary>
         public const string DefaultPairingHint = "manor の 設定 → 端末 に入れて許可してください";
 
         /// <summary>「配置」の2度押しの猶予（秒）。レシピの板の「一覧へ」と同じ長さ。</summary>
@@ -72,7 +59,7 @@ namespace KitchenXR.Presentation
         private VisualElement _busySection;
         private Label _busyLabel;
 
-        /// <summary>ペアリングの6桁と手順（manor の ADR-017 D2。覆いの中に出す）。</summary>
+        /// <summary>ペアリングの6桁と手順（覆いの中に出す）。</summary>
         private Label _pairCodeLabel;
         private Label _pairHintLabel;
 
@@ -173,7 +160,7 @@ namespace KitchenXR.Presentation
         public bool IsShowingSettings =>
             _settingsSection != null && !_settingsSection.ClassListContains("is-hidden");
 
-        /// <summary>写真の出どころを挿す（Bootstrap から。P3 でサーバに変わってもここは変わらない）。</summary>
+        /// <summary>写真の出どころを挿す（Bootstrap から）。</summary>
         public void Bind(RecipeStore store) => _store = store;
 
         /// <summary>
@@ -411,11 +398,9 @@ namespace KitchenXR.Presentation
         }
 
         /// <summary>
-        /// ペアリングの番号を覆いに出す（manor の ADR-017 D2）。
-        ///
-        /// 板に文字入力は置かない（設計 §6）ので、**番号は端末に出して主人が Web に入れる**。
-        /// 覆いの仕組みをそのまま使うのは、この間レシピを選ばせてはいけないから
-        /// （鍵が無いうちは manor のレシピを開けない）。
+        /// ペアリングの番号を覆いに出す。板に文字入力は置かないので、番号は端末に出して
+        /// Web 側に入れてもらう。覆いの仕組みをそのまま使うのは、この間レシピを選ばせては
+        /// いけないから（鍵が無いうちは manor のレシピを開けない）。
         /// </summary>
         public void ShowPairing(string code, string hint = DefaultPairingHint)
         {

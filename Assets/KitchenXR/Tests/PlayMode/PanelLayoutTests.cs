@@ -13,12 +13,8 @@ using UnityEngine.UIElements;
 namespace KitchenXR.Tests.PlayMode
 {
     /// <summary>
-    /// 「1画面に収まっているか」の検算（2026-09-13 主人の実機確認 v1.0.6）。
-    ///
-    /// 主人の言葉:
-    ///   - レシピの板「スクロールは極力なくしたい。1画面の中に進捗・画像・説明が入っていないと
-    ///     毎回スクロールしなきゃいけないのは UX 低下」
-    ///   - 材料の板「縦スクロールしないと全部の材料を一目で見れないのは UX 的に…」
+    /// 「1画面に収まっているか」の検算。レシピの板は進捗・画像・説明が、材料の板は材料の全部が、
+    /// スクロールなしで見えていること。
     ///
     /// 「収まっている」は resolvedStyle でしか分からない（EditMode ではレイアウトが走らない）ので
     /// PlayMode で板を1枚立てて測る。板の寸法は Kitchen.unity と同じ値を使う——
@@ -111,7 +107,7 @@ namespace KitchenXR.Tests.PlayMode
             yield return Settle();
 
             Assert.IsNull(Root.Q<ScrollView>(),
-                "レシピの板に ScrollView が残っています（主人「スクロールは極力なくしたい」）。");
+                "レシピの板に ScrollView が残っています（1画面に収める作りです）。");
 
             var content = Root.Q<VisualElement>("contentArea");
             var section = Root.Q<VisualElement>("currentSection");
@@ -165,8 +161,7 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 頭（工程の点列と進捗%）は薄い——主人「進捗が画面の上側を結構多く占めている」。
-        /// 板の高さの 1/10 を目安にする（190px なら 19px 以内）。
+        /// 頭（工程の点列と進捗%）は薄い。板の高さの 1/10 を目安にする（190px なら 19px 以内）。
         /// </summary>
         [UnityTest]
         public IEnumerator レシピの板の頭は薄い()
@@ -210,8 +205,7 @@ namespace KitchenXR.Tests.PlayMode
         // ---------------------------------------------------------------- 材料の板
 
         /// <summary>
-        /// 見本の炒飯は材料 13 点。16 点まではスクロール無しで全部見えること
-        /// （主人「縦スクロールしないと全部の材料を一目で見れないのは UX 的に…」）。
+        /// 見本のレシピは材料 13 点。16 点まではスクロール無しで全部見えること。
         /// </summary>
         [UnityTest]
         public IEnumerator 材料の板は16点までスクロール無しで全部見える()
@@ -259,10 +253,9 @@ namespace KitchenXR.Tests.PlayMode
         // ---------------------------------------------------------------- 手のひらメニュー
 
         /// <summary>
-        /// 配置モードの4つの釦（保存・元に戻す・板を手元に・やめる）が板からはみ出さないこと
-        /// （設計 §11 追補 2026-09-13。主人「配置の確定等も手元に表示してほしい」）。
+        /// 配置モードの4つの釦（保存・元に戻す・板を手元に・やめる）が板からはみ出さないこと。
         /// 板の寸法は <c>KitchenSceneBuilder.PlacementMenu*Units</c> と同じ 130×92。
-        /// はみ出すと、実機で押したい釦が板の外に出て**配置モードから出られなくなる**。
+        /// はみ出すと、実機で押したい釦が板の外に出て配置モードから出られなくなる。
         /// </summary>
         [UnityTest]
         public IEnumerator 手のひらメニューは配置の4つの釦を収める()
@@ -288,7 +281,7 @@ namespace KitchenXR.Tests.PlayMode
                 var height = rect.height * toPixels;
                 Assert.Greater(width, 0f, $"{name} の幅が 0 です（レイアウトが未確定）。");
 
-                // 設計 §7 の最小 4cm 角（20px）を満たすこと。
+                // 最小 4cm 角（20px）を満たすこと。
                 Assert.GreaterOrEqual(width, 20f, $"{name} が 4cm より細いです（{width}px）。");
                 Assert.GreaterOrEqual(height, 20f, $"{name} が 4cm より低いです（{height}px）。");
 

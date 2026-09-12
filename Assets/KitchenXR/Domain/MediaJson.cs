@@ -5,20 +5,16 @@ using Newtonsoft.Json.Linq;
 namespace KitchenXR.Domain
 {
     /// <summary>
-    /// `media.json` の読み（設計 §6・ROADMAP P4）。
+    /// `media.json` の読み。形は `[{ "title": "…", "video_id": "…" }]` だけ。
+    /// テキストエディタで直に書くものなので、壊れた行で全部を落とさない——読めない行は
+    /// 黙って飛ばす（1文字のタイプミスで動画の板が丸ごと死ぬのが一番困る）。
     ///
-    /// 形は `[{ "title": "…", "video_id": "…" }]` だけ。主人が PC のテキストエディタで直に書く
-    /// ものなので、**壊れた行で全部を落とさない**——読めない行は黙って飛ばし、読めた行だけを返す
-    /// （1文字のタイプミスで動画の板が丸ごと死ぬのが一番困る）。
-    ///
-    /// `video_id` は JavaScript の文字列に埋め込まれる（主人の <c>youtube.html</c> の
-    /// <c>loadVideo('…')</c>）ので、**英数字と - _ 以外は通さない**。URL を貼られたときだけは
-    /// 親切に id を取り出す（`watch?v=`・`youtu.be/`・`/shorts/`・`/embed/`）。
+    /// `video_id` は JavaScript の文字列に埋め込まれるので、英数字と - _ 以外は通さない。
+    /// URL を貼られたときだけ親切に id を取り出す。
     /// </summary>
     public static class MediaJson
     {
-        /// <summary>板に出す上限（設計 P4「最大 8 件」）。これを超えた分は読まない。</summary>
-        /// <summary>manor の動画リストを読むようになった（ADR-016）ので 8 → 20。板の一覧は縦スクロールで受ける。</summary>
+        /// <summary>板に出す上限。これを超えた分は読まない（板の一覧は縦スクロールで受ける）。</summary>
         public const int MaxItems = 20;
 
         /// <summary>題名の上限。長すぎる題名で行が崩れないように切る（表示の都合）。</summary>
@@ -27,16 +23,14 @@ namespace KitchenXR.Domain
         /// <summary>YouTube の動画 id として通す形。JS へ埋めるので記号は入れない。</summary>
         private static readonly Regex VideoIdPattern = new Regex("^[A-Za-z0-9_-]{5,32}$", RegexOptions.Compiled);
 
-        /// <summary>URL を貼られたときに id を取り出す（主人が PC から書き換える前提の親切）。</summary>
+        /// <summary>URL を貼られたときに id を取り出す。</summary>
         private static readonly Regex UrlIdPattern = new Regex(
             @"(?:v=|youtu\.be/|/shorts/|/embed/|/live/)([A-Za-z0-9_-]{5,32})", RegexOptions.Compiled);
 
         /// <summary>
-        /// manor が絵の URL を返さないときに組み立てる先（2026-09-13 主人の実機確認 v1.0.9）。
-        /// YouTube のサムネイルは動画 id から決まる場所にあり、鍵も要らない。
-        /// <c>hqdefault</c>（480×360）を選ぶのは、板の行が 9.2cm ＝ 46 UI px で
-        /// <c>mqdefault</c>（320×180）でも足りるが、9:16 のショーツだと横が切れて見えるため
-        /// ——大きい方を取って板の側で収める。
+        /// manor が絵の URL を返さないときに組み立てる先。YouTube のサムネイルは動画 id から
+        /// 決まる場所にあり、鍵も要らない。<c>hqdefault</c>（480×360）を選ぶのは、行の幅には
+        /// <c>mqdefault</c>（320×180）でも足りるが 9:16 のショーツだと横が切れて見えるため。
         /// </summary>
         public static string DefaultThumbnailUrl(string videoId) =>
             string.IsNullOrEmpty(videoId) ? null : $"https://i.ytimg.com/vi/{videoId}/hqdefault.jpg";
@@ -113,8 +107,7 @@ namespace KitchenXR.Domain
                 title = title.Substring(0, MaxTitleLength - 1) + "…";
             }
 
-            // 絵の URL（ADR-016 の `thumbnail_url`）。無ければ id から組み立てる——
-            // 板は「絵が無い行」を作らずに済み、manor の契約が育っても壊れない。
+            // 絵の URL。無ければ id から組み立てる——板は「絵が無い行」を作らずに済む。
             var thumbnail = ((string)obj["thumbnail_url"] ?? (string)obj["thumbnailUrl"]
                              ?? (string)obj["thumbnail"] ?? string.Empty).Trim();
             if (thumbnail.Length == 0 || !thumbnail.StartsWith("http", System.StringComparison.OrdinalIgnoreCase))

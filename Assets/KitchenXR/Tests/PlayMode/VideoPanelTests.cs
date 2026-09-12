@@ -21,7 +21,7 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 namespace KitchenXR.Tests.PlayMode
 {
     /// <summary>
-    /// 動画の板（設計 §6・ROADMAP P4）の検算。
+    /// 動画の板の検算。
     ///
     /// WebView は Android のプラグインなので Editor では絵が出ない——
     /// だから板は <see cref="IVideoPlayer"/> の口だけを見る作りになっていて、
@@ -116,7 +116,7 @@ namespace KitchenXR.Tests.PlayMode
             _player = new NullVideoPlayer();
             _panel.BindPlayer(_player);
 
-            // 絵は取りに行かない（EditMode・PlayMode 試験はネットに出ない。設計 §11 追補）。
+            // 絵は取りに行かない（EditMode・PlayMode 試験はネットに出ない）。
             // 取得口を持たない保管庫を挿しておけば、行は下地のまま並ぶ。
             _panel.BindThumbnailCache(new MediaThumbnailCache(
                 Path.Combine(Application.temporaryCachePath, "video-panel-tests"), null));
@@ -191,7 +191,7 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 突いたまま**横へ引いて**から抜く（＝スクロール）。
+        /// 突いたまま横へ引いてから抜く（＝スクロール）。
         /// <paramref name="worldOffset"/> は板の面に沿った動き。
         /// </summary>
         private IEnumerator PokeAndDrag(Vector3 worldTarget, float depthMeters, Vector3 worldOffset)
@@ -244,8 +244,8 @@ namespace KitchenXR.Tests.PlayMode
             Assert.IsNotNull(Root.Q<Button>("backButton"),
                 "「戻る」がありません（関連動画の先で youtube.com 本体へ行くと帰れなくなります）。");
 
-            // 設計 §6「文字入力はパネルに置かない」。
-            Assert.IsEmpty(Root.Query<TextField>().ToList(), "動画の板に文字入力を置いてはいけません（設計 §6）。");
+            // 文字入力はパネルに置かない。
+            Assert.IsEmpty(Root.Query<TextField>().ToList(), "動画の板に文字入力を置いてはいけません。");
         }
 
         [UnityTest]
@@ -259,9 +259,8 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 一覧の行が「左にサムネイル・右に題名」になっていること
-        /// （2026-09-13 主人「YouTube を Web で見るときの画面みたいにサムネ＋タイトル」）。
-        /// 絵そのものは取りに行かないので、**枠が在って左に置かれている**ことだけを見る。
+        /// 一覧の行が「左にサムネイル・右に題名」になっていること。
+        /// 絵そのものは取りに行かないので、枠が在って左に置かれていることだけを見る。
         /// </summary>
         [UnityTest]
         public IEnumerator 一覧の行にサムネイルの枠が左にある()
@@ -289,9 +288,8 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 一覧が**窓の右横**にあり、窓の幅が設計どおり 50cm 取れていること
-        /// （主人「レイアウト的に右横に置いて縦スクロールできた方がいいかも」・設計 P4）。
-        /// 定数の足し算は EditMode 試験が縛っているので、ここは**実測**で見る。
+        /// 一覧が窓の右横にあり、窓の幅が 50cm 取れていること。
+        /// 定数の足し算は EditMode 試験が縛っているので、ここは実測で見る。
         /// </summary>
         [UnityTest]
         public IEnumerator 一覧が窓の右横にあり窓が16対9で50cm取れる()
@@ -316,7 +314,7 @@ namespace KitchenXR.Tests.PlayMode
                 + "VideoPanel.LandscapeHeightUnits を増やすこと。");
 
             // 逆に、要るより高すぎると板が無駄に大きくなる（台所の壁は有限）。
-            // 余りは **札の折り返しぶんの取り置き**——札は3行あり、それぞれ最大2行に折り返す
+            // 余りは札の折り返しぶんの取り置き——札は3行あり、それぞれ最大2行に折り返す
             // （`.video-status-line` の max-height 12px）。空いているときは 32.8cm、
             // 全部が2行になっても 28.2cm で 50cm の 16:9 がちょうど収まる。
             // ここを詰めると、実機で札が伸びた瞬間に絵が 50cm を割る。
@@ -329,7 +327,7 @@ namespace KitchenXR.Tests.PlayMode
                 $"一覧の幅が定数と合いません（実測 {listCm:0.0}cm）。");
         }
 
-        /// <summary>9:16 でも窓の高さ 36cm が取れること（ショーツ。設計 §6）。</summary>
+        /// <summary>9:16（ショーツ）でも窓の高さ 36cm が取れること。</summary>
         [UnityTest]
         public IEnumerator 縦向きでも窓の高さが36cm取れる()
         {
@@ -351,7 +349,7 @@ namespace KitchenXR.Tests.PlayMode
             Assert.GreaterOrEqual(widthCm, 36f * 9f / 16f - 0.6f,
                 $"9:16 の窓の幅が足りません（実測 {widthCm:0.0}cm）。");
 
-            // 9:16 の絵は**幅で決まる**（窓の幅 × 16/9 が絵の高さ）。窓がそれより高いぶんは
+            // 9:16 の絵は幅で決まる（窓の幅 × 16/9 が絵の高さ）。窓がそれより高いぶんは
             // 札の折り返しの取り置き——余り過ぎていたら板を削る。
             Assert.LessOrEqual(heightCm, widthCm * 16f / 9f + 5.5f,
                 $"9:16 の窓が必要より高く、板が無駄に大きくなっています"
@@ -369,8 +367,8 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 一覧を**指で突いて**選ぶと、その動画 id で <c>Load</c> が呼ばれる（設計 §6）。
-        /// 実機では主人の <c>YoutubePlayer.Load</c> がこの先に居る。
+        /// 一覧を指で突いて選ぶと、その動画 id で <c>Load</c> が呼ばれる。
+        /// 実機では TLab の <c>YoutubePlayer.Load</c> がこの先に居る。
         /// </summary>
         [UnityTest]
         public IEnumerator 一覧をポークで選ぶとLoadが呼ばれる()
@@ -433,8 +431,8 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 16:9 ⇄ 9:16 で板の寸法が変わり、**当たり判定も一緒に**変わる
-        /// （片方だけ変えると 2026-09-12 の「触っているのに押せない」が戻る）。
+        /// 16:9 ⇄ 9:16 で板の寸法が変わり、当たり判定も一緒に変わる
+        /// （片方だけ変えると「触っているのに押せない」が戻る）。
         /// </summary>
         [UnityTest]
         public IEnumerator 向きを変えると板の寸法と当たり判定が変わる()
@@ -469,13 +467,12 @@ namespace KitchenXR.Tests.PlayMode
             Assert.AreEqual(VideoPanel.LandscapeWidthUnits, doc.worldSpaceSize.x, 0.01f);
         }
 
-        // ---------------------------------------------------------------- 窓への触り（方針3）
+        // ---------------------------------------------------------------- 窓への触り
 
         /// <summary>
-        /// **窓を触ると WebView へそのまま渡る**（2026-09-13 主人との相談で決めた方針3。
-        /// 「次の動画は埋め込みプレイヤー自身の関連動画で選ぶ。動画の窓への触りをレイ（とポーク）で通す」）。
+        /// 窓を触ると WebView へそのまま渡る（次の動画は埋め込みプレイヤー自身の関連動画で選ぶ）。
         ///
-        /// 指で窓の**中央**を突くと、Down → …（Drag）… → Up の順で
+        /// 指で窓の中央を突くと、Down → …（Drag）… → Up の順で
         /// <see cref="IVideoPlayer.Touch"/> が呼ばれ、比は (0.5, 0.5) のあたりになる。
         /// 実機ではこの先に <c>TLabWebView.TouchEvent</c> が居て、YouTube の関連動画が押される。
         /// </summary>
@@ -502,11 +499,9 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 窓を突いて（横へ動かさずに）離すと **タップ1回**として渡り、DRAG は1つも混ざらない。
-        ///
-        /// 2026-09-13 主人の実機確認（v1.0.9）「関連動画をタップしても反応しない」の直しの検算。
-        /// v1.0.9 は押し下げをそのまま DOWN で流していたので、指の揺れが DRAG になって
-        /// WebView がスクロールと解釈し、クリックを出さなかった。
+        /// 窓を突いて（横へ動かさずに）離すとタップ1回として渡り、DRAG は1つも混ざらない。
+        /// 押し下げをそのまま DOWN で流すと、指の揺れが DRAG になって
+        /// WebView がスクロールと解釈し、クリックを出さない。
         /// </summary>
         [UnityTest]
         public IEnumerator 窓を突いて離すとタップとして渡りドラッグが混ざらない()
@@ -529,8 +524,8 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 窓を突いたまま**横へ引く**とドラッグになり、タップは送られない
-        /// （主人「関連動画を開いて横にスクロールはできるようになった」を殺さないこと）。
+        /// 窓を突いたまま横へ引くとドラッグになり、タップは送られない
+        /// （関連動画の帯の横スクロールを殺さないこと）。
         /// </summary>
         [UnityTest]
         public IEnumerator 窓を横へ引くとドラッグになりタップは送らない()
@@ -556,11 +551,10 @@ namespace KitchenXR.Tests.PlayMode
             StringAssert.Contains("ドラッグ", _panel.LastAction, "札に「ドラッグ」と出ていません。");
         }
 
-        // ---------------------------------------------------------------- 窓の見張り（v1.0.9 の 2 と 3）
+        // ---------------------------------------------------------------- 窓の見張り
 
         /// <summary>
-        /// 窓が <c>youtube.com/watch</c> へ出たら、id を抜いて埋め込みプレイヤーへ連れ戻す
-        /// （主人「関連動画の video_id だけ抜いて、ロードできるようにとかできないか」）。
+        /// 窓が <c>youtube.com/watch</c> へ出たら、id を抜いて埋め込みプレイヤーへ連れ戻す。
         /// </summary>
         [UnityTest]
         public IEnumerator 関連動画へ遷移したら連れ戻して読み込む()
@@ -584,7 +578,7 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 主人の html の上に居る間は何もしない（毎 0.5 秒 読み直したら動画が止まってしまう）。
+        /// 同梱の html の上に居る間は何もしない（毎 0.5 秒 読み直したら動画が止まってしまう）。
         /// </summary>
         [UnityTest]
         public IEnumerator 埋め込みの上に居る間は連れ戻さない()
@@ -604,8 +598,7 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// html の読み込みが済んだら、ページ全体の縦スクロールを塞ぐ JS を送る
-        /// （主人「縦にスクロールできちゃう（16:9 のとき）」）。
+        /// html の読み込みが済んだら、ページ全体の縦スクロールを塞ぐ JS を送る。
         /// </summary>
         [UnityTest]
         public IEnumerator html読込後に縦スクロールを止める()
@@ -640,7 +633,7 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 窓の**外**（操作部の札のあたり）を触っても WebView には何も渡らない。
+        /// 窓の外（操作部の札のあたり）を触っても WebView には何も渡らない。
         /// 渡すのは絵の中だけ——余白の座標を送ると WebView の端が押されてしまう。
         /// </summary>
         [UnityTest]
@@ -673,7 +666,7 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 向きを変えても**板の下辺の中央**は動かない（上のレシピ／タイマーへ食い込まない）。
+        /// 向きを変えても板の下辺の中央は動かない（上のレシピ／タイマーへ食い込まない）。
         /// </summary>
         [UnityTest]
         public IEnumerator 向きを変えても下辺の位置は動かない()

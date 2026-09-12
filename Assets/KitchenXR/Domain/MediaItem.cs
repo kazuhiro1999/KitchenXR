@@ -1,17 +1,13 @@
 namespace KitchenXR.Domain
 {
     /// <summary>
-    /// 動画の一覧の1件（設計 §6・ROADMAP P4）。
+    /// 動画の一覧の1件。一覧の正は manor（`GET /api/v1/kitchen/media`）で、同梱の
+    /// `StreamingAssets/media.json` は manor 未設定のときの見本。Web で書き換える前提なので
+    /// 型はこれ以上増やさない。
     ///
-    /// 一覧の正は manor（ADR-016。`GET /api/v1/kitchen/media`）で、同梱の
-    /// `StreamingAssets/media.json` は manor 未設定のときの見本（設計 §11 追補「動画の一覧は manor が正」）。
-    /// 主人が Web で書き換える前提なので、型はこれ以上増やさない。
-    ///
-    /// 2026-09-13 主人の実機確認（v1.0.9）「再生リストは…右横に置いて縦スクロールできた方がいいかも
-    /// （YouTube を Web で見るときの画面みたいにサムネ＋タイトル）」——行に絵を出すため
-    /// <see cref="ThumbnailUrl"/> を足した。manor が `thumbnail_url` を返さなくても
-    /// <see cref="MediaJson"/> が YouTube の既定の絵（`i.ytimg.com/vi/&lt;id&gt;/hqdefault.jpg`）を組み立てるので、
-    /// **ここは必ず埋まっている**（板は「無いかもしれない」を気にしなくてよい）。
+    /// <see cref="ThumbnailUrl"/> は必ず埋まっている——manor が `thumbnail_url` を返さなくても
+    /// <see cref="MediaJson"/> が YouTube の既定の絵を組み立てるので、板は「絵が無い行」を
+    /// 気にしなくてよい。
     /// </summary>
     public sealed class MediaItem
     {

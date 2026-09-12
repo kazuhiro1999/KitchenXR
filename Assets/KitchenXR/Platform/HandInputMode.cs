@@ -1,7 +1,7 @@
 namespace KitchenXR.Platform
 {
     /// <summary>
-    /// 手の入力の2モード（設計 §4.4）。既定は CookingMode。
+    /// 手の入力の2モード。既定は CookingMode。
     /// </summary>
     public enum HandInputMode
     {

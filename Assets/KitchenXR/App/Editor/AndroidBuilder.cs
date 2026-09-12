@@ -7,9 +7,8 @@ using UnityEditor.Build.Reporting;
 namespace KitchenXR.App.Editor
 {
     /// <summary>
-    /// 検算用の Android ビルド（ROADMAP §3・PROTOTYPE §5「検算」）。
-    /// `unity build` の --execute-method から叩く。
-    /// 出力名は主人の指示どおり <c>Build/KitchenXR_v&lt;bundleVersion&gt;.apk</c>
+    /// 検算用の Android ビルド。`unity build` の --execute-method から叩く。
+    /// 出力名は <c>Build/KitchenXR_v&lt;bundleVersion&gt;.apk</c>
     /// （`-buildOutput` が渡されたときだけそちらを優先する）。
     /// </summary>
     public static class AndroidBuilder

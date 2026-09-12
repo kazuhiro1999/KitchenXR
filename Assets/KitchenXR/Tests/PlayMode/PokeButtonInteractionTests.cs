@@ -17,16 +17,15 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 namespace KitchenXR.Tests.PlayMode
 {
     /// <summary>
-    /// 「触れたら反応する」の検算（2026-09-13 主人の実機確認・設計 §11 追補）。
+    /// 「触れたら反応する」の検算。
     ///
-    /// v1.0.2 は <c>Button.clicked</c>＝**押し上げ**で受けていた。UI Toolkit の Button は
-    /// PointerUp が同じ要素の上で起きたときだけ clicked を出すので、
-    /// 「表面をかすめてすぐ戻す」以外——押し込んだままにする・深く突き抜ける——では反応しなかった
-    /// （主人「表面をタッチしたくらいで戻さないと反応せず、押しすぎると反応しない」）。
+    /// UI Toolkit の Button は PointerUp が同じ要素の上で起きたときだけ clicked を出すので、
+    /// <c>Button.clicked</c>（押し上げ）で受けると「表面をかすめてすぐ戻す」以外——押し込んだ
+    /// ままにする・深く突き抜ける——では反応しない。
     ///
     /// ここでは XR 機器なしで <see cref="XRPokeInteractor"/> を板の手前から中へ実際に動かし、
-    ///   - 面から 5mm / 50mm / 200mm のどこまで突き抜けても **1回だけ**発火すること
-    ///   - 抜かずに留まったまま連打の抑止（600ms）を越えても **2回目が起きない**こと
+    ///   - 面から 5mm / 50mm / 200mm のどこまで突き抜けても 1回だけ発火すること
+    ///   - 抜かずに留まったまま連打の抑止（600ms）を越えても 2回目が起きないこと
     /// を示す。板の組み立ては Kitchen.unity と同じ <see cref="WorldSpacePanelFactory"/> を通す。
     /// </summary>
     public class PokeButtonInteractionTests
@@ -201,7 +200,7 @@ namespace KitchenXR.Tests.PlayMode
         /// UI 要素が実際に描かれている世界座標。
         /// ワールド空間パネルの <c>worldBound</c> は既に板のローカル単位
         /// （UI px ÷ Pixels Per Unit、y は下向き＝負）で返るので、そのまま板の Transform に載せる。
-        /// つまり「主人が見えている場所」を突く——狙いは pivot の設定に依存しない。
+        /// つまり「目に見えている場所」を突く——狙いは pivot の設定に依存しない。
         /// </summary>
         private Vector3 WorldPositionOf(VisualElement element)
         {
@@ -248,7 +247,7 @@ namespace KitchenXR.Tests.PlayMode
             }
         }
 
-        /// <summary>押して戻す（実機で主人がやること）。</summary>
+        /// <summary>押して戻す（実機で人がやること）。</summary>
         private IEnumerator PokeAt(Vector3 worldTarget, float depthMeters)
         {
             yield return PokeIn(worldTarget, depthMeters);
@@ -319,7 +318,7 @@ namespace KitchenXR.Tests.PlayMode
 
         /// <summary>
         /// 指を突っ込んだまま留めても2回目は起きない
-        /// （連打の抑止 600ms を越えて待っても、板から離れるまでは次を受けない。設計 §11 追補）。
+        /// （連打の抑止 600ms を越えて待っても、板から離れるまでは次を受けない）。
         /// </summary>
         [UnityTest]
         public IEnumerator 抜かずに留まっても2回目は起きない()
@@ -381,8 +380,8 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 本文のある領域（工程の説明）を突いても進まない——ボタンの行と重なっていないことの検算
-        /// （設計 §11 追補「本文がボタンと重ならない」）。
+        /// 本文のある領域（工程の説明）を突いても進まない
+        /// ——ボタンの行と重なっていないことの検算。
         /// </summary>
         [UnityTest]
         public IEnumerator 本文を突いても工程は進まない()

@@ -1,21 +1,15 @@
 /*
- * KitchenXR 共通テーマ（設計 Docs/design/PROTOTYPE.md §9・§11 追補）。
+ * KitchenXR 共通テーマ。
  * 白 85% の半透明の板・濃灰の文字・琥珀の強調色1色。角丸は大きめ。Unity既定の見た目は使わない。
  *
- * 実寸の換算:
- *   ワールド空間パネルは PanelSettings の World Space モード（Pixels Per Unit = 100）で、
- *   板の GameObject の localScale を 0.2 にそろえている。
- *   つまり 1 UI px = (1/100) local unit × 0.2 = 2mm。20px = 4cm・10px = 2cm。
- *   設計 §7 の「最小4cm角・間隔2cm」はこの換算で決めた数値。
+ * 実寸の換算: PanelSettings の Pixels Per Unit = 100、板の localScale = 0.2 なので
+ * 1 UI px = 2mm（20px = 4cm・10px = 2cm）。「最小4cm角・間隔2cm」はこの換算の数値。
  *
- * 注意（2026-09-12 の実機不具合の直し。同じ罠を踏まないこと）:
- *   1) `-unity-font-definition` は **UnityEngine.TextCore.Text.FontAsset**（UI Toolkit 用）しか
- *      受け付けない。`Assets/TextMesh Pro/.../*.asset` は TMPro.TMP_FontAsset なので型が合わず、
- *      指定ごと無視されて文字が1つも描かれなかった。ここでは
- *      `Assets/KitchenXR/Presentation/UI/Fonts/NotoSansJP-Regular UITK.asset`
- *      （KitchenFontAssetBuilder が TTF から作る TextCore 版）を指す。
- *   2) 長さは **必ず単位（px）を付ける**。`--font-size-heading: 10` のような単位無しの値は
- *      `var()` 越しに `font-size` へ渡すと型が合わず無視され、既定の 14px に戻ってしまう。
+ * 同じ罠を踏まないこと:
+ *   1) `-unity-font-definition` は UnityEngine.TextCore.Text.FontAsset しか受け付けない。
+ *      TMPro.TMP_FontAsset を指すと型が合わず、指定ごと無視されて文字が1つも描かれない。
+ *   2) 長さには必ず単位（px）を付ける。単位無しの値は `var()` 越しに `font-size` へ渡すと
+ *      型が合わず無視され、既定の 14px に戻ってしまう。
  */
 
 :root {
@@ -31,8 +25,7 @@
     --color-alarm-bg: rgba(220, 38, 38, 0.22);
 
     /* 文字3段（見出し／本文／補助）。48/32/24pt の比を保った実機換算値（上のコメント参照）。
-     * 2026-09-13 主人「少し大きいかも」——**本文だけ**1段下げた（7px ≒ 32pt → 6px ≒ 27pt）。
-     * 見出しと補助は据え置き。材料の板はさらに一段小さい --font-size-ingredient を使う（§11 追補）。 */
+     * 材料の板はさらに一段小さい --font-size-ingredient を使う。 */
     --font-size-heading: 10px;
     --font-size-body: 6px;
     --font-size-caption: 5px;
@@ -41,20 +34,20 @@
     --radius-large: 12px;
     --radius-medium: 6px;
 
-    /* ボタン: 最小4cm角 = 20px、間隔2cm = 10px（設計 §7）。
+    /* ボタン: 最小4cm角 = 20px、間隔2cm = 10px。
      * ボタンの余白は上下左右 5px（＝隣り合うボタンの間が 10px = 2cm）。
-     * v1.0.2 は 10px（間隔 4cm）で、本文の置き場を圧迫していた（§11 追補「本文が重ならない」）。 */
+     * これ以上広げると本文の置き場を圧迫する。 */
     --button-min: 20px;
     --gap-loose: 10px;
     --gap-tight: 5px;
 }
 
 /*
- * 文字の大きさの3段（2026-09-13 主人「設定で変更できたらもっといい」）。
+ * 文字の大きさの3段。
  * <see cref="KitchenXR.Presentation.DisplaySettingsApplier"/> が各板の `.root-panel` に
  * このクラスを付け外しする。中はクラス無し（上の :root の値のまま）。
  *
- * **:root ではなく板の根に置く**のが肝心。カスタムプロパティは継承するので、
+ * :root ではなく板の根に置くのが肝心。カスタムプロパティは継承するので、
  * 板の根で上書きすれば中の全ての要素（ボタン・材料の行も）が一緒に動く。
  * 板ごとに別の大きさにしたくなったときも、ここを触らずに済む。
  */
@@ -91,15 +84,14 @@
 }
 
 /*
- * 文字の型の余白をゼロにする（2026-09-13 主人の実機確認 v1.0.6 の**大元**）。
+ * 文字の型の余白をゼロにする。
  *
- * Unity 既定の runtime テーマ（UnityDefaultRuntimeTheme）は Label に
- * **padding 上下 4px・margin 上 4px 下 2px**（＝合わせて 14px ≒ 2.8cm）を入れる。
- * これは 1 UI px = 1 画面 px の普通の UI 向けの値で、1 UI px ≒ 2mm のこの板では
- * **文字より余白のほうが大きい**——本文 6px（≒ 8.7px ぶんの字）の Label が 23px を占めていた。
- * 「行間が空いている」「1画面に収まらない」「進捗が上を結構多く占めている」は全部これが元。
+ * Unity 既定の runtime テーマ（UnityDefaultRuntimeTheme）は Label に padding 上下 4px・
+ * margin 上 4px 下 2px（＝合わせて 14px ≒ 2.8cm）を入れる。これは 1 UI px = 1 画面 px の
+ * 普通の UI 向けの値で、1 UI px ≒ 2mm のこの板では文字より余白のほうが大きい——本文 6px の
+ * Label が 23px を占め、行間が空いて1画面に収まらなくなる。
  *
- * 余白は各板の USS で**必要な場所にだけ**明示する（margin を書いた側が後勝ちで効く）。
+ * 余白は各板の USS で必要な場所にだけ明示する（margin を書いた側が後勝ちで効く）。
  */
 .heading {
     font-size: var(--font-size-heading);
@@ -140,7 +132,7 @@
     margin-bottom: var(--gap-tight);
 }
 
-/* --- ボタン（設計 §7: 最小4cm角・間隔2cm・押し込みの見た目は hysteresis を反映） --- */
+/* --- ボタン（最小4cm角・間隔2cm・押し込みの見た目は hysteresis を反映） --- */
 
 .kitchen-button {
     min-width: var(--button-min);
@@ -196,7 +188,7 @@
     opacity: 0.35;
 }
 
-/* --- 工程の点列（設計 §11 追補: phase の3つではなく「工程の数だけ」出す） --- */
+/* --- 工程の点列（phase の数ではなく「工程の数だけ」出す） --- */
 
 .step-dots {
     flex-direction: row;
@@ -235,17 +227,15 @@
     margin-left: 8px;
 }
 
-/* --- 材料の板（§11 追補: 横スクロール禁止・文字を一段小さく・行の高さを板の幅に合わせる） --- */
+/* --- 材料の板（横スクロール禁止・文字を一段小さく・行の高さを板の幅に合わせる） --- */
 
 /*
- * 2026-09-13 主人「縦スクロールしないと全部の材料を一目で見れないのは UX 的に…。
- * 行間が空いているのでもう少し詰めていい」——行を 12px → 8px（2.4cm → 1.6cm）に詰め、
- * 行間（margin）を無くした。板を 170×240 に広げたので、見本の炒飯（13 点）でも
- * 20 点程度でも**スクロールせずに全部見える**（PlayMode 試験 PanelLayoutTests で検算）。
+ * 行を 8px（1.6cm）に詰め、行間（margin）を無くしてある。板が 170×240 あるので、
+ * 20 点程度の材料でもスクロールせずに全部見える（PanelLayoutTests で検算）。
  *
- * 設計 §7 の「最小4cm角」は**押す釦**の話で、ここは当てない——材料のチェックは
- * 押し損ねても調理が進まないだけの見た目であり、一目で全部見えることのほうが効く
- * （主人の指示）。押す的は行の全幅（板の幅いっぱい）なので狙い自体は難しくない。
+ * 「最小4cm角」は押す釦の話で、ここは当てない——材料のチェックは押し損ねても調理が
+ * 進まないだけの見た目であり、一目で全部見えることのほうが効く。
+ * 押す的は行の全幅（板の幅いっぱい）なので狙い自体は難しくない。
  */
 .ingredient-row {
     flex-direction: row;

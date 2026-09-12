@@ -5,7 +5,7 @@ using NUnit.Framework;
 namespace KitchenXR.Tests.EditMode
 {
     /// <summary>
-    /// CookSession の状態機械（設計 §5）: Next/Prev・進捗・境界（最初で Prev・最後で Next）・タイマー。
+    /// CookSession の状態機械: Next/Prev・進捗・境界（最初で Prev・最後で Next）・タイマー。
     /// </summary>
     public class CookSessionTests
     {

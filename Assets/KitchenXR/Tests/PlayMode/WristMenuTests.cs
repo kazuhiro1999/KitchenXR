@@ -17,14 +17,11 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 namespace KitchenXR.Tests.PlayMode
 {
     /// <summary>
-    /// 手首の釦とメニュー、そしてレイの線の出し入れの検算
-    /// （2026-09-13 主人の実機確認 v1.0.8 の③と④。設計 §4.4・§7・§11 追補）。
-    ///
-    /// 見るのは4つ:
-    ///   1. **手首の釦をポークするとメニューが出入りする**（トグル）
-    ///   2. **配置を終えるとメニューが閉じる**（<c>Bootstrap</c> と同じ結び方で確かめる）
-    ///   3. **手首の釦はレイの相手にならない**（誤って遠くから押されない）
-    ///   4. **レイの線は相手にホバーしている間だけ出る**（主人「操作できない場合は表示を消して」）
+    /// 手首の釦とメニュー、そしてレイの線の出し入れの検算。見るのは4つ:
+    ///   1. 手首の釦をポークするとメニューが出入りする（トグル）
+    ///   2. 配置を終えるとメニューが閉じる（<c>Bootstrap</c> と同じ結び方で確かめる）
+    ///   3. 手首の釦はレイの相手にならない（誤って遠くから押されない）
+    ///   4. レイの線は相手にホバーしている間だけ出る
     ///
     /// 板の組み立ては Kitchen.unity と同じ <see cref="WorldSpacePanelFactory"/> を通す。
     /// </summary>
@@ -120,8 +117,8 @@ namespace KitchenXR.Tests.PlayMode
         /// <summary>
         /// Kitchen.unity の <c>Wrist Menu</c> と同じ組み立て。
         ///
-        /// 手のひらの身代わり（<c>Palm</c>）は原点に置き、**手のひらの面をカメラ（-Z）へ向ける**
-        /// ——実機で主人が手を返してメニューを見る姿勢がこれ。
+        /// 手のひらの身代わり（<c>Palm</c>）は原点に置き、手のひらの面をカメラ（-Z）へ向ける
+        /// ——実機で手を返してメニューを見る姿勢がこれ。
         /// 手のひらの向く先は <c>-palm.up</c> なので、x を +90° 回すと
         /// <c>palm.up = (0,0,1)</c>・<c>-palm.up = (0,0,-1)</c> でカメラ側を向き、
         /// <c>palm.forward = (0,-1,0)</c>（指先は下。腕が上から来ている姿勢）になる。
@@ -233,8 +230,8 @@ namespace KitchenXR.Tests.PlayMode
         // ---------------------------------------------------------------- 本題
 
         /// <summary>
-        /// 起動直後は**何も出ていない**（釦の板だけが手首に付いている）。
-        /// 主人「手を洗ってるときなどに出ると邪魔」——手の向きで出る仕掛けをやめた核心。
+        /// 起動直後は何も出ていない（釦の板だけが手首に付いている）
+        /// ——手の向きで出る仕掛けをやめた核心。
         /// </summary>
         [UnityTest]
         public IEnumerator 起動直後はメニューが出ていない()
@@ -255,7 +252,7 @@ namespace KitchenXR.Tests.PlayMode
             Assert.IsTrue(_wristMenu.IsMenuOpen, "手首の釦を押してもメニューが出ませんでした。");
             Assert.IsTrue(_menuGo.activeSelf, "メニューの板が立っていません。");
 
-            // 連打の抑止（ClickDebounce の 600ms。設計 §7）を跨ぐ。
+            // 連打の抑止（ClickDebounce の 600ms）を跨ぐ。
             // 試験のフレームは実時間より速く進むので、ここだけは実時間で待つ。
             yield return new WaitForSecondsRealtime(0.7f);
 
@@ -265,9 +262,9 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 出したメニューの釦が**押せる**こと。
+        /// 出したメニューの釦が押せること。
         /// <see cref="UIDocument"/> は無効化のたびに <c>rootVisualElement</c> を作り直すので、
-        /// <c>SetActive</c> で出し入れする板は**出るたびに配線し直さないと死ぬ**
+        /// <c>SetActive</c> で出し入れする板は出るたびに配線し直さないと死ぬ
         /// （<see cref="PlacementMenuPanel"/> が <c>OnEnable</c> で配線し直している理由）。
         /// ここはその罠を踏んでいないことの検算でもある。
         /// </summary>
@@ -303,9 +300,9 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// 手首の釦は**レイの相手にならない**（誤って遠くから押されない）。
+        /// 手首の釦はレイの相手にならない（誤って遠くから押されない）。
         /// 物理層 8 番 "Kitchen Panel Off Ray" は Ray の <c>raycastMask</c>（0/5/31）から外れていて、
-        /// <c>Physics.DefaultRaycastLayers</c> には入ったままなので**指では押せる**
+        /// <c>Physics.DefaultRaycastLayers</c> には入ったままなので指では押せる
         /// ——上の「ポークで出入りする」試験がそれを示している。
         /// </summary>
         [UnityTest]
@@ -341,7 +338,7 @@ namespace KitchenXR.Tests.PlayMode
         // ---------------------------------------------------------------- ④ レイの線
 
         /// <summary>
-        /// レイの線は**指す先があるときだけ**出る（主人「レイが操作できない場合は表示を消して」）。
+        /// レイの線は指す先があるときだけ出る。
         ///
         /// 相手（<see cref="XRSimpleInteractable"/>）を向いていない間は線を落とし、
         /// 向けた瞬間に戻す。ここは XRI の層（<c>interactionLayers</c>）を通った後の話なので、
@@ -361,8 +358,8 @@ namespace KitchenXR.Tests.PlayMode
             interactable.colliders.Add(collider);
 
             // レイ（z = -1 から +Z を向く）。
-            // 線は **子の `LineVisual`** に置く——XRI の Near-Far Interactor がまさにこの形で、
-            // 同じ GameObject だけを見る作りだと黙って線を消せない（2026-09-13 に踏んだ）。
+            // 線は子の `LineVisual` に置く——XRI の Near-Far Interactor がまさにこの形で、
+            // 同じ GameObject だけを見る作りだと黙って線を消せない。
             // ここでは挿し込みをせず、<see cref="RayLineVisibility"/> 自身に拾わせて確かめる。
             var rayGo = new GameObject("Ray Interactor");
             rayGo.SetActive(false);

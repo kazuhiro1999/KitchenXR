@@ -7,11 +7,9 @@ using NUnit.Framework;
 namespace KitchenXR.Tests.EditMode
 {
     /// <summary>
-    /// 表示の設定（2026-09-13 主人「設定とかで変更できたらもっといい」）の読み書き。
-    ///
-    /// 肝心なのは**壊れていても起動が止まらない**こと。設定ファイルは主人が
-    /// <c>adb push</c> で触れる場所（persistentDataPath）にあり、手で書き換えられる前提なので、
-    /// 空・壊れた JSON・知らない段のどれが来ても既定（中・中）に落ちる。
+    /// 表示の設定の読み書き。肝心なのは壊れていても起動が止まらないこと——設定ファイルは
+    /// <c>adb push</c> で触れる場所にあり手で書き換えられる前提なので、空・壊れた JSON・
+    /// 知らない段のどれが来ても既定（中・中）に落ちる。
     /// </summary>
     public class DisplaySettingsTests
     {

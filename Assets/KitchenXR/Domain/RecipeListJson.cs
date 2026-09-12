@@ -8,13 +8,12 @@ namespace KitchenXR.Domain
     /// レシピ一覧の JSON（manor の <c>GET /api/v1/kitchen/recipes</c> → <c>{"items": [...]}</c>）を
     /// <see cref="RecipeSummary"/> の並びに直す。
     ///
-    /// <see cref="RecipeJson"/> と同じ流儀で **壊れていても落ちない**:
-    /// 読めなかった行は黙って飛ばし、読めた行だけを返す。全部読めなければ空の並び。
-    /// 一覧が出ないことで調理そのものが止まってはいけない（オフライン前提。設計 §11 追補）。
+    /// <see cref="RecipeJson"/> と同じ流儀で壊れていても落ちない: 読めなかった行は黙って飛ばし、
+    /// 読めた行だけを返す。一覧が出ないことで調理そのものが止まってはいけない。
     /// </summary>
     public static class RecipeListJson
     {
-        /// <summary>板に並べる上限（主人の指示。20 件・縦スクロール）。</summary>
+        /// <summary>板に並べる上限（20 件・縦スクロール）。</summary>
         public const int MaxItems = 20;
 
         public static IReadOnlyList<RecipeSummary> Parse(string json)

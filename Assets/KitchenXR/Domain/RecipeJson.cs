@@ -6,9 +6,9 @@ using Newtonsoft.Json;
 namespace KitchenXR.Domain
 {
     /// <summary>
-    /// 契約 JSON（設計 §3）を <see cref="Recipe"/> に直す。
+    /// 契約 JSON を <see cref="Recipe"/> に直す。
     /// 未知のキーは無視し、欠けているキーは既定値で埋める
-    /// （サーバ側の構造化がまだ荒くても Unity 側は落ちない。設計 §3 の方針）。
+    /// （サーバ側の構造化がまだ荒くても Unity 側は落ちない）。
     /// </summary>
     public static class RecipeJson
     {
@@ -74,7 +74,7 @@ namespace KitchenXR.Domain
                 case "manual":
                     return CompletionType.Manual;
                 default:
-                    // 未知の値は manual 扱い（v0 は全部 manual なので安全側）。
+                    // 未知の値は manual 扱い（安全側）。
                     return CompletionType.Manual;
             }
         }

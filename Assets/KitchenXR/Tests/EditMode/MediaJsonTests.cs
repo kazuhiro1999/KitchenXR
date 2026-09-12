@@ -5,9 +5,8 @@ using NUnit.Framework;
 namespace KitchenXR.Tests.EditMode
 {
     /// <summary>
-    /// `media.json` の読み（設計 §6・ROADMAP P4）。
-    /// 主人が PC のテキストエディタで直に書くファイルなので、**1行の書き損じで板が丸ごと死なない**
-    /// ことがここの主題。
+    /// `media.json` の読み。テキストエディタで直に書くファイルなので、
+    /// 1行の書き損じで板が丸ごと死なないことがここの主題。
     /// </summary>
     public class MediaJsonTests
     {
@@ -53,7 +52,7 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// 動画 id は主人の <c>youtube.html</c> の <c>loadVideo('…')</c> にそのまま埋まる。
+        /// 動画 id は <c>youtube.html</c> の <c>loadVideo('…')</c> にそのまま埋まる。
         /// 記号を通すと JavaScript を差し込めてしまうので、英数字と - _ だけに絞る。
         /// </summary>
         [Test]
@@ -86,8 +85,7 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// manor の一覧（ADR-016）の <c>thumbnail_url</c> を読む
-        /// （2026-09-13 主人の実機確認 v1.0.9「サムネ＋タイトル」）。
+        /// manor の一覧の <c>thumbnail_url</c> を読む。
         /// </summary>
         [Test]
         public void サムネイルのURLを読む()

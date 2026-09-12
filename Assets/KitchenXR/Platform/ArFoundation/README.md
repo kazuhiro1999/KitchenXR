@@ -1,7 +1,7 @@
 # ArFoundation（P2 で実装）
 
 ここには機種・SDK 固有の実装だけを置く（`UnityEngine.XR.ARFoundation`・`OVR`・`PXR` の呼び出しは
-`Platform/<系>/` の中に閉じ込める。設計 `Docs/design/PROTOTYPE.md` §4.2）。
+`Platform/<系>/` の中に閉じ込める。`Docs/ARCHITECTURE.md`）。
 
 P0/P1 では空。P2（アンカー）で以下を実装する:
 

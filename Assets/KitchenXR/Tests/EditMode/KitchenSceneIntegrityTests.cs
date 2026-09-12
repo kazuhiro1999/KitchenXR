@@ -21,11 +21,11 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 namespace KitchenXR.Tests.EditMode
 {
     /// <summary>
-    /// 2026-09-12 に実機（Quest 3）で見つかった3点の再発を止める検算。
+    /// 実機（Quest 3）で踏んだ3点の再発を止める検算。
     ///   (1) 文字が1つも描かれない   → フォントが解決されているか
     ///   (2) パススルーが効かない     → テンプレートの環境が残っていないか・カメラ背景が透明か
     ///   (3) 指がすり抜ける           → XRI のワールド空間 UI Toolkit の受け口が揃っているか
-    /// おまけ: アイコンと版（主人の追加指示）。
+    /// おまけ: アイコンと版。
     /// </summary>
     public class KitchenSceneIntegrityTests
     {
@@ -71,7 +71,7 @@ namespace KitchenXR.Tests.EditMode
         [Test]
         public void themeUssがTextCoreのFontAssetを取り込んでいる()
         {
-            // これが今回の不具合の核心。`-unity-font-definition` の指す資産の型が合わないと、
+            // `-unity-font-definition` の指す資産の型が合わないと、
             // USS の取り込みは黙って成功し、フォントの参照だけが落ちる（= 字が1つも出ない）。
             // 取り込み済みの StyleSheet が本当に FontAsset を掴んでいるかを見る。
             var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(ThemeUssPath);
@@ -253,7 +253,7 @@ namespace KitchenXR.Tests.EditMode
                 var collider = go.GetComponent<BoxCollider>();
                 Assert.IsNotNull(collider, $"{go.name}: BoxCollider がありません。");
 
-                // UI px ではなくローカル単位（px ÷ Pixels Per Unit）。以前は 100 倍だった。
+                // UI px ではなくローカル単位（px ÷ Pixels Per Unit）。
                 var expectedWidth = doc.worldSpaceSize.x / KitchenSceneBuilder.PanelPixelsPerUnit;
                 var expectedHeight = doc.worldSpaceSize.y / KitchenSceneBuilder.PanelPixelsPerUnit;
 
@@ -272,7 +272,7 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// v1.0.1 で「触ると色は変わるのにボタンが押せない」を起こした当人。
+        /// 「触ると色は変わるのにボタンが押せない」を起こす当人。
         /// コライダーは左上原点の約束で置いているのに、UIDocument の原点が既定のままだと
         /// 板の矩形とコライダーが半分ずれる。当たってはいるので Interactable のホバー
         /// （色と振動）は効くが、当たり点を板のローカル座標へ写すと文字の外に落ちるため、
@@ -302,10 +302,9 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// v1.0.1 で「触っても押せない」の本当の原因。
-        /// 指が当たり判定から出ると XRPokeInteractor は掴みを手放すので、
-        /// 薄い板だと押し込んだ指がすぐ裏へ抜けて Button の clicked が発火しない。
-        /// 箱は**裏側にだけ**十分な奥行きを持たせる（表の面＝押し込みの判定位置は板のまま）。
+        /// 「触っても押せない」のもう一つの原因。指が当たり判定から出ると XRPokeInteractor は
+        /// 掴みを手放すので、薄い板だと押し込んだ指がすぐ裏へ抜けて Button の clicked が
+        /// 発火しない。箱は裏側にだけ十分な奥行きを持たせる（表の面は板のまま）。
         /// </summary>
         [Test]
         public void 板の当たり判定が裏側に十分な奥行きを持つ()
@@ -332,7 +331,7 @@ namespace KitchenXR.Tests.EditMode
 
             foreach (var pair in positions)
             {
-                Assert.Greater(pair.Value.y, 1.0f, $"{pair.Key}: 作業中の手が通る高さに置かない（設計 §7）。");
+                Assert.Greater(pair.Value.y, 1.0f, $"{pair.Key}: 作業中の手が通る高さに置かない。");
             }
 
             // 3枚が同じ場所に重なっていない（原点に積み上がっていた）。
@@ -347,10 +346,10 @@ namespace KitchenXR.Tests.EditMode
             }
         }
 
-        // ---------------------------------------------------------------- レシピを選ぶ板（P3）
+        // ---------------------------------------------------------------- レシピを選ぶ板
 
         /// <summary>
-        /// 起動時はレシピの板の場所に一覧を出す（主人の指示）。同じ場所に同じ寸法で重ねて置き、
+        /// 起動時はレシピの板の場所に一覧を出す。同じ場所に同じ寸法で重ねて置き、
         /// 出し入れは <see cref="PanelVisibility"/> が行う
         /// （<c>GameObject.SetActive</c> だと UIDocument が rootVisualElement を作り直して、
         /// 各パネルが Awake で掴んだ要素の参照が死ぬ）。
@@ -365,7 +364,7 @@ namespace KitchenXR.Tests.EditMode
             Assert.IsNotNull(recipe, "Kitchen.unity にレシピの板がありません。");
 
             Assert.Less(Vector3.Distance(list.transform.position, recipe.transform.position), 0.01f,
-                "起動時はレシピの板の位置に一覧を出します（主人の指示）。");
+                "起動時はレシピの板の位置に一覧を出します。");
 
             var doc = list.GetComponent<UIDocument>();
             Assert.IsNotNull(doc, "RecipeListPanel に UIDocument がありません。");
@@ -417,14 +416,14 @@ namespace KitchenXR.Tests.EditMode
             Assert.IsEmpty(missing, "絵が入っていないアイコン枠: " + string.Join(", ", missing));
         }
 
-        // ---------------------------------------------------------------- 動画の板（P4）
+        // ---------------------------------------------------------------- 動画の板
 
         /// <summary>
-        /// 4枚目の板が在り、主人の <c>YoutubePlayer</c> の実体を抱えていること。
-        /// 実体は**眠っている**のが正しい（起こすのは Android の実機だけ。Editor では札を出す）。
+        /// 4枚目の板が在り、TLab の <c>YoutubePlayer</c> の実体を抱えていること。
+        /// 実体は眠っているのが正しい（起こすのは Android の実機だけ。Editor では札を出す）。
         /// </summary>
         [Test]
-        public void 動画の板に主人のYoutubePlayerが入っている()
+        public void 動画の板にYoutubePlayerが入っている()
         {
             var videoPanel = Object.FindFirstObjectByType<VideoPanel>(FindObjectsInactive.Include);
             Assert.IsNotNull(videoPanel, "Kitchen.unity に動画の板（VideoPanel）がありません。");
@@ -435,7 +434,7 @@ namespace KitchenXR.Tests.EditMode
                 $"動画の板に {YoutubePlayerBridge.PlayerPrefabPath} の実体が挿さっていません。");
 
             Assert.AreEqual(YoutubePlayerBridge.PlayerObjectName, playerRoot.name,
-                "主人の youtube.html が unitySendMessage でこの名前へ返してくるので、名前は変えられません。");
+                "youtube.html が unitySendMessage でこの名前へ返してくるので、名前は変えられません。");
             Assert.IsFalse(playerRoot.activeSelf,
                 "WebView は Android のプラグイン。起こすのは実機だけなので、シーンでは眠らせておきます。");
             Assert.AreSame(videoPanel.transform, playerRoot.transform.parent,
@@ -443,12 +442,10 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// 設計 P4「16:9 で窓の幅 50cm」。
-        ///
-        /// 2026-09-13（v1.0.9）で板は「左に窓・右に一覧」になったので、板の幅は
-        /// **窓 ＋ 間 ＋ 一覧** で決まる。VideoPanel.uss の <c>.video-list-block</c> の
-        /// <c>width</c>／<c>margin-left</c> がこの3つと食い違うと窓が 50cm でなくなるので、
-        /// 定数の足し算が合っていることをここで縛る（実測は PlayMode の VideoPanelTests）。
+        /// 16:9 で窓の幅 50cm。板は「左に窓・右に一覧」なので、板の幅は窓 ＋ 間 ＋ 一覧 で決まる。
+        /// VideoPanel.uss の <c>.video-list-block</c> の <c>width</c>／<c>margin-left</c> が
+        /// この3つと食い違うと窓が 50cm でなくなるので、定数の足し算が合っていることを縛る
+        /// （実測は PlayMode の VideoPanelTests）。
         /// </summary>
         [Test]
         public void 動画の板の寸法が16対9の窓に合っている()
@@ -465,7 +462,7 @@ namespace KitchenXR.Tests.EditMode
             var windowCm = VideoPanel.LandscapeWindowWidthUnits * 0.2f;
             Assert.AreEqual(50f, windowCm, 0.5f, "動画の窓の幅が 50cm ではありません（設計 P4）。");
 
-            // 9:16（ショーツ）は窓の**高さ**を 36cm に取り、幅はその 9:16。
+            // 9:16（ショーツ）は窓の高さを 36cm に取り、幅はその 9:16。
             Assert.AreEqual(36f, VideoPanel.PortraitWindowHeightUnits * 0.2f, 0.5f,
                 "9:16 の窓の高さが 36cm ではありません。");
             Assert.AreEqual(
@@ -478,7 +475,7 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// 一覧の寸法が USS と合っていること（2026-09-13 主人の実機確認 v1.0.9 の一覧の組み替え）。
+        /// 一覧の寸法が USS と合っていること。
         /// C# の定数と <c>VideoPanel.uss</c> は別の場所にあり、片方だけ直すと
         /// 窓の幅が静かに 50cm から外れる——数字そのものを突き合わせる。
         /// </summary>
@@ -495,8 +492,7 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// 指先の光る点が左右の Poke Interactor に付いていること
-        /// （設計 §11 追補 2026-09-13 v1.0.9 の⑤。主人「指先カーソルの表示対策」）。
+        /// 指先の光る点が左右の Poke Interactor に付いていること。
         /// rig を差し替えたときに黙って 0 個になるのを防ぐ。
         /// </summary>
         [Test]
@@ -528,12 +524,12 @@ namespace KitchenXR.Tests.EditMode
             Assert.IsTrue(File.Exists(path), "Assets/StreamingAssets/media.json がありません（一覧が空になります）。");
         }
 
-        // ---------------------------------------------------------------- Android（WebView の要件。P4）
+        // ---------------------------------------------------------------- Android（WebView の要件）
 
         /// <summary>
         /// WebView が実機で動くための Android の条件（`TLabWebView` の README）。
         /// 落ちたときは <see cref="AndroidPlayerSetup.ApplyWebViewRequirements"/> を回せば直る
-        /// ——ただし OpenXR の「Force Remove Internet Permission」だけは主人の手が要る。
+        /// ——ただし OpenXR の「Force Remove Internet Permission」だけは手で外す。
         /// </summary>
         [Test]
         public void WebViewのためのAndroid設定が揃っている()
@@ -561,23 +557,21 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// OpenXR の Meta Quest Support の「Force Remove Internet Permission」は**検算だけ**
-        /// （`Assets/XR/Settings/` は主人の持ち物なので書き換えない）。
+        /// OpenXR の Meta Quest Support の「Force Remove Internet Permission」は検算だけ
+        /// （`Assets/XR/Settings/` は書き換えない）。
         /// </summary>
         [Test]
         public void OpenXRがInternetPermissionを剥がさない()
         {
             Assert.IsFalse(AndroidPlayerSetup.OpenXrRemovesInternetPermission(),
                 "OpenXR の Meta Quest Support で「Force Remove Internet Permission」が入っています。"
-                + "主人が Project Settings > XR Plug-in Management > OpenXR で外してください。");
+                + "Project Settings > XR Plug-in Management > OpenXR で外してください。");
         }
 
-        // ---------------------------------------------------------------- 配置モード（P2）
+        // ---------------------------------------------------------------- 配置モード
 
         /// <summary>
-        /// 板を置き直す仕掛け一式がシーンに在ること（ROADMAP P2・設計 §4.4・§11 追補 2026-09-13）。
-        ///
-        /// 2026-09-13 から配置の操作は**全部 手のひらメニュー**（頭の前に出していた操作板は廃止）。
+        /// 板を置き直す仕掛け一式がシーンに在ること。配置の操作は全部 手のひらメニューにあり、
         /// 保存もやめるもこの板にしか無いので、無ければ配置モードから出られない＝必須にする。
         /// </summary>
         [Test]
@@ -603,7 +597,7 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// 配置の操作が**全部**手のひらメニューの uxml に在ること（主人「配置の確定等も手元に」）。
+        /// 配置の操作が全部 手のひらメニューの uxml に在ること。
         /// </summary>
         [Test]
         public void 配置の操作が手のひらメニューに揃っている()
@@ -623,8 +617,7 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// 動画の板だけが Video の Interaction Layer を名乗ること（設計 §11 追補 2026-09-13。
-        /// 主人「Youtube プレイヤーだけレイ操作を有効化してほしい」）。
+        /// 動画の板だけが Video の Interaction Layer を名乗ること（調理中もレイで操作させるため）。
         /// Default を落としていないことも一緒に見る——落とすとポークも配置の掴みも効かなくなる。
         /// </summary>
         [Test]
@@ -651,7 +644,7 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// 「レイを分ける」ための2つの層が、設定の側に**名前付きで**在ること。
+        /// 「レイを分ける」ための2つの層が、設定の側に名前付きで在ること。
         /// どちらも番号で使うので、名前が消えたり別の意味で使い回されたりすると黙って壊れる。
         /// </summary>
         [Test]
@@ -689,15 +682,15 @@ namespace KitchenXR.Tests.EditMode
                 + "レシピ／一覧の板の「配置」から入ったときにメニューが開かず、配置モードから出られません。");
         }
 
-        // ---------------------------------------------------------------- 手首の釦（v1.0.8 の③）
+        // ---------------------------------------------------------------- 手首の釦
 
         /// <summary>
-        /// 手首の釦が左右に1つずつ在り、**レイの相手にならない**こと
-        /// （2026-09-13 主人の実機確認 v1.0.8 の③。理由は <see cref="WristMenu"/> に書いた）。
+        /// 手首の釦が左右に1つずつ在り、レイの相手にならないこと
+        /// （理由は <see cref="WristMenu"/> に書いた）。
         ///
         /// 物理層 8 番 "Kitchen Panel Off Ray" は Ray の <c>raycastMask</c>（0/5/31）から外れ、
         /// <c>Physics.DefaultRaycastLayers</c> には入ったまま——つまり
-        /// **指では押せるが遠くからレイでは押せない**。手首の釦にちょうどよい性質。
+        /// 指では押せるが遠くからレイでは押せない。手首の釦にちょうどよい性質。
         /// </summary>
         [Test]
         public void 手首の釦が左右に在りレイの相手にならない()
@@ -731,9 +724,9 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// XRI の <c>HandMenu</c>（手のひらの向きで出し入れする仕掛け）が残っていないこと。
-        /// 主人「手を横に向けているときにも表示されています。手を洗ってるときなどに出ると邪魔」
-        /// ——v1.0.8 でやめた仕掛けが、シーンを組み直したときに黙って戻らないように。
+        /// XRI の <c>HandMenu</c>（手のひらの向きで出し入れする仕掛け）が残っていないこと
+        /// ——手を横に向けただけで出てしまうのでやめた仕掛けが、シーンを組み直したときに
+        /// 黙って戻らないように。
         /// </summary>
         [Test]
         public void 手のひらの向きで出るメニューが残っていない()
@@ -751,8 +744,7 @@ namespace KitchenXR.Tests.EditMode
 
         /// <summary>
         /// レイの線の出し入れ（<see cref="RayLineVisibility"/>）が
-        /// **4つの Near-Far Interactor 全部**に付いていること
-        /// （2026-09-13 主人の実機確認 v1.0.8 の④「レイが操作できない場合は表示を消してほしい」）。
+        /// 4つの Near-Far Interactor 全部に付いていること。
         /// 手だけに付けてコントローラを忘れる、を止める。
         /// </summary>
         [Test]
@@ -774,9 +766,8 @@ namespace KitchenXR.Tests.EditMode
                 Assert.IsNotNull(visibility,
                     $"{interactor.name} にレイの線の出し入れが付いていません（線が出っぱなしになります）。");
 
-                // 線と描き手は Interactor 本体ではなく `LineVisual` という**子**に載っている。
-                // 挿し先が空でも component は在るので、ここまで見ないと黙って効かない
-                // （2026-09-13 に実際に踏んだ）。
+                // 線と描き手は Interactor 本体ではなく `LineVisual` という子に載っている。
+                // 挿し先が空でも component は在るので、ここまで見ないと黙って効かない。
                 var so = new SerializedObject(visibility);
                 Assert.IsNotNull(so.FindProperty("_lineRenderer").objectReferenceValue,
                     $"{interactor.name} の LineRenderer が挿さっていません（線を消せません）。");
@@ -786,7 +777,7 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// 「配置」の釦が**両方の板**（調理中のレシピの板と、起動直後の一覧の板）にあること。
+        /// 「配置」の釦が両方の板（調理中のレシピの板と、起動直後の一覧の板）にあること。
         /// 手のひらメニューを出すのに手を返すのが面倒な場面（両手が塞がっている等）の入り口。
         /// 出口は手のひらメニューにしか無いので、こちらは入り口の控えという位置付け。
         /// </summary>
