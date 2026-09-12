@@ -296,6 +296,8 @@ namespace KitchenXR.App
         /// （tailnet 越し・ポートを変えた）を主人が明示したのなら、そちらが正しい。
         /// どれも決まらなければ札を出して**見本だけで動く**（起動そのものは止めない）。
         /// </summary>
+        private string _discoveryFailure = string.Empty;
+
         private async UniTask ConnectManorAsync(CancellationToken token)
         {
             var device = _deviceFile.Load();
@@ -311,10 +313,15 @@ namespace KitchenXR.App
             else
             {
                 _recipeListPanel?.ShowBusy("manor を探しています");
-                var found = await new ManorDiscovery().FindBaseUrlAsync(token: token);
+                var discovery = new ManorDiscovery();
+                var found = await discovery.FindBaseUrlAsync(token: token);
                 if (!string.IsNullOrEmpty(found))
                 {
                     _manor.UseBaseUrl(found, "探索");
+                }
+                else
+                {
+                    _discoveryFailure = discovery.LastFailure;
                 }
             }
 
@@ -326,7 +333,10 @@ namespace KitchenXR.App
             if (!_manor.HasBaseUrl)
             {
                 // manor が寝ている・ループバックで立っている・tailnet の向こうに居る。
-                _manorStatus = "manor が見つかりません（見本だけ）";
+                // 理由（探索の失敗の言葉）を札に添える——実機で読み上げてもらえば切り分けられる。
+                _manorStatus = string.IsNullOrEmpty(_discoveryFailure)
+                    ? "manor が見つかりません（見本だけ）"
+                    : $"manor が見つかりません（見本だけ）— 探索: {_discoveryFailure}";
                 _recipeListPanel?.HideBusy();
                 return;
             }

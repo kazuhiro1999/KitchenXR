@@ -126,3 +126,12 @@ LAN 上の HTTP は平文のままです（ADR-017 D7 に残した課題。Wi-Fi
 鍵があれば、起動時にレシピ帳と同じ経路で `GET /api/v1/kitchen/media` を読み、
 `persistentDataPath/media.json` へ写します。一覧の編集は manor の Web（料理長 → 動画リスト）。
 圏外なら写しを読み、まだ許可されていなければ同梱の見本（`StreamingAssets/media.json`）です。
+
+## 5. 実機のログの見方（2026-09-13 追記）
+
+- 端末内のファイル: `/sdcard/Android/data/com.kazuhiro.kitchenxr/files/logs/kitchenxr.log`
+  （1MB で `kitchenxr.1.log`・`.2.log` へ送って3世代）。取り方は
+  `adb pull /sdcard/Android/data/com.kazuhiro.kitchenxr/files/logs/ .` か、MQDH のファイル一覧。
+- USB で繋げているときは `adb logcat -s Unity` で同じものが流れる。
+- 一覧の板の札には探索の失敗の理由（「ブロードキャストを出せません」「返事がありません」等）、
+  動画の板の札には窓の矩形と絵の寸法が出る。読み上げていただければ切り分けられる。

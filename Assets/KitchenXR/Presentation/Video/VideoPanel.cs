@@ -1029,8 +1029,9 @@ namespace KitchenXR.Presentation.Video
 
             // 札に出す（寸法の計算違いを実機で見分けるため）。実寸は板の縮尺込み。
             var scale = transform.localScale.x;
+            // 2026-09-13 実機「動画が変な位置に出る」——窓の矩形（板のローカル単位）と絵の置き場も出す。
             _surfaceInfo =
-                $"絵 {width * scale * 1000f:0}×{height * scale * 1000f:0}mm";
+                $"絵 {width * scale * 1000f:0}×{height * scale * 1000f:0}mm / 窓 x{rect.x:0.00} y{rect.y:0.00} w{rect.width:0.00} h{rect.height:0.00} 中心({rect.center.x:0.00},{rect.center.y:0.00})";
         }
 
         // ------------------------------------------------------------------ 札
