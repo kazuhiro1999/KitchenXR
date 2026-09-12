@@ -40,9 +40,16 @@ namespace KitchenXR.App
         [SerializeField] private VideoPanel _videoPanel;
         [SerializeField] private CookingModeInputGate _cookingModeInputGate;
 
-        [Header("配置モード（P2。設計 §4.4。操作は全部 手のひらメニュー側）")]
+        [Header("配置モード（P2。設計 §4.4。操作は全部 手元のメニュー側）")]
         [SerializeField] private PanelPlacement _panelPlacement;
         [SerializeField] private PlacementMenuPanel _placementMenuPanel;
+
+        /// <summary>
+        /// 手首の釦（2026-09-13 主人の実機確認 v1.0.8 の③）。メニューの出し入れを持つ。
+        /// 配置モードへ入るときは必ず開ける——レシピ／一覧の板の「配置」から入ったときに
+        /// メニューが閉じたままだと「保存」「やめる」に手が届かず、出られなくなる。
+        /// </summary>
+        [SerializeField] private WristMenu _wristMenu;
 
         [Header("初期配置（設計 §9: 頭の前0.8m・目線より少し下に3枚）")]
         [SerializeField] private Transform _headTransform; // 未指定なら Camera.main を使う
@@ -672,6 +679,18 @@ namespace KitchenXR.App
                 return;
             }
 
+            // 「配置」はレシピ／一覧の板の頭からも押せる。そのときメニューが閉じていると
+            // 「保存」「やめる」が押せず配置モードから出られないので、必ず開ける
+            // （設計 §7 の「行き止まりを作らない」。v1.0.8 で手首の釦になってから要る手当て）。
+            // 手が1つも追えていなければ（コントローラだけのとき）メニューは出せない＝入らない。
+            if (_wristMenu != null && !_wristMenu.Open())
+            {
+                Debug.LogWarning(
+                    "[KitchenXR] 手が追えていないので配置モードへ入りません"
+                    + "（メニューは手首に付くので、出口が作れません）。手をかざしてからもう一度どうぞ。");
+                return;
+            }
+
             _placementMenuPanel.SetPlacing(true);
             _panelPlacement.Enter();
         }
@@ -722,10 +741,15 @@ namespace KitchenXR.App
             _placementMenuPanel?.SetHint("板を手元に並べ直しました");
         }
 
-        /// <summary>配置モードを出た（保存でも取り消しでも）。手のひらメニューを「配置」へ戻す。</summary>
+        /// <summary>
+        /// 配置モードを出た（保存でも取り消しでも）。メニューを「配置」1つへ戻し、**閉じる**。
+        /// 閉じるのは主人の指示（v1.0.8 の③「手を洗ってるときなどに出ると邪魔」）——
+        /// 配置が終わればメニューの用は済んでいるので、手元に板を残さない。
+        /// </summary>
         private void HandlePlacementFinished()
         {
             _placementMenuPanel?.SetPlacing(false);
+            _wristMenu?.Close();
         }
 
         // ---------------------------------------------------------------- 板の出し入れ
@@ -839,10 +863,32 @@ namespace KitchenXR.App
             }
 
             _mediaStore = MediaStore.CreateDefault();
+
+            // まず手元（無ければ同梱の見本）。manor が寝ていても圏外でも、板はこれで立つ。
             var items = await _mediaStore.LoadAsync(token);
             if (_videoPanel != null)
             {
                 _videoPanel.BindMedia(items);
+            }
+
+            // manor に繋がるなら動画リスト（ADR-016。Web で編集した一覧）を取って手元を上書きする。
+            // 取れなければ黙って手元のまま（札に理由を出すほどのことではない。次の起動でまた試みる）。
+            if (_manor == null || !_manor.IsConfigured)
+            {
+                return;
+            }
+
+            var listed = await _manor.ListMediaAsync(token);
+            if (!listed.IsSuccess || token.IsCancellationRequested)
+            {
+                Debug.Log($"[KitchenXR] 動画リストは手元のまま（{listed.Message}）");
+                return;
+            }
+
+            var remote = _mediaStore.SaveRemote(listed.Value);
+            if (_videoPanel != null)
+            {
+                _videoPanel.BindMedia(remote);
             }
         }
 

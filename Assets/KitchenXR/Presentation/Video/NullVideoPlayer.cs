@@ -53,5 +53,36 @@ namespace KitchenXR.Presentation.Video
         public void SetAspect(VideoAspect aspect) => Aspect = aspect;
 
         public void TapCenter() => TapCount++;
+
+        /// <summary>窓への触りの記録（PlayMode 試験が見る。段と、絵の中の比の位置）。</summary>
+        public readonly struct TouchRecord
+        {
+            public TouchRecord(VideoTouchPhase phase, float u, float v)
+            {
+                Phase = phase;
+                U = u;
+                V = v;
+            }
+
+            public VideoTouchPhase Phase { get; }
+
+            public float U { get; }
+
+            public float V { get; }
+
+            public override string ToString() => $"{Phase}({U:0.000}, {V:0.000})";
+        }
+
+        private readonly List<TouchRecord> _touches = new List<TouchRecord>();
+
+        /// <summary>頼まれた順の触り（試験が見る）。</summary>
+        public IReadOnlyList<TouchRecord> Touches => _touches;
+
+        public int GoBackCount { get; private set; }
+
+        public void Touch(VideoTouchPhase phase, float u, float v) =>
+            _touches.Add(new TouchRecord(phase, u, v));
+
+        public void GoBack() => GoBackCount++;
     }
 }

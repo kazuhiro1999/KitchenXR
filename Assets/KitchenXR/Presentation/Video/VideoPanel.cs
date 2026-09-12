@@ -46,6 +46,15 @@ namespace KitchenXR.Presentation.Video
     ///   - 絵の寸法: 窓の実測（<c>worldBound</c>）は板の**ローカル単位**（UI px ÷ 100）で返る。
     ///     v1.0.4 はここに板の縮尺 0.2 を余計に掛けていて、絵が本来の 1/5（10cm）だった。
     ///   - 一覧の行を 1.6cm → 2.8cm に（指先の当たりに対して薄すぎた）。
+    ///
+    /// 2026-09-13 主人の実機確認（v1.0.8）の方針3「次の動画は埋め込みプレイヤー自身の関連動画で
+    /// 選ぶ。動画の窓（WebView）への触りをレイ（とポーク）で通す」:
+    ///   - **窓（<c>videoArea</c>）が触れるようになった**。触った場所を絵の中の比（0〜1）に写して
+    ///     <see cref="IVideoPlayer.Touch"/> へ流す（<see cref="BindVideoAreaTouch"/>）。
+    ///     一時停止・終了で <c>youtube.html</c> が出す関連動画を、そのまま指でもレイでも選べる。
+    ///     窓は釦ではないので <see cref="PokePress"/> は通さない——理由はその場に書いた。
+    ///   - **「戻る」**（<c>TLabWebView.GoBack</c>）を操作部に足した。関連動画を触った先で
+    ///     youtube.com 本体へ飛ぶと埋め込みプレイヤーの JS が効かなくなるため、帰り道を1つ置く。
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class VideoPanel : MonoBehaviour
@@ -90,6 +99,12 @@ namespace KitchenXR.Presentation.Video
 
         private readonly ClickDebounce _debounce = new ClickDebounce();
         private readonly List<VisualElement> _rows = new List<VisualElement>();
+
+        /// <summary>今 窓を押し下げている指（レイ）。離すまで Drag を送り続ける相手。</summary>
+        private readonly HashSet<int> _touching = new HashSet<int>();
+
+        /// <summary>最後に窓の中で触った比。離脱で Up を送るときの座標に使う。</summary>
+        private Vector2 _lastTouchUv;
 
         private UIDocument _document;
         private VisualElement _root;
@@ -159,6 +174,10 @@ namespace KitchenXR.Presentation.Video
             PokePress.BindButton(_root.Q<Button>("volumeUpButton"), _debounce, "video-volume-up",
                 () => ChangeVolume(+VolumeStep));
             PokePress.BindButton(_aspectButton, _debounce, "video-aspect", ToggleAspect);
+            PokePress.BindButton(_root.Q<Button>("backButton"), _debounce, "video-back", GoBack);
+
+            // 窓そのものを触れるようにする（方針3）。**釦ではない**ので PokePress は通さない。
+            BindVideoAreaTouch();
 
             // 主人のプレハブを包む。実機でなければここで眠らせる（板は札を出す）。
             _bridge = new YoutubePlayerBridge(_playerRoot);
@@ -339,6 +358,140 @@ namespace KitchenXR.Presentation.Video
 
         public void ToggleAspect() =>
             ApplyAspect(Aspect == VideoAspect.Landscape ? VideoAspect.Portrait : VideoAspect.Landscape);
+
+        /// <summary>
+        /// WebView の履歴を1つ戻る（方針3の付け足し）。関連動画を触った先で youtube.com 本体へ
+        /// 遷移することがあり、そうなると埋め込みプレイヤーの操作（<c>youtube.html</c> の JS）が
+        /// 効かなくなる。板から帰れる道を1つ置いておく。
+        /// </summary>
+        public void GoBack()
+        {
+            SetAction("戻る");
+            _player?.GoBack();
+        }
+
+        // ------------------------------------------------------------------ 窓への触り（方針3）
+
+        /// <summary>
+        /// 窓（<c>videoArea</c>）を触った場所を <see cref="IVideoPlayer.Touch"/> へ流す。
+        ///
+        /// 主人との相談で決めた方針3——「次の動画は埋め込みプレイヤー自身の関連動画で選ぶ。
+        /// 動画の窓（WebView）への触りをレイ（とポーク）で通す」。
+        /// <c>youtube.html</c> は一時停止・終了時に自分で関連動画を出すので、
+        /// そこを触れるようにすれば板に一覧を持たなくても次が選べる（文字入力は置かない。設計 §6）。
+        ///
+        /// ここは**釦ではない**ので <see cref="PokePress"/> を通さない——
+        /// 「押し下げで発火・600ms 間引き・離れるまで次を受けない」は釦のための歯止めで、
+        /// WebView にクリックと見なしてもらうには Down → （Drag）→ Up を素直に流す必要がある。
+        ///
+        /// <see cref="PointerMoveEvent"/> は毎フレーム飛んでくるので、
+        /// **その指が押し下げ中のときだけ** Drag を送る。
+        /// 離脱（<c>PointerLeave</c>／<c>PointerOut</c>／捕捉の解除）でも必ず Up を送る——
+        /// 送り損ねると WebView の中で指が押されたままになり、次の触りが効かなくなる。
+        /// </summary>
+        private void BindVideoAreaTouch()
+        {
+            if (_videoArea == null)
+            {
+                return;
+            }
+
+            _videoArea.RegisterCallback<PointerDownEvent>(evt =>
+            {
+                if (!TryVideoUv(evt.position, out var uv))
+                {
+                    return;
+                }
+
+                _touching.Add(evt.pointerId);
+                _lastTouchUv = uv;
+                _player?.Touch(VideoTouchPhase.Down, uv.x, uv.y);
+                SetAction($"窓に触れました（{uv.x:0.00}, {uv.y:0.00}）");
+            });
+
+            _videoArea.RegisterCallback<PointerMoveEvent>(evt =>
+            {
+                if (!_touching.Contains(evt.pointerId) || !TryVideoUv(evt.position, out var uv))
+                {
+                    return;
+                }
+
+                _lastTouchUv = uv;
+                _player?.Touch(VideoTouchPhase.Drag, uv.x, uv.y);
+            });
+
+            _videoArea.RegisterCallback<PointerUpEvent>(evt =>
+            {
+                if (TryVideoUv(evt.position, out var uv))
+                {
+                    _lastTouchUv = uv;
+                }
+
+                ReleaseTouch(evt.pointerId);
+            });
+
+            _videoArea.RegisterCallback<PointerLeaveEvent>(evt => ReleaseTouch(evt.pointerId));
+            _videoArea.RegisterCallback<PointerOutEvent>(evt => ReleaseTouch(evt.pointerId));
+            _videoArea.RegisterCallback<PointerCaptureOutEvent>(evt => ReleaseTouch(evt.pointerId));
+        }
+
+        private void ReleaseTouch(int pointerId)
+        {
+            if (!_touching.Remove(pointerId))
+            {
+                return;
+            }
+
+            _player?.Touch(VideoTouchPhase.Up, _lastTouchUv.x, _lastTouchUv.y);
+        }
+
+        /// <summary>
+        /// 板の座標（<see cref="PointerEventBase{T}.position"/>）を**絵の中の比**へ写す。
+        ///
+        /// 窓（<c>videoArea</c>）と絵は同じ大きさではない——絵は目当ての比（16:9 か 9:16）の
+        /// 一番大きい矩形として窓の中に収まる（<see cref="LayoutSurface"/> と同じ算）ので、
+        /// 上下（または左右）に余白が出る。そこを触っても WebView には何も無いので、
+        /// **絵の外なら false を返して送らない**。
+        ///
+        /// v（縦）は**上から下**へ 0→1。HTML の座標系（UI Toolkit と同じ向き）に合わせてある。
+        /// </summary>
+        private bool TryVideoUv(Vector2 panelPosition, out Vector2 uv)
+        {
+            uv = Vector2.zero;
+            if (_videoArea == null)
+            {
+                return false;
+            }
+
+            var box = _videoArea.contentRect;
+            if (box.width <= 0f || box.height <= 0f)
+            {
+                return false;
+            }
+
+            var targetRatio = Aspect == VideoAspect.Portrait ? 9f / 16f : 16f / 9f;
+            var width = box.width;
+            var height = width / targetRatio;
+            if (height > box.height)
+            {
+                height = box.height;
+                width = height * targetRatio;
+            }
+
+            var left = box.x + (box.width - width) / 2f;
+            var top = box.y + (box.height - height) / 2f;
+
+            var local = _videoArea.WorldToLocal(panelPosition);
+            var u = (local.x - left) / width;
+            var v = (local.y - top) / height;
+            if (u < 0f || u > 1f || v < 0f || v > 1f)
+            {
+                return false;
+            }
+
+            uv = new Vector2(u, v);
+            return true;
+        }
 
         /// <summary>
         /// 向きを変える。板の寸法・当たり判定・絵の大きさを全部合わせる。

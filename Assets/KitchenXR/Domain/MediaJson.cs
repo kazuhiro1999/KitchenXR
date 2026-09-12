@@ -18,7 +18,8 @@ namespace KitchenXR.Domain
     public static class MediaJson
     {
         /// <summary>板に出す上限（設計 P4「最大 8 件」）。これを超えた分は読まない。</summary>
-        public const int MaxItems = 8;
+        /// <summary>manor の動画リストを読むようになった（ADR-016）ので 8 → 20。板の一覧は縦スクロールで受ける。</summary>
+        public const int MaxItems = 20;
 
         /// <summary>題名の上限。長すぎる題名で行が崩れないように切る（表示の都合）。</summary>
         public const int MaxTitleLength = 40;

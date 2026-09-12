@@ -10,8 +10,8 @@ using UnityEngine.UIElements;
 using UnityEngine.XR.Interaction.Toolkit.Filtering;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
+using UnityEngine.XR.Interaction.Toolkit.Interactors.Casters;
 using UnityEngine.XR.Interaction.Toolkit.UI;
-using UnityEngine.XR.Interaction.Toolkit.UI.BodyUI;
 using KitchenXR.Presentation;
 using KitchenXR.Presentation.Video;
 
@@ -68,20 +68,21 @@ namespace KitchenXR.App.Editor
         private const float VideoWidthUnits = VideoPanel.LandscapeWidthUnits;
         private const float VideoHeightUnits = VideoPanel.LandscapeHeightUnits;
 
-        // 手のひらメニュー（P2 → 配置の操作を全部ここへ集めた。設計 §11 追補「配置とレイ」）。
+        // 手元のメニュー（P2 → 配置の操作を全部ここへ集めた。設計 §11 追補「配置とレイ」）。
         // 70×36（14cm×7cm）では「保存・元に戻す・板を手元に・やめる」の4つが入らないので
         // 130×92（26cm×18.4cm）へ広げた。中身の寸法の根拠は PlacementMenu.uss に書いた。
         private const float PlacementMenuWidthUnits = 130f;
         private const float PlacementMenuHeightUnits = 92f;
 
-        /// <summary>XRI の Hands Interaction Demo サンプルにある手のひら追従の設定（読むだけ）。</summary>
-        private const string HandsFollowPresetPath =
-            "Assets/Samples/XR Interaction Toolkit/3.5.1/Hands Interaction Demo/DatumPresets/Menu Hands Follow Preset.asset";
+        // 手首の釦（2026-09-13 主人の実機確認 v1.0.8 の③）。22×22 ≒ 4.4cm 角
+        // ——設計 §7 の「押す釦は最小 4cm 角」をちょうど満たす一番小さい板（WristToggle.uss）。
+        private const float WristToggleWidthUnits = 22f;
+        private const float WristToggleHeightUnits = 22f;
 
-        private const string ControllerFollowPresetPath =
-            "Assets/Samples/XR Interaction Toolkit/3.5.1/Hands Interaction Demo/DatumPresets/Menu Controller Follow Preset.asset";
+        /// <summary>手首の釦とメニューを載せる根。</summary>
+        public const string WristMenuObjectName = "Wrist Menu";
 
-        public const string HandMenuObjectName = "Hand Menu";
+        public const string WristToggleObjectName = "WristToggle";
         public const string PlacementMenuObjectName = "PlacementMenu";
 
         // XRI の World Space UI サンプル（WorldSpacePanel.asset）と同じ値。
@@ -156,14 +157,14 @@ namespace KitchenXR.App.Editor
             var panelPlacement = panelsRoot.AddComponent<PanelPlacement>();
             WirePanelPlacementOrigin(scene, panelPlacement);
 
-            // P2。手のひらメニュー（設計 §4.4「入り方＝手のひらメニュー」）。
+            // P2 →（v1.0.8）手首の釦で出し入れするメニュー（設計 §4.4・§11 追補 2026-09-13 の③）。
             // 揃わなければ黙って作らない——レシピ／一覧の板の頭の「配置」（2度押し）が確実な入り口。
-            var placementMenuPanel = AttachHandMenu(scene, panelSettings);
+            var placementMenuPanel = AttachWristMenu(scene, panelSettings, out var wristMenu);
 
             EnsureUiToolkitInput(scene);
 
             CreateBootstrap(recipeListPanel, recipePanel, ingredientsPanel, timerPanel, videoPanel, inputGate,
-                panelPlacement, placementMenuPanel);
+                panelPlacement, placementMenuPanel, wristMenu);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -432,6 +433,122 @@ namespace KitchenXR.App.Editor
             }
 
             so.ApplyModifiedPropertiesWithoutUndo();
+
+            AttachRayLineVisibility(rayLike);
+            RelaxFarCastStabilization(rayLike);
+        }
+
+        /// <summary>
+        /// 遠くを指すレイの**姿勢の安定化**を緩める（2026-09-13 主人の実機確認 v1.0.8 の②の一部）。
+        ///
+        /// 主人の言葉:
+        ///   「Youtube のパネルはレイ操作反応しましたが、横に（正面と垂直になるように）配置した時に、
+        ///     レイが正面に吸われてしまって、Youtube パネルに近づいてもレイはそっちに向きませんでした」
+        ///
+        /// 「吸われる」の**仕掛けの側の理由**はここにある。XRI の far 側の caster
+        /// （<c>CurveInteractionCaster</c>）は <c>m_EnableStabilization = 1</c> で、
+        /// <c>m_AimTargetObject</c> に**自分自身**（<c>NearFarInteractor</c>＝<c>IXRRayProvider</c>）が
+        /// 挿さっている。<c>XRTransformStabilizer</c> はこのとき
+        /// 「**前のフレームのレイの着地点を保ち続ける回転**」（<c>antiRotation</c>）を作って、
+        /// そちらへ寄せるほうが安ければそちらを選ぶ（<c>StabilizeOptimalRotation</c>）。
+        /// しかも効き幅は
+        ///   <c>targetAngleScale = angleStabilization × clamp(1 + ln(rayLength), 1, 3)</c>
+        /// で、**何にも当たっていないとき**の <c>rayEndPoint</c> は 10m 先の空
+        /// （<c>farInteractionCaster.lastSamplePoint</c>）なので係数は上限の 3 になる。
+        /// つまり 20° の設定が実効 **60°** まで広がり、空を薙いでいる間ほどレイが渋くなる。
+        ///
+        /// そこで <c>m_AngleStabilization</c> を 20 → <see cref="FarCastAngleStabilization"/> にする。
+        /// 手の震え（およそ 1〜3°）はこれでも十分に吸うが、**狙って振る動き**は素通しになる。
+        /// 位置の安定化（<c>m_PositionStabilization</c>）には触らない。
+        ///
+        /// **これは②の主因ではない**（詳しくは設計 §11 の追補）。主因は
+        /// ハンドトラッキングの aim（照準）姿勢そのもの——Meta の system aim は
+        /// 肩あたりから手を通る**体に紐づいた**向きで、手首をひねっても真横は指せない。
+        /// ここで直せるのは「振ったときの渋さ」だけで、それでも実機の手触りは変わるはず。
+        /// 効かなければ次の手は、同じ caster の <c>Aim Target Object</c> を空にすること
+        /// （着地点を保つ働きが丸ごと止まる）。
+        /// </summary>
+        private const float FarCastAngleStabilization = 8f;
+
+        private static void RelaxFarCastStabilization(Behaviour[] rayLike)
+        {
+            var relaxed = 0;
+
+            foreach (var interactor in rayLike)
+            {
+                if (interactor == null)
+                {
+                    continue;
+                }
+
+                var caster = interactor.GetComponent<CurveInteractionCaster>();
+                if (caster == null)
+                {
+                    continue;
+                }
+
+                var so = new SerializedObject(caster);
+                var angle = so.FindProperty("m_AngleStabilization");
+                if (angle == null)
+                {
+                    continue;
+                }
+
+                angle.floatValue = FarCastAngleStabilization;
+                so.ApplyModifiedPropertiesWithoutUndo();
+                EditorUtility.SetDirty(caster);
+                relaxed++;
+            }
+
+            Debug.Log(
+                $"[KitchenXR] 遠くを指すレイの姿勢の安定化を {relaxed} 個 緩めました"
+                + $"（m_AngleStabilization = {FarCastAngleStabilization}）。");
+        }
+
+        /// <summary>
+        /// レイの線を「指す先があるときだけ」出す（設計 §11 追補 2026-09-13 v1.0.8 の④。
+        /// 主人「レイが操作できない場合は表示を消してほしい」）。
+        ///
+        /// 4つの Near-Far Interactor **全部**（左右の手・左右のコントローラ）に付ける。
+        /// 仕掛けそのものは <see cref="RayLineVisibility"/>——
+        /// XRI 3.5 に「無効なときは隠す」の設定が無いので、自前で線を落とす。
+        /// </summary>
+        private static void AttachRayLineVisibility(Behaviour[] rayLike)
+        {
+            var attached = 0;
+
+            foreach (var interactor in rayLike)
+            {
+                if (interactor is not XRBaseInteractor baseInteractor)
+                {
+                    continue;
+                }
+
+                var go = baseInteractor.gameObject;
+                var visibility = go.GetComponent<RayLineVisibility>() ?? go.AddComponent<RayLineVisibility>();
+
+                // 描き手と線は Interactor 本体ではなく **`LineVisual` という子**に載っている
+                // （XRI の Left_NearFarInteractor.prefab）。子まで見ないと黙って何も挿さらない。
+                var visual = RayLineVisibility.FindLineVisual(go);
+                var line = RayLineVisibility.FindLineRenderer(go);
+
+                var visibilitySo = new SerializedObject(visibility);
+                visibilitySo.FindProperty("_interactor").objectReferenceValue = baseInteractor;
+                visibilitySo.FindProperty("_lineVisual").objectReferenceValue = visual;
+                visibilitySo.FindProperty("_lineRenderer").objectReferenceValue = line;
+                visibilitySo.ApplyModifiedPropertiesWithoutUndo();
+                EditorUtility.SetDirty(visibility);
+
+                if (line == null)
+                {
+                    Debug.LogWarning(
+                        $"[KitchenXR] {go.name} に LineRenderer が見つかりません（線を消せません）。");
+                }
+
+                attached++;
+            }
+
+            Debug.Log($"[KitchenXR] レイの線の出し入れを {attached} 個の Interactor に付けました。");
         }
 
         /// <summary>
@@ -471,7 +588,7 @@ namespace KitchenXR.App.Editor
         private static void CreateBootstrap(
             RecipeListPanel recipeListPanel, RecipePanel recipePanel, IngredientsPanel ingredientsPanel,
             TimerPanel timerPanel, VideoPanel videoPanel, CookingModeInputGate inputGate,
-            PanelPlacement panelPlacement, PlacementMenuPanel placementMenuPanel)
+            PanelPlacement panelPlacement, PlacementMenuPanel placementMenuPanel, WristMenu wristMenu)
         {
             var go = new GameObject("Bootstrap");
             var bootstrap = go.AddComponent<Bootstrap>();
@@ -485,6 +602,7 @@ namespace KitchenXR.App.Editor
             so.FindProperty("_cookingModeInputGate").objectReferenceValue = inputGate;
             so.FindProperty("_panelPlacement").objectReferenceValue = panelPlacement;
             so.FindProperty("_placementMenuPanel").objectReferenceValue = placementMenuPanel;
+            so.FindProperty("_wristMenu").objectReferenceValue = wristMenu;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -508,39 +626,46 @@ namespace KitchenXR.App.Editor
         }
 
         /// <summary>
-        /// 手のひらメニュー（設計 §4.4「入り方＝手のひらメニュー」）。
+        /// 手元のメニュー（設計 §4.4「入り方＝手のひらメニュー」・§11 追補 2026-09-13 v1.0.8 の③）。
         ///
-        /// XRI の <c>HandMenu</c>（`Runtime/UI/BodyUI/HandMenu.cs`）が、手のひらの Transform を
-        /// 追って板を出し入れする。要るのは3つ:
-        ///   - 左右の手のひらの Transform（MR テンプレートの `MR Interaction Setup` の
-        ///     Left Hand／Right Hand の下に `Palm` がある）
-        ///   - 追従の設定2つ（XRI の Hands Interaction Demo サンプルの DatumPresets）。
-        ///     **無いと HandMenu は OnEnable で自分を無効にする**
-        ///   - 板そのもの（ここで作る UI Toolkit の板）
+        /// **v1.0.8 で XRI の <c>HandMenu</c> をやめた。** 主人の言葉:
+        ///   「手のひらメニューはいい感じですが、手を横に向けているときにも表示されています。
+        ///     手を洗ってるときなどに出ると邪魔なので、要改善。手首の手のひら側にボタンを作っておいて、
+        ///     それを押すとパネルがトグルでも全然いいと思います」
+        /// <c>HandMenu</c> は手のひらの向きを合図に出し入れするが、サンプルの設定の閾値
+        /// （手のひらが上を向いている＝95.7° 以内）は水平より広いので横を向けても成立する。
+        /// 理由と代わりの仕掛けは <see cref="WristMenu"/> に書いた。
         ///
-        /// **どれか1つでも欠けたら作らない。**
-        /// 2026-09-13 から配置の「保存・元に戻す・板を手元に・やめる」も全部この板に載っているので、
-        /// 手のひらメニューが無いと**配置モードから出られない**。そのため
-        /// <c>Bootstrap</c> は、この板が挿さっていなければ配置モードへ入らない
-        /// （レシピ／一覧の板の頭の「配置」を押しても何も起きず、ログに残る）。
+        /// ここで組むのは3枚:
+        ///   - <c>Wrist Menu</c>（根。<see cref="WristMenu"/> が板を手首に追わせる）
+        ///     - <c>WristToggle</c> ×2（左右の手首。4.4cm 角。**常に付いている**）
+        ///     - <c>PlacementMenu</c>（130×92。釦を押したときだけ出る。既定は眠り）
+        ///
+        /// 手のひらの Transform の取り方は <c>HandMenu</c> と同じ——
+        /// <c>Left Hand</c>／<c>Right Hand</c> の下の <c>Palm</c>。
+        /// **左右どちらも欠けたら作らない。**
+        /// 配置の「保存・元に戻す・板を手元に・やめる」は全部メニューに載っているので、
+        /// これが無いと**配置モードから出られない**。そのため <c>Bootstrap</c> は、
+        /// この板が挿さっていなければ配置モードへ入らない。
         /// </summary>
-        private static PlacementMenuPanel AttachHandMenu(Scene scene, PanelSettings panelSettings)
+        private static PlacementMenuPanel AttachWristMenu(
+            Scene scene, PanelSettings panelSettings, out WristMenu wristMenu)
         {
+            wristMenu = null;
+
             var leftPalm = FindPalm(scene, "Left Hand");
             var rightPalm = FindPalm(scene, "Right Hand");
-            var handsPreset = AssetDatabase.LoadAssetAtPath<Object>(HandsFollowPresetPath);
-            var controllerPreset = AssetDatabase.LoadAssetAtPath<Object>(ControllerFollowPresetPath);
 
-            if (leftPalm == null || rightPalm == null || handsPreset == null || controllerPreset == null)
+            if (leftPalm == null && rightPalm == null)
             {
                 Debug.LogWarning(
-                    "[KitchenXR] 手のひらメニューに要るもの（左右の Palm・追従の設定）が揃わないので作りません。"
+                    "[KitchenXR] 手のひら（Palm）が見つからないので手首のメニューを作りません。"
                     + "配置の操作は全部この板に載っているので、このままだと配置モードは使えません。");
                 return null;
             }
 
-            var menuRoot = new GameObject(HandMenuObjectName);
-            var handMenu = menuRoot.AddComponent<HandMenu>();
+            var menuRoot = new GameObject(WristMenuObjectName);
+            wristMenu = menuRoot.AddComponent<WristMenu>();
 
             var menuGo = CreatePanelObject(
                 PlacementMenuObjectName, menuRoot.transform, panelSettings,
@@ -548,19 +673,51 @@ namespace KitchenXR.App.Editor
                 PlacementMenuWidthUnits, PlacementMenuHeightUnits,
                 Vector3.zero, Quaternion.identity);
             var menuPanel = menuGo.AddComponent<PlacementMenuPanel>();
+            menuGo.SetActive(false); // 起動時は閉じている（釦を押すまで何も出ない）。
 
-            var so = new SerializedObject(handMenu);
-            so.FindProperty("m_HandMenuUIGameObject").objectReferenceValue = menuGo;
-            so.FindProperty("m_LeftPalmAnchor").objectReferenceValue = leftPalm;
-            so.FindProperty("m_RightPalmAnchor").objectReferenceValue = rightPalm;
-            so.FindProperty("m_HandTrackingFollowPreset.m_UseConstant").boolValue = false;
-            so.FindProperty("m_HandTrackingFollowPreset.m_Variable").objectReferenceValue = handsPreset;
-            so.FindProperty("m_ControllerFollowPreset.m_UseConstant").boolValue = false;
-            so.FindProperty("m_ControllerFollowPreset.m_Variable").objectReferenceValue = controllerPreset;
+            var leftToggle = leftPalm != null
+                ? CreateWristToggle(menuRoot.transform, panelSettings, "Left")
+                : null;
+            var rightToggle = rightPalm != null
+                ? CreateWristToggle(menuRoot.transform, panelSettings, "Right")
+                : null;
+
+            var head = FindDeepChild(scene, "Main Camera");
+
+            var so = new SerializedObject(wristMenu);
+            so.FindProperty("_leftPalmAnchor").objectReferenceValue = leftPalm;
+            so.FindProperty("_rightPalmAnchor").objectReferenceValue = rightPalm;
+            so.FindProperty("_leftToggleButton").objectReferenceValue = leftToggle;
+            so.FindProperty("_rightToggleButton").objectReferenceValue = rightToggle;
+            so.FindProperty("_menuRoot").objectReferenceValue = menuGo;
+            so.FindProperty("_headTransform").objectReferenceValue = head;
             so.ApplyModifiedPropertiesWithoutUndo();
-            EditorUtility.SetDirty(handMenu);
+            EditorUtility.SetDirty(wristMenu);
 
             return menuPanel;
+        }
+
+        /// <summary>
+        /// 手首の小さな板を1枚作る。
+        ///
+        /// **レイの相手にしない**（主人の④と同じ筋。誤って遠くから押されないように）——
+        /// 物理層を <see cref="CookingModeInputGate.OffRayPhysicsLayer"/>（8 番）に置く。
+        /// Ray（Near-Far Interactor）の <c>raycastMask</c> は Default(0)／UI(5)／XR Simulation(31) なので
+        /// 8 番には届かず、<c>Physics.DefaultRaycastLayers</c> には入ったままなので**指では押せる**。
+        /// <see cref="CookingModeInputGate"/> には登録しない——モードで層を戻されては意味が無い。
+        /// </summary>
+        private static WristMenuButton CreateWristToggle(
+            Transform parent, PanelSettings panelSettings, string side)
+        {
+            var go = CreatePanelObject(
+                $"{WristToggleObjectName} ({side})", parent, panelSettings,
+                LoadUxml("Assets/KitchenXR/Presentation/UI/WristToggle.uxml"),
+                WristToggleWidthUnits, WristToggleHeightUnits,
+                Vector3.zero, Quaternion.identity);
+
+            go.layer = CookingModeInputGate.OffRayPhysicsLayer;
+
+            return go.AddComponent<WristMenuButton>();
         }
 
         /// <summary>手のひらの Transform（`Left Hand`／`Right Hand` の下の `Palm`）を探す。</summary>

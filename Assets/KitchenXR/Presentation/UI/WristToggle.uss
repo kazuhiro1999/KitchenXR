@@ -1,0 +1,35 @@
+/*
+ * 手首の釦（2026-09-13 主人の実機確認 v1.0.8 の③）。色と寸法の元は theme.uss（1 UI px ≒ 2mm）。
+ *
+ * 主人の言葉:
+ *   「手のひらメニューはいい感じですが、手を横に向けているときにも表示されています。
+ *     手を洗ってるときなどに出ると邪魔なので、要改善。手首の手のひら側にボタンを作っておいて、
+ *     それを押すとパネルがトグルでも全然いいと思います」
+ *
+ * 板は 22×22（≒4.4cm 角）。設計 §7 の「押す釦は最小 4cm 角」をちょうど満たす一番小さい板で、
+ * 手首の内側（腕の幅ほど）に収まる。中身は釦1つだけなので、板の余白は 1px（2mm）に詰めてある。
+ *
+ * この板だけは**常に手首に付いている**（手の向きで出し入れしない）。
+ * 押されるまでメニューは出ないので、手を洗っていても横を向いていても邪魔にならない。
+ */
+
+.wrist-toggle-root {
+    padding: 1px;
+    justify-content: center;
+    align-items: center;
+}
+
+/*
+ * 釦は板いっぱい（20px = 4cm）。theme.uss の .kitchen-button が持つ 1cm の余白は、
+ * 4.4cm の板では外へはみ出すので打ち消す。
+ */
+.wrist-toggle-button {
+    flex-grow: 1;
+    width: 20px;
+    height: 20px;
+    margin-left: 0px;
+    margin-right: 0px;
+    margin-top: 0px;
+    margin-bottom: 0px;
+    font-size: var(--font-size-heading);
+}

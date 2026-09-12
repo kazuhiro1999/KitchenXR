@@ -91,3 +91,9 @@ manor の cookie（`manor_session`）は 24 時間で切れます。KitchenXR �
 manor 側の合言葉は「家庭内の1台を守るためのもの」（manor の ADR-005 §2 D4）なので、
 同じ強さのものを同じ家の中の別の1台に置く、という整理です。
 外に出す前提のものではありません。
+
+## 動画リスト（ADR-016）
+
+`manor.json` があれば、起動時にレシピ帳と同じ合言葉で `GET /api/v1/kitchen/media` を読み、
+`persistentDataPath/media.json` へ写す。一覧の編集は manor の Web（料理長 → 動画リスト）。
+圏外なら写しを読む。manor 未設定なら同梱の見本（`StreamingAssets/media.json`）。

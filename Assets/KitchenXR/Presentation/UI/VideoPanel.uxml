@@ -6,7 +6,7 @@
             <ui:ScrollView name="mediaList" mode="Vertical" horizontal-scroller-visibility="Hidden" vertical-scroller-visibility="Auto" class="video-list" />
         </ui:VisualElement>
         <ui:VisualElement name="videoArea" class="video-area">
-            <ui:Label name="editorNotice" text="動画は実機で（Quest 3）" class="caption video-notice" />
+            <ui:Label name="editorNotice" text="動画は実機で（Quest 3）" picking-mode="Ignore" class="caption video-notice" />
         </ui:VisualElement>
         <ui:VisualElement name="controlBlock" class="video-block">
             <ui:VisualElement name="statusRow" class="video-status-row">
@@ -21,6 +21,7 @@
                 <ui:Button name="volumeDownButton" text="−" class="kitchen-button kitchen-button--secondary" />
                 <ui:Button name="volumeUpButton" text="＋" class="kitchen-button kitchen-button--secondary" />
                 <ui:Button name="aspectButton" text="9:16" class="kitchen-button kitchen-button--secondary" />
+                <ui:Button name="backButton" text="戻る" class="kitchen-button kitchen-button--secondary" />
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>

@@ -1,0 +1,7 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="theme.uss" />
+    <ui:Style src="WristToggle.uss" />
+    <ui:VisualElement name="root" class="root-panel wrist-toggle-root">
+        <ui:Button name="wristToggleButton" text="≡" class="kitchen-button kitchen-button--primary wrist-toggle-button" />
+    </ui:VisualElement>
+</ui:UXML>

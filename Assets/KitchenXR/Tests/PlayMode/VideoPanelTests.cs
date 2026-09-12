@@ -196,6 +196,8 @@ namespace KitchenXR.Tests.PlayMode
             Assert.IsNotNull(Root.Q<Button>("volumeDownButton"), "音量−がありません。");
             Assert.IsNotNull(Root.Q<Button>("volumeUpButton"), "音量＋がありません。");
             Assert.IsNotNull(Root.Q<Button>("aspectButton"), "16:9／9:16 の切り替えがありません。");
+            Assert.IsNotNull(Root.Q<Button>("backButton"),
+                "「戻る」がありません（関連動画の先で youtube.com 本体へ行くと帰れなくなります）。");
 
             // 設計 §6「文字入力はパネルに置かない」。
             Assert.IsEmpty(Root.Query<TextField>().ToList(), "動画の板に文字入力を置いてはいけません（設計 §6）。");
@@ -319,6 +321,71 @@ namespace KitchenXR.Tests.PlayMode
 
             Assert.AreEqual(VideoAspect.Landscape, _panel.Aspect);
             Assert.AreEqual(VideoPanel.LandscapeWidthUnits, doc.worldSpaceSize.x, 0.01f);
+        }
+
+        // ---------------------------------------------------------------- 窓への触り（方針3）
+
+        /// <summary>
+        /// **窓を触ると WebView へそのまま渡る**（2026-09-13 主人との相談で決めた方針3。
+        /// 「次の動画は埋め込みプレイヤー自身の関連動画で選ぶ。動画の窓への触りをレイ（とポーク）で通す」）。
+        ///
+        /// 指で窓の**中央**を突くと、Down → …（Drag）… → Up の順で
+        /// <see cref="IVideoPlayer.Touch"/> が呼ばれ、比は (0.5, 0.5) のあたりになる。
+        /// 実機ではこの先に <c>TLabWebView.TouchEvent</c> が居て、YouTube の関連動画が押される。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 窓をポークするとWebViewへ触りが渡る()
+        {
+            yield return BuildAll(2);
+
+            var area = Root.Q<VisualElement>("videoArea");
+            Assert.IsNotNull(area, "動画の窓がありません。");
+
+            yield return PokeAt(WorldPositionOf(area), 0.05f);
+
+            Assert.IsNotEmpty(_player.Touches, "窓を触っても WebView へ何も渡っていません。");
+
+            var first = _player.Touches[0];
+            Assert.AreEqual(VideoTouchPhase.Down, first.Phase, "最初の触りが押し下げではありません。");
+            Assert.AreEqual(0.5f, first.U, 0.06f, "窓の中央を触ったのに横の比が中央になりません。");
+            Assert.AreEqual(0.5f, first.V, 0.06f, "窓の中央を触ったのに縦の比が中央になりません。");
+
+            var last = _player.Touches[_player.Touches.Count - 1];
+            Assert.AreEqual(VideoTouchPhase.Up, last.Phase,
+                "離したのに押し上げが届いていません（WebView の中で指が押されたままになります）。");
+        }
+
+        /// <summary>
+        /// 窓の**外**（操作部の札のあたり）を触っても WebView には何も渡らない。
+        /// 渡すのは絵の中だけ——余白の座標を送ると WebView の端が押されてしまう。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 窓の外を触ってもWebViewへは渡らない()
+        {
+            yield return BuildAll(2);
+
+            var status = Root.Q<Label>("statusLine");
+            Assert.IsNotNull(status);
+
+            yield return PokeAt(WorldPositionOf(status), 0.05f);
+
+            Assert.IsEmpty(_player.Touches, "窓の外を触ったのに WebView へ渡りました。");
+        }
+
+        /// <summary>
+        /// 「戻る」で WebView の履歴が1つ戻る（関連動画の先から埋め込みプレイヤーへ帰る道）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 戻るを押すとWebViewの履歴を戻る()
+        {
+            yield return BuildAll(2);
+
+            _panel.GoBack();
+
+            Assert.AreEqual(1, _player.GoBackCount, "「戻る」が WebView に届いていません。");
+            StringAssert.Contains("戻る", _panel.LastAction, "札に「戻る」と出ていません。");
+
+            yield return null;
         }
 
         /// <summary>

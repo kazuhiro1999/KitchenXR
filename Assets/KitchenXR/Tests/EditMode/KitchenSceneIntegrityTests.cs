@@ -615,7 +615,106 @@ namespace KitchenXR.Tests.EditMode
             Assert.IsNotNull(so.FindProperty("_panelPlacement").objectReferenceValue,
                 "Bootstrap に PanelPlacement が挿さっていません（起動しても板の位置が戻りません）。");
             Assert.IsNotNull(so.FindProperty("_placementMenuPanel").objectReferenceValue,
-                "Bootstrap に手のひらメニューが挿さっていません（配置モードから出られません）。");
+                "Bootstrap に手元のメニューが挿さっていません（配置モードから出られません）。");
+            Assert.IsNotNull(so.FindProperty("_wristMenu").objectReferenceValue,
+                "Bootstrap に手首のメニューが挿さっていません。"
+                + "レシピ／一覧の板の「配置」から入ったときにメニューが開かず、配置モードから出られません。");
+        }
+
+        // ---------------------------------------------------------------- 手首の釦（v1.0.8 の③）
+
+        /// <summary>
+        /// 手首の釦が左右に1つずつ在り、**レイの相手にならない**こと
+        /// （2026-09-13 主人の実機確認 v1.0.8 の③。理由は <see cref="WristMenu"/> に書いた）。
+        ///
+        /// 物理層 8 番 "Kitchen Panel Off Ray" は Ray の <c>raycastMask</c>（0/5/31）から外れ、
+        /// <c>Physics.DefaultRaycastLayers</c> には入ったまま——つまり
+        /// **指では押せるが遠くからレイでは押せない**。手首の釦にちょうどよい性質。
+        /// </summary>
+        [Test]
+        public void 手首の釦が左右に在りレイの相手にならない()
+        {
+            var wristMenu = Object.FindFirstObjectByType<WristMenu>(FindObjectsInactive.Include);
+            Assert.IsNotNull(wristMenu,
+                "Kitchen.unity に WristMenu がありません（メニューの出し入れができません）。");
+
+            var buttons = Object.FindObjectsByType<WristMenuButton>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            Assert.AreEqual(2, buttons.Length,
+                "手首の釦が左右に1つずつ在りません: " + string.Join(", ", buttons.Select(b => b.name)));
+
+            foreach (var button in buttons)
+            {
+                Assert.AreEqual(CookingModeInputGate.OffRayPhysicsLayer, button.gameObject.layer,
+                    $"{button.name} がレイの届く層に載っています（遠くから誤って押せてしまいます）。");
+
+                var doc = button.GetComponent<UIDocument>();
+                Assert.IsNotNull(doc, $"{button.name} に UIDocument がありません。");
+                Assert.AreEqual(WorldSpacePanelFactory.PanelPivot, doc.pivot,
+                    $"{button.name} の原点が左上でないと、板とコライダーが半分ずれます。");
+                Assert.IsNotNull(button.GetComponent<XRSimpleInteractable>(),
+                    $"{button.name} に XRSimpleInteractable がありません（指で押せません）。");
+            }
+
+            var text = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(),
+                "Assets/KitchenXR/Presentation/UI/WristToggle.uxml"));
+            StringAssert.Contains($"name=\"{WristMenuButton.ButtonName}\"", text,
+                "WristToggle.uxml に釦がありません（メニューを出せなくなります）。");
+        }
+
+        /// <summary>
+        /// XRI の <c>HandMenu</c>（手のひらの向きで出し入れする仕掛け）が残っていないこと。
+        /// 主人「手を横に向けているときにも表示されています。手を洗ってるときなどに出ると邪魔」
+        /// ——v1.0.8 でやめた仕掛けが、シーンを組み直したときに黙って戻らないように。
+        /// </summary>
+        [Test]
+        public void 手のひらの向きで出るメニューが残っていない()
+        {
+            var offenders = Object.FindObjectsByType<MonoBehaviour>(
+                    FindObjectsInactive.Include, FindObjectsSortMode.None)
+                .Where(b => b != null && b.GetType().Name == "HandMenu")
+                .Select(b => b.name)
+                .ToList();
+
+            Assert.IsEmpty(offenders,
+                "XRI の HandMenu が残っています（手の向きでメニューが出てしまいます）: "
+                + string.Join(", ", offenders));
+        }
+
+        /// <summary>
+        /// レイの線の出し入れ（<see cref="RayLineVisibility"/>）が
+        /// **4つの Near-Far Interactor 全部**に付いていること
+        /// （2026-09-13 主人の実機確認 v1.0.8 の④「レイが操作できない場合は表示を消してほしい」）。
+        /// 手だけに付けてコントローラを忘れる、を止める。
+        /// </summary>
+        [Test]
+        public void レイの線の出し入れが全部のRayに付いている()
+        {
+            var gate = Object.FindFirstObjectByType<CookingModeInputGate>(FindObjectsInactive.Include);
+            Assert.IsNotNull(gate, "Kitchen.unity に CookingModeInputGate がありません。");
+
+            var interactors = new SerializedObject(gate).FindProperty("_rayLikeInteractors");
+            Assert.Greater(interactors.arraySize, 0,
+                "Ray の Interactor が1つも挿さっていません（rig の組み立てが変わった可能性）。");
+
+            for (var i = 0; i < interactors.arraySize; i++)
+            {
+                var interactor = interactors.GetArrayElementAtIndex(i).objectReferenceValue as Component;
+                Assert.IsNotNull(interactor, $"_rayLikeInteractors[{i}] が空です。");
+
+                var visibility = interactor.GetComponent<RayLineVisibility>();
+                Assert.IsNotNull(visibility,
+                    $"{interactor.name} にレイの線の出し入れが付いていません（線が出っぱなしになります）。");
+
+                // 線と描き手は Interactor 本体ではなく `LineVisual` という**子**に載っている。
+                // 挿し先が空でも component は在るので、ここまで見ないと黙って効かない
+                // （2026-09-13 に実際に踏んだ）。
+                var so = new SerializedObject(visibility);
+                Assert.IsNotNull(so.FindProperty("_lineRenderer").objectReferenceValue,
+                    $"{interactor.name} の LineRenderer が挿さっていません（線を消せません）。");
+                Assert.IsNotNull(so.FindProperty("_lineVisual").objectReferenceValue,
+                    $"{interactor.name} の線の描き手（CurveVisualController）が挿さっていません。");
+            }
         }
 
         /// <summary>

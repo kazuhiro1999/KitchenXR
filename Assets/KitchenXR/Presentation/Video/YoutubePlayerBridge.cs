@@ -357,6 +357,59 @@ namespace KitchenXR.Presentation.Video
         }
 
         /// <summary>
+        /// 窓を触った場所を WebView へ渡す（方針3。板は比だけを知り、解像度はここで当てる）。
+        ///
+        /// 主人の <c>WebViewInputListener</c> がやっていることと同じ——
+        /// 要素の中の比（u は左→右、v は**上→下**）に <c>webWidth</c>／<c>webHeight</c> を掛けて
+        /// <c>TouchEvent</c> へ渡す。v が上からなのは HTML の座標系に合わせるため。
+        ///
+        /// 解像度は向きで変わる（<see cref="SetAspect"/> が <c>Resize</c> を送る）ので、
+        /// **そのつど <c>webWidth</c>／<c>webHeight</c> を読み直す**——定数を写すと
+        /// 9:16 に切り替えたあと関連動画を触った場所がずれる。
+        /// </summary>
+        public void Touch(VideoTouchPhase phase, float u, float v)
+        {
+            if (_webView == null)
+            {
+                return;
+            }
+
+            // 端（0 や 1）ちょうどだと WebView の外の座標になり得るので、内側へ丸める。
+            var x = Mathf.Clamp(Mathf.RoundToInt(u * _webView.webWidth), 0, Mathf.Max(0, _webView.webWidth - 1));
+            var y = Mathf.Clamp(Mathf.RoundToInt(v * _webView.webHeight), 0, Mathf.Max(0, _webView.webHeight - 1));
+
+            try
+            {
+                _webView.TouchEvent(x, y, (int)phase);
+            }
+            catch (Exception e)
+            {
+                Warn($"窓への触りを送れませんでした: {e.Message}");
+            }
+        }
+
+        /// <summary>
+        /// WebView の履歴を1つ戻る。関連動画を触った先が youtube.com 本体へ飛ぶことがあるので、
+        /// 板の操作部から埋め込みプレイヤーへ帰れるようにしておく。
+        /// </summary>
+        public void GoBack()
+        {
+            if (_webView == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _webView.GoBack();
+            }
+            catch (Exception e)
+            {
+                Warn($"戻れませんでした: {e.Message}");
+            }
+        }
+
+        /// <summary>
         /// ページの中央を一度タップする。押し下げと押し上げの間を <see cref="TapHoldMs"/> 空ける
         /// （同じフレームで送ると WebView がクリックと見なさない）。
         /// </summary>

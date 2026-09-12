@@ -39,6 +39,9 @@ namespace KitchenXR.Net
 
         private const string LoginPath = "/api/v1/auth/login";
         private const string RecipesPath = "/api/v1/kitchen/recipes";
+
+        /// <summary>動画リスト（manor ADR-016）。XR が読むのは一覧だけで、編集は Web 側。</summary>
+        private const string MediaPath = "/api/v1/kitchen/media";
         private const string CookSessionsPath = "/api/v1/kitchen/cook-sessions";
 
         private readonly ManorSettings _settings;
@@ -145,6 +148,16 @@ namespace KitchenXR.Net
         public async UniTask<ManorResult<string>> ListRecipesAsync(CancellationToken token = default)
         {
             var response = await SendWithAuthAsync("GET", _settings.Url(RecipesPath), null, token);
+            return TextResult(response);
+        }
+
+        /// <summary>
+        /// 動画リストの生の JSON（<c>{"items":[…]}</c>。<c>MediaJson.Parse</c> がそのまま読める形）。
+        /// 呼び出し側が <c>MediaStore</c> の手元へ写す——圏外のときは写しを読む（レシピ帳と同じ流儀）。
+        /// </summary>
+        public async UniTask<ManorResult<string>> ListMediaAsync(CancellationToken token = default)
+        {
+            var response = await SendWithAuthAsync("GET", _settings.Url(MediaPath), null, token);
             return TextResult(response);
         }
 

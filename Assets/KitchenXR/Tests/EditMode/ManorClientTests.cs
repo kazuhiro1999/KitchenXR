@@ -380,5 +380,25 @@ namespace KitchenXR.Tests.EditMode
             Assert.AreEqual("http://192.168.0.2:8765", ok.BaseUrl, "末尾の / は落とす。");
             Assert.AreEqual("http://192.168.0.2:8765/api/v1/auth/login", ok.Url("/api/v1/auth/login"));
         }
+
+        [Test]
+        public void 動画リストは一覧の口から生のJSONで取れる()
+        {
+            var transport = new FakeTransport
+            {
+                Responder = (request, _) =>
+                    request.Url.EndsWith("/auth/login")
+                        ? LoginOk()
+                        : Json("{\"items\":[{\"title\":\"a\",\"video_id\":\"abcdefghijk\"}]}"),
+            };
+
+            var client = new ManorClient(Settings(), transport);
+            var result = client.ListMediaAsync().GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.IsTrue(transport.Requests[1].Url.EndsWith("/api/v1/kitchen/media"),
+                "動画リストの口が ADR-016 と違います。");
+            Assert.AreEqual(1, KitchenXR.Domain.MediaJson.Parse(result.Value).Count);
+        }
     }
 }

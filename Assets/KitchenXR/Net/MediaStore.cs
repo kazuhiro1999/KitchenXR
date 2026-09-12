@@ -71,7 +71,12 @@ namespace KitchenXR.Net
         /// 直し: 毎回同梱も読み、前回写した控えと違えば「APK 側が変わった」と見なす。
         /// そのとき手元が控えと同じ（＝端末側は誰も直していない）なら新しい同梱で置き換え、
         /// 手元が控えと違う（＝主人が adb で端末側を直した）なら手元を守る。
-        /// 控えが無い（v1.0.7 以前から上げた）ときは手元を守り、控えだけ作る。
+        /// 控えが無い（v1.0.7 以前から上げた）ときは**同梱を正とする**——主人が端末側を直した形跡
+        /// （控え）が無いのに手元を守ると、APK を入れ替えても一覧が変わらない（v1.0.8 で主人が
+        /// まさにそれを踏んだ）。
+        ///
+        /// manor に繋がるときは、この後で <see cref="SaveRemote"/> が manor の一覧で手元を上書きする
+        /// （manor が正。同梱は manor 未設定のときの見本）。
         /// </summary>
         public async UniTask<IReadOnlyList<MediaItem>> LoadAsync(CancellationToken token = default)
         {
@@ -107,16 +112,20 @@ namespace KitchenXR.Net
             var previousCopy = ReadOrNull(BundledCopyPath);
             var local = ReadOrNull(_localPath);
 
-            if (local == null)
+            if (local == null || previousCopy == null)
             {
-                Save(bundled); // 初回。
+                // 初回、または控えが無い（古い版から上げた）。同梱を正とする。
+                if (local != bundled)
+                {
+                    Save(bundled);
+                }
             }
-            else if (previousCopy != null && previousCopy != bundled && local == previousCopy)
+            else if (previousCopy != bundled && local == previousCopy)
             {
                 Save(bundled); // APK 側が変わり、端末側は手つかず。
                 Debug.Log("[KitchenXR] 動画の一覧: 同梱が新しくなったので手元を入れ替えました。");
             }
-            else if (previousCopy != null && previousCopy != bundled)
+            else if (previousCopy != bundled)
             {
                 Debug.Log("[KitchenXR] 動画の一覧: 同梱も端末側も変わっているので、端末側を残します。");
             }
@@ -148,6 +157,22 @@ namespace KitchenXR.Net
             }
 
             File.WriteAllText(path, text, Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// manor から取れた一覧を手元へ写す（manor が正）。以後、圏外なら <see cref="LoadAsync"/> が
+        /// これを読む。同梱の控えには触らない——次に同梱が変わっても、manor の一覧は守られる
+        /// （手元 ≠ 控え なので「端末側が直されている」側に倒れる）。
+        /// </summary>
+        public IReadOnlyList<MediaItem> SaveRemote(string json)
+        {
+            var items = MediaJson.Parse(json);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                Save(json);
+            }
+
+            return items;
         }
 
         public void Save(string json)

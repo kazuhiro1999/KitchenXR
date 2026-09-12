@@ -1,5 +1,11 @@
 # 動画の一覧（`media.json`）の書き方
 
+**2026-09-13 改め（manor ADR-016）: 一覧の正は manor の「動画リスト」**（料理長の Web の別ページ。
+URL を貼ると題名とサムネイルを取って登録できる）。XR は起動時に `GET /api/v1/kitchen/media` で取り、
+`persistentDataPath/media.json` へ写して、圏外ならその写しを読む。以下の `media.json` の話は
+**manor 未設定のときの見本**と、写しの置き場の説明として残す。
+
+
 動画の板に出る題名の列は **クライアントのローカル設定**（設計 `design/PROTOTYPE.md` §2・§6）。
 manor には置かない。形は下のとおりで、`title`（板に出す題名）と `video_id`（YouTube の動画 id）
 だけ。**最大 8 件**まで読み、9 件目以降と読めない行は黙って飛ばす（1 行のタイプミスで板が丸ごと

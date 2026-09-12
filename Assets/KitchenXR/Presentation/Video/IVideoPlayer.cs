@@ -49,5 +49,25 @@ namespace KitchenXR.Presentation.Video
 
         /// <summary>WebView のページの中央を一度タップする（人の操作の代わり）。</summary>
         void TapCenter();
+
+        /// <summary>
+        /// 窓を触った場所をそのまま WebView へ渡す（2026-09-13 主人との相談で決めた方針3
+        /// 「次の動画は埋め込みプレイヤー自身の関連動画で選ぶ。動画の窓への触りをレイ（とポーク）で通す」）。
+        ///
+        /// <paramref name="u"/>・<paramref name="v"/> は**絵の中の位置**（0〜1。u は左→右、
+        /// v は上→下）。WebView の論理ピクセルへ写すのは包む側の仕事で、板は比だけを渡す
+        /// ——解像度は向き（16:9 ⇄ 9:16）で変わるので、板が知る必要が無い。
+        ///
+        /// **ここは釦ではない。** <see cref="PokePress"/> の「押し下げで発火・600ms 間引き」は
+        /// 通さず、触った通りに Down／Drag／Up を素直に流す（関連動画を選ぶには
+        /// WebView 側がクリックと見なす一連の触りが要る）。
+        /// </summary>
+        void Touch(VideoTouchPhase phase, float u, float v);
+
+        /// <summary>
+        /// WebView の履歴を1つ戻る（<c>TLabWebView.GoBack</c>）。
+        /// 関連動画を触った先で youtube.com 本体へ遷移することがあるため、操作部に逃げ道を置く。
+        /// </summary>
+        void GoBack();
     }
 }

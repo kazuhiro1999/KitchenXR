@@ -7,8 +7,10 @@ namespace KitchenXR.Presentation
     /// <summary>
     /// 手のひらメニューの中身（設計 §4.4「入り方＝手のひらメニュー」・§11 追補 2026-09-13）。
     ///
-    /// 板そのものを手のひらに追わせるのは XRI の <c>HandMenu</c>（シーンで結ぶ。
-    /// <c>KitchenSceneBuilder.AttachHandMenu</c>）で、ここは中身だけを持つ。
+    /// 板そのものを手に追わせ、出し入れするのは <see cref="WristMenu"/>
+    /// （シーンでの組み立ては <c>KitchenSceneBuilder.AttachWristMenu</c>）で、ここは中身だけを持つ。
+    /// v1.0.8 までは XRI の <c>HandMenu</c> が手のひらの向きで出し入れしていたが、
+    /// 手を洗っている最中にも出るのでやめた（理由は <see cref="WristMenu"/> に書いた）。
     ///
     /// **配置の操作は全部ここに載せる**（2026-09-13 に空間の操作板をやめた）。主人の言葉:
     ///   「配置の起動は手元でできるが、確定や終了は手元じゃなく 3D 空間に配置されていて、

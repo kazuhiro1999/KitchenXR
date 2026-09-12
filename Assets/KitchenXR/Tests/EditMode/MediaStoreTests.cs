@@ -53,18 +53,18 @@ namespace KitchenXR.Tests.EditMode
         }
 
         [Test]
-        public void 手元があれば手元を読む_控えが無ければ主人のものを守る()
+        public void 端末側を直していれば同梱より手元が勝つ()
         {
             var reader = new FakeBundledTextReader(@"[{""title"":""見本"",""video_id"":""abcdefghijk""}]");
             var store = Create(reader);
-            store.LoadAsync().GetAwaiter().GetResult();
+            store.LoadAsync().GetAwaiter().GetResult(); // ここで控えができる。
 
-            // 主人が PC から書き換えた、の想定。
+            // 主人が adb で端末側を書き換えた、の想定。
             File.WriteAllText(LocalPath, @"[{""title"":""主人が入れたもの"",""video_id"":""ZZZZZZZZZZZ""}]");
 
             var items = store.LoadAsync().GetAwaiter().GetResult();
 
-            Assert.AreEqual("主人が入れたもの", items[0].Title, "手元のものより同梱が優先されています。");
+            Assert.AreEqual("主人が入れたもの", items[0].Title, "端末側で直したものが同梱に上書きされました。");
             Assert.IsTrue(File.Exists(store.BundledCopyPath), "同梱の控えが作られていません。");
         }
 
@@ -130,6 +130,36 @@ namespace KitchenXR.Tests.EditMode
             var items = Create(second).LoadAsync().GetAwaiter().GetResult();
 
             Assert.AreEqual("主人が入れたもの", items[0].Title, "端末側で直したものが同梱に上書きされました。");
+        }
+
+        [Test]
+        public void manorの一覧を写すと以後はそれを読み同梱が変わっても守られる()
+        {
+            var reader = new FakeBundledTextReader(@"[{""title"":""見本"",""video_id"":""abcdefghijk""}]");
+            var store = Create(reader);
+            store.LoadAsync().GetAwaiter().GetResult();
+
+            var remote = store.SaveRemote(@"{""items"":[{""title"":""manor の一覧"",""video_id"":""mmmmmmmmmmm""}]}");
+            Assert.AreEqual("manor の一覧", remote[0].Title);
+
+            var newer = new FakeBundledTextReader(@"[{""title"":""新しい見本"",""video_id"":""bbbbbbbbbbb""}]");
+            var items = Create(newer).LoadAsync().GetAwaiter().GetResult();
+            Assert.AreEqual("manor の一覧", items[0].Title, "manor の一覧が同梱に上書きされました。");
+        }
+
+        [Test]
+        public void 控えが無ければ同梱を正として手元を入れ替える()
+        {
+            // v1.0.7 以前から上げた想定: 手元はあるが控えが無い。
+            File.WriteAllText(LocalPath, @"[{""title"":""古い版の見本"",""video_id"":""ZZZZZZZZZZZ""}]");
+
+            var reader = new FakeBundledTextReader(@"[{""title"":""見本"",""video_id"":""abcdefghijk""}]");
+            var store = Create(reader);
+            var items = store.LoadAsync().GetAwaiter().GetResult();
+
+            Assert.AreEqual("見本", items[0].Title,
+                "控えが無い（古い版から上げた）のに手元を守っています（v1.0.8 で主人が踏んだ穴）。");
+            Assert.IsTrue(File.Exists(store.BundledCopyPath), "同梱の控えが作られていません。");
         }
     }
 }
