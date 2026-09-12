@@ -22,7 +22,7 @@
 | **P4 動画** | WebView を包んだ動画の板。再生リスト・16:9 ⇄ 9:16・窓への触り | 料理しながら動画が流れ、関連動画を触って次へ行ける | ✅ |
 | **P5 復帰** | `cook-sessions/current` と `last_session.json` からの復帰。終了で `times_cooked` が増える | 途中で外して再装着しても同じ工程から続く | ✅ |
 
-検算の現状: EditMode 149 件・PlayMode 71 件が緑。
+検算の現状: EditMode 158 件・PlayMode 72 件が緑（v1-d (a) の分を含む）。
 
 ### 実機で直した版（v1.0.1 〜 v1.0.12）
 
@@ -59,7 +59,18 @@
 | 段 | 何を | 済みの印 | ブランチ |
 |:--:|---|---|---|
 | **v1-c 火気の注意** | 注意の板（火気・刃物・熱い等）を配置モードで空間に置いて保存。コンロの領域を手で囲って `zones.json` に保存し、手 40cm／20cm・頭 60cm の3段で床の線と軽い注意を出す。カメラ無しで完結し、v2 の観測イベントの受け口を兼ねる | コンロに手を伸ばすと線が出て、離れると消える。再起動で板と領域が戻る | `feature/hazard-panels` |
-| **v1-d カメラの検証** | (a) `MetaOpenXRCameraSubsystem` で1枚取ってテクスチャに出す（Camera Image Support・`HEADSET_CAMERA`・minSdk 32）→ (b) 端末内 YOLO で枠 → (c) manor へ送って PC 側で判定し札に出す → (d) 「鍋が火にかかった」1事象を `Observation` として送る | (a) が実機で通ること。以降は順不同 | `feature/camera-probe` |
+| **v1-d カメラの検証** | (a) `MetaOpenXRCameraSubsystem` で1枚取ってテクスチャに出す（Camera Image Support・`HEADSET_CAMERA`・minSdk 32）→ (b) 端末内 YOLO で枠 → (c) manor へ送って PC 側で判定し札に出す → (d) 「鍋が火にかかった」1事象を `Observation` として送る | (a) が実機で通ること。以降は順不同 | `feature/camera-probe` ／ **(a) 実装済み・実機確認待ち** |
+
+v1-d (a) の中身は [`ARCHITECTURE.md`](ARCHITECTURE.md) §8。あわせて (c) の下見（JPEG 化と
+送信の負荷の実測）まで入れてある——送り先の受け口は manor にまだ無いので、返るのは 404 で、
+知りたいのは往復の時間だけ。実機で確かめるのは次の4つ。
+
+| 見るもの | 期待 |
+|---|---|
+| 権限のダイアログ | 初回に「カメラへのアクセス」が1度出る。出なければ manifest に `HEADSET_CAMERA` が入っていない |
+| 絵 | 動画の板の一覧の上、10cm 角の窓に左目の絵が1枚 |
+| 実測 | 札の「取得 〜×〜 / 取得〜表示 〜ms / 内部パラメータ: あり／なし」。内部パラメータが返るかは調査 §5 の残る不確かさ |
+| 連写と送信 | JPEG の KB と変換 ms、manor があれば「HTTP 404 / 往復 〜ms」 |
 | **v1-a 音声** | 「次」「戻る」「タイマー3分」。OS の音声認識から | 手を洗わずに工程を進められる | `feature/voice` |
 | **v1-b 料理長との会話** | 「代わりの材料は？」を聞ける。manor の料理長を呼ぶ薄い口 | 実機で質問して答えが返る | `feature/chef-talk` |
 | **（manor）献立提案** | 主菜に合う副菜・汁物を、3軸・栄養値・在庫の規則で採点。LLM は自由文の翻訳・理由の一文・名寄せだけ。XR は結果を読むだけ | manor の Web で上位3案と採点の内訳が見える | manor 側の ADR |
