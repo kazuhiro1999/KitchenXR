@@ -6,6 +6,7 @@
         "Unity.XR.Interaction.Toolkit",
         "Unity.XR.ARFoundation",
         "Unity.XR.ARSubsystems",
+        "Unity.XR.MetaOpenXR",
         "Unity.XR.CoreUtils",
         "UniTask",
         "UnityEngine.UI",
