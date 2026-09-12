@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using KitchenXR.App.Editor;
 using KitchenXR.Presentation;
+using KitchenXR.Presentation.Hazard;
 using KitchenXR.Presentation.Video;
 using NUnit.Framework;
 using UnityEditor;
@@ -515,6 +516,92 @@ namespace KitchenXR.Tests.EditMode
                 Assert.AreSame(poke, so.FindProperty("_interactor").objectReferenceValue,
                     "指先カーソルに Poke Interactor が挿さっていません（指先の位置が読めません）。");
             }
+        }
+
+        // ---------------------------------------------------------------- 火気の注意
+
+        /// <summary>
+        /// 注意の板と領域の部品が揃って挿さっていること。板も床の線も実行時に作るので、
+        /// シーンに在るのは根1つと5つの部品だけ——どれかが欠けると実機で黙って効かない。
+        /// </summary>
+        [Test]
+        public void 火気の注意の部品が揃って配線されている()
+        {
+            var boards = Object.FindFirstObjectByType<HazardBoards>(FindObjectsInactive.Include);
+            Assert.IsNotNull(boards, $"Kitchen.unity に {KitchenSceneBuilder.HazardRootObjectName} がありません。");
+
+            var boardsSo = new SerializedObject(boards);
+            Assert.IsNotNull(boardsSo.FindProperty("_panelSettings").objectReferenceValue,
+                "注意の板の PanelSettings が挿さっていません。");
+            Assert.IsNotNull(boardsSo.FindProperty("_boardUxml").objectReferenceValue,
+                "注意の板の uxml が挿さっていません。");
+            Assert.IsNotNull(boardsSo.FindProperty("_deleteUxml").objectReferenceValue,
+                "「消す」の uxml が挿さっていません（板を消せません）。");
+            Assert.IsNotNull(boardsSo.FindProperty("_headTransform").objectReferenceValue,
+                "頭の Transform が挿さっていません（板を頭の前に出せません）。");
+
+            var drawing = Object.FindFirstObjectByType<HazardZoneDrawing>(FindObjectsInactive.Include);
+            Assert.IsNotNull(drawing, "領域を描く仕掛け（HazardZoneDrawing）がありません。");
+
+            var drawingSo = new SerializedObject(drawing);
+            Assert.GreaterOrEqual(drawingSo.FindProperty("_interactors").arraySize, 2,
+                "領域を囲むレイ（Near-Far Interactor）が挿さっていません。");
+
+            var zones = Object.FindFirstObjectByType<HazardZones>(FindObjectsInactive.Include);
+            Assert.IsNotNull(zones, "領域の一式（HazardZones）がありません。");
+
+            var zonesSo = new SerializedObject(zones);
+            Assert.IsNotNull(zonesSo.FindProperty("_originTransform").objectReferenceValue,
+                "XR Origin が挿さっていません（控えの基準と床の高さが決まりません）。");
+            Assert.AreSame(drawing, zonesSo.FindProperty("_drawing").objectReferenceValue,
+                "領域の一式に描く仕掛けが挿さっていません。");
+
+            var proximity = Object.FindFirstObjectByType<HazardProximity>(FindObjectsInactive.Include);
+            Assert.IsNotNull(proximity, "近さの見張り（HazardProximity）がありません。");
+
+            var proximitySo = new SerializedObject(proximity);
+            Assert.AreSame(zones, proximitySo.FindProperty("_zones").objectReferenceValue);
+            Assert.IsNotNull(proximitySo.FindProperty("_sound").objectReferenceValue,
+                "注意の音（HazardSound）が挿さっていません。");
+            Assert.GreaterOrEqual(proximitySo.FindProperty("_hands").arraySize, 2,
+                "手の位置を取る Poke Interactor が挿さっていません（手の距離が測れません）。");
+            Assert.IsNotNull(proximitySo.FindProperty("_headTransform").objectReferenceValue,
+                "頭の Transform が挿さっていません（頭 60cm の段が効きません）。");
+        }
+
+        [Test]
+        public void Bootstrapに火気の注意が挿さっている()
+        {
+            var bootstrap = Object.FindFirstObjectByType<KitchenXR.App.Bootstrap>(FindObjectsInactive.Include);
+            Assert.IsNotNull(bootstrap);
+
+            var so = new SerializedObject(bootstrap);
+            foreach (var field in new[] { "_hazardBoards", "_hazardZones", "_hazardProximity", "_headTransform" })
+            {
+                Assert.IsNotNull(so.FindProperty(field)?.objectReferenceValue,
+                    $"Bootstrap の {field} が空です（火気の注意が動きません）。");
+            }
+        }
+
+        /// <summary>
+        /// 手元のメニューの板は頁で高さが変わる（プリセットの一覧は縦に5行あって入らない）。
+        /// シーンに置くのは調理中（「配置」1つ）の寸法で、当たり判定もそれに合っていること。
+        /// </summary>
+        [Test]
+        public void 手元のメニューが調理中の寸法で置かれている()
+        {
+            var menu = Object.FindFirstObjectByType<PlacementMenuPanel>(FindObjectsInactive.Include);
+            Assert.IsNotNull(menu, "Kitchen.unity に手元のメニューがありません。");
+
+            var document = menu.GetComponent<UIDocument>();
+            Assert.IsNotNull(document);
+            Assert.AreEqual(PlacementMenuPanel.WidthUnits, document.worldSpaceSize.x, 0.01f);
+            Assert.AreEqual(PlacementMenuPanel.IdleHeightUnits, document.worldSpaceSize.y, 0.01f);
+
+            // 頁の高さは 低い順に 調理中 < 配置の操作 < 領域 < プリセットの一覧。
+            Assert.Less(PlacementMenuPanel.IdleHeightUnits, PlacementMenuPanel.PlacingHeightUnits);
+            Assert.Less(PlacementMenuPanel.PlacingHeightUnits, PlacementMenuPanel.ZoneHeightUnits);
+            Assert.Less(PlacementMenuPanel.ZoneHeightUnits, PlacementMenuPanel.HazardHeightUnits);
         }
 
         [Test]
