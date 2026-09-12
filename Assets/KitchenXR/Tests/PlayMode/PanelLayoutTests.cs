@@ -36,6 +36,10 @@ namespace KitchenXR.Tests.PlayMode
         private const float IngredientsWidthUnits = 170f;
         private const float IngredientsHeightUnits = 240f;
 
+        private const string PlacementMenuUxmlPath = "Assets/KitchenXR/Presentation/UI/PlacementMenu.uxml";
+        private const float PlacementMenuWidthUnits = 130f;
+        private const float PlacementMenuHeightUnits = 92f;
+
         /// <summary>契約の上限（工程の説明は 60 文字以内）に合わせた最悪の1文。</summary>
         private const string LongInstruction =
             "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをんあいうえおかきくけこさしすせそた";
@@ -250,6 +254,60 @@ namespace KitchenXR.Tests.PlayMode
             var pitch = rows[1].layout.y - rows[0].layout.y;
             Assert.LessOrEqual(pitch, 12f, $"材料の行の送りが {pitch}px あります（詰まっていません）。");
             Assert.Greater(pitch, 3f, "行が重なっています。");
+        }
+
+        // ---------------------------------------------------------------- 手のひらメニュー
+
+        /// <summary>
+        /// 配置モードの4つの釦（保存・元に戻す・板を手元に・やめる）が板からはみ出さないこと
+        /// （設計 §11 追補 2026-09-13。主人「配置の確定等も手元に表示してほしい」）。
+        /// 板の寸法は <c>KitchenSceneBuilder.PlacementMenu*Units</c> と同じ 130×92。
+        /// はみ出すと、実機で押したい釦が板の外に出て**配置モードから出られなくなる**。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 手のひらメニューは配置の4つの釦を収める()
+        {
+            yield return BuildPanel(PlacementMenuUxmlPath, PlacementMenuWidthUnits, PlacementMenuHeightUnits);
+
+            var menu = _go.AddComponent<PlacementMenuPanel>();
+            yield return Settle();
+
+            menu.SetPlacing(true);
+            yield return Settle();
+
+            // worldBound は板のローカル単位（UI px ÷ PixelsPerUnit）で返る。UI px に戻して比べる。
+            const float toPixels = WorldSpacePanelFactory.PanelPixelsPerUnit;
+
+            foreach (var name in new[] { "saveButton", "undoButton", "recallButton", "cancelButton" })
+            {
+                var button = Root.Q<Button>(name);
+                Assert.IsNotNull(button, $"手のひらメニューに {name} がありません。");
+
+                var rect = button.worldBound;
+                var width = rect.width * toPixels;
+                var height = rect.height * toPixels;
+                Assert.Greater(width, 0f, $"{name} の幅が 0 です（レイアウトが未確定）。");
+
+                // 設計 §7 の最小 4cm 角（20px）を満たすこと。
+                Assert.GreaterOrEqual(width, 20f, $"{name} が 4cm より細いです（{width}px）。");
+                Assert.GreaterOrEqual(height, 20f, $"{name} が 4cm より低いです（{height}px）。");
+
+                Assert.LessOrEqual(rect.xMax * toPixels, PlacementMenuWidthUnits + 0.5f,
+                    $"{name} が板の右へ {rect.xMax * toPixels - PlacementMenuWidthUnits}px はみ出しています。");
+                Assert.LessOrEqual(rect.yMax * toPixels, PlacementMenuHeightUnits + 0.5f,
+                    $"{name} が板の下へ {rect.yMax * toPixels - PlacementMenuHeightUnits}px はみ出しています。");
+            }
+
+            // 調理中は「配置」1つだけ（誤って「保存」を押さないように）。
+            menu.SetPlacing(false);
+            yield return Settle();
+
+            Assert.AreEqual(DisplayStyle.None,
+                Root.Q<VisualElement>(PlacementMenuPanel.PlacingGroupName).resolvedStyle.display,
+                "調理中なのに配置の釦が出ています。");
+            Assert.AreEqual(DisplayStyle.Flex,
+                Root.Q<VisualElement>(PlacementMenuPanel.IdleGroupName).resolvedStyle.display,
+                "調理中に「配置」が出ていません。");
         }
 
         private static Recipe BuildRecipeWithIngredients(int count)

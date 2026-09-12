@@ -45,6 +45,9 @@ namespace KitchenXR.Presentation
         /// <summary>工程の画像が本文の幅に占めてよい割合。残りが説明の置き場になる。</summary>
         private const float ImageMaxWidthRatio = 0.55f;
 
+        /// <summary>工程画像の周りの余白（UI px。RecipePanel.uss の .recipe-image-area の margin と対）。5px ≒ 1cm。</summary>
+        public const float ImageInsetUnits = 5f;
+
         public event Action NextRequested;
         public event Action PrevRequested;
 
@@ -204,6 +207,9 @@ namespace KitchenXR.Presentation
                 return;
             }
 
+            // 主人（2026-09-13）「画像が少し大きすぎ。少しだけ余白を」——正方形の一辺から余白ぶんを引く
+            // （余白そのものは USS の margin。ここで引かないと余白の分だけ列がはみ出る）。
+            side = Mathf.Max(20f, side - ImageInsetUnits * 2f);
             _currentImage.style.width = side;
             _currentImage.style.height = side;
         }

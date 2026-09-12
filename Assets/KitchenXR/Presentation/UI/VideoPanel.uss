@@ -10,8 +10,24 @@
  * 実機で読み込み待ちのときに透けて見える下地だけ。
  */
 
+/*
+ * 板の地を**透明**にし、白 85% の地は上下の塊（.video-block）にだけ塗る（2026-09-13 主人の実機確認 v1.0.7）。
+ * 「薄白いカバーがかかって鮮明でない」——板と絵はどちらも半透明で深度を書かず、描く順が距離で決まる。
+ * 絵を 1cm 手前へ出して順を確かにした上で、万一板の方が後に描かれても窓の部分に**塗るものが無い**ようにする。
+ */
 .video-panel {
-    /* 娯楽の板なので、レシピの板より少しだけ落ち着かせる（強調色は使わない）。 */
+    background-color: transparent;
+    padding: 0px;
+}
+
+.video-block {
+    background-color: var(--color-panel-bg);
+    border-top-left-radius: var(--radius-large);
+    border-top-right-radius: var(--radius-large);
+    border-bottom-left-radius: var(--radius-large);
+    border-bottom-right-radius: var(--radius-large);
+    padding: 6px;
+    flex-shrink: 0;
 }
 
 /* --- 題名の列（縦。最大8件。溢れたら縦スクロール） --- */
@@ -63,7 +79,10 @@
     flex-grow: 1;
     align-items: center;
     justify-content: center;
-    background-color: rgba(31, 41, 55, 0.85);
+    margin-top: 3px;
+    margin-bottom: 3px;
+    /* 窓は塗らない（上のコメント）。Editor の札だけが浮く。 */
+    background-color: transparent;
     border-top-left-radius: var(--radius-medium);
     border-top-right-radius: var(--radius-medium);
     border-bottom-left-radius: var(--radius-medium);
@@ -72,7 +91,7 @@
 }
 
 .video-notice {
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--color-text-muted);
     font-size: var(--font-size-body);
     -unity-text-align: middle-center;
 }

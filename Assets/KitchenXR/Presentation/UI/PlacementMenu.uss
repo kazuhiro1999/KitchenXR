@@ -1,0 +1,43 @@
+/*
+ * 手のひらメニュー（XRI の HandMenu が手のひらに追従させる板。設計 §4.4・§11 追補 2026-09-13）。
+ *
+ * 2026-09-13 から**配置の操作を全部ここに載せる**（頭の前に出していた操作板は廃止）。主人の言葉:
+ *   「配置の確定等も手元に表示してほしい」——空間の板はレシピ／一覧の板と重なると
+ *   レイでも指でも押せなくなる。手のひらなら重なる相手が居ない。
+ *
+ * 板は 130×92（≒26cm×18.4cm。1 UI px ≒ 2mm）。「配置」だけの調理中は上下中央に1つ、
+ * 配置モードでは 2×2 の釦とヒント1行。手のひらに乗せて**目で見て押す**板なので、
+ * 調理の板より一回り小さい字でも読める距離に来る。
+ */
+
+.placement-menu-root {
+    padding: 6px;
+    justify-content: center;
+}
+
+.placement-menu-hint {
+    -unity-text-align: middle-center;
+    margin-bottom: 2px;
+    flex-shrink: 0;
+}
+
+.placement-menu-group {
+    flex-shrink: 0;
+}
+
+.placement-menu-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/*
+ * 4cm角の下限（設計 §7）を満たしつつ、横は文字（「板を手元に」で5字）が入るまで広げる。
+ * 余白（margin）は theme.uss の --gap-tight（5px = 1cm）のままなので、
+ * 隣り合う釦の間は 2cm 空く（設計 §7 の間隔の下限）。
+ */
+.placement-menu-button {
+    min-width: 44px;
+    min-height: var(--button-min);
+}

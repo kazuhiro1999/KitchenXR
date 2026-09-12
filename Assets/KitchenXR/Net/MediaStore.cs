@@ -53,15 +53,32 @@ namespace KitchenXR.Net
         /// 一覧を読む。手元に無ければ同梱の見本を写してから読む。
         /// どちらも読めなければ空の一覧（板は「一覧がありません」を出す）。
         /// </summary>
+        /// <summary>
+        /// 前回写した同梱の中身の控え（<c>media.bundled.json</c>）。
+        /// 同梱（APK）を入れ替えたのか、主人が端末側を直したのかを見分けるために持つ。
+        /// </summary>
+        public string BundledCopyPath => Path.Combine(
+            Path.GetDirectoryName(_localPath) ?? string.Empty, BundledCopyFileName);
+
+        public const string BundledCopyFileName = "media.bundled.json";
+
+        /// <summary>
+        /// 一覧を読む。手元（<c>persistentDataPath/media.json</c>）が正。
+        ///
+        /// 2026-09-13 主人の実機確認（v1.0.7）「bbno$ を追加したはずが一覧に無く、消したはずの
+        /// 2018 が残っていた」——主人は同梱の見本（StreamingAssets）を直して APK を入れ直したが、
+        /// v1.0.7 までは**初回だけ**同梱を写し、以後は手元しか見なかった。
+        /// 直し: 毎回同梱も読み、前回写した控えと違えば「APK 側が変わった」と見なす。
+        /// そのとき手元が控えと同じ（＝端末側は誰も直していない）なら新しい同梱で置き換え、
+        /// 手元が控えと違う（＝主人が adb で端末側を直した）なら手元を守る。
+        /// 控えが無い（v1.0.7 以前から上げた）ときは手元を守り、控えだけ作る。
+        /// </summary>
         public async UniTask<IReadOnlyList<MediaItem>> LoadAsync(CancellationToken token = default)
         {
-            if (!File.Exists(_localPath))
+            var bundled = _reader != null ? await _reader.ReadAsync(_bundledPath, token) : null;
+            if (!string.IsNullOrWhiteSpace(bundled))
             {
-                var bundled = _reader != null ? await _reader.ReadAsync(_bundledPath, token) : null;
-                if (!string.IsNullOrWhiteSpace(bundled))
-                {
-                    Save(bundled);
-                }
+                ReconcileBundled(bundled);
             }
 
             if (!File.Exists(_localPath))
@@ -85,6 +102,54 @@ namespace KitchenXR.Net
         }
 
         /// <summary>同梱の見本を手元へ写す（初回だけ）。</summary>
+        private void ReconcileBundled(string bundled)
+        {
+            var previousCopy = ReadOrNull(BundledCopyPath);
+            var local = ReadOrNull(_localPath);
+
+            if (local == null)
+            {
+                Save(bundled); // 初回。
+            }
+            else if (previousCopy != null && previousCopy != bundled && local == previousCopy)
+            {
+                Save(bundled); // APK 側が変わり、端末側は手つかず。
+                Debug.Log("[KitchenXR] 動画の一覧: 同梱が新しくなったので手元を入れ替えました。");
+            }
+            else if (previousCopy != null && previousCopy != bundled)
+            {
+                Debug.Log("[KitchenXR] 動画の一覧: 同梱も端末側も変わっているので、端末側を残します。");
+            }
+
+            if (previousCopy != bundled)
+            {
+                WriteText(BundledCopyPath, bundled);
+            }
+        }
+
+        private static string ReadOrNull(string path)
+        {
+            try
+            {
+                return File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8) : null;
+            }
+            catch (IOException)
+            {
+                return null;
+            }
+        }
+
+        private static void WriteText(string path, string text)
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(path, text, Encoding.UTF8);
+        }
+
         public void Save(string json)
         {
             var directory = Path.GetDirectoryName(_localPath);

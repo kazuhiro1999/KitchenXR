@@ -21,13 +21,16 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 namespace KitchenXR.Tests.PlayMode
 {
     /// <summary>
-    /// 配置モードの検算（ROADMAP P2・設計 §4.4）。
+    /// 配置モードの検算（ROADMAP P2・設計 §4.4・§11 追補 2026-09-13）。
     ///
-    /// 見るのは3つ:
+    /// 見るのは4つ:
     ///   1. **配置モードでは調理の板が指で押せない**（指を突っ込んでも工程が進まない）。
-    ///      同時に Ray は生きる（調理モードでは止めている）
-    ///   2. **「保存」で調理モードへ戻り**、控え（panels.json）に全ての鍵が書かれる
-    ///   3. **起動時の復元順**——アンカー → 控え → 既定
+    ///      Ray は**どちらのモードでも生きたまま**で、触れてよい層だけが変わる
+    ///      （調理モード＝動画の板だけ／配置モード＝全部。2026-09-13 に作り直した）
+    ///   2. **重ねた2枚のうち「見えている板」に掴む仕掛けと枠が付く**
+    ///      （v1.0.7 の「メインパネルがつかめない」の直し）
+    ///   3. **「保存」で調理モードへ戻り**、控え（panels.json）に全ての鍵が書かれる
+    ///   4. **起動時の復元順**——アンカー → 控え → 既定
     ///
     /// 板の組み立ては Kitchen.unity と同じ <see cref="WorldSpacePanelFactory"/> を通す
     /// （シーンと試験で別の組み方をしない、という P1 からの約束）。
@@ -44,6 +47,8 @@ namespace KitchenXR.Tests.PlayMode
         private const float StartDepthMeters = -0.06f;
 
         private GameObject _panelGo;
+        private GameObject _listPanelGo;
+        private GameObject _videoPanelGo;
         private GameObject _pokeGo;
         private GameObject _rigGo;
         private GameObject _cameraGo;
@@ -61,7 +66,7 @@ namespace KitchenXR.Tests.PlayMode
         private DefaultHandInputPolicy _policy;
         private PanelPoseFile _poseFile;
         private InMemoryAnchorStore _anchors;
-        private Behaviour _rayLike;
+        private XRRayInteractor _rayLike;
 
         private string _directory;
         private int _nextCount;
@@ -78,8 +83,8 @@ namespace KitchenXR.Tests.PlayMode
         {
             foreach (var go in new[]
                      {
-                         _panelGo, _pokeGo, _rigGo, _cameraGo, _eventSystemGo, _managerGo,
-                         _placementGo, _rayGo, _originGo,
+                         _panelGo, _listPanelGo, _videoPanelGo, _pokeGo, _rigGo, _cameraGo, _eventSystemGo,
+                         _managerGo, _placementGo, _rayGo, _originGo,
                      })
             {
                 if (go != null)
@@ -88,8 +93,8 @@ namespace KitchenXR.Tests.PlayMode
                 }
             }
 
-            _panelGo = _pokeGo = _rigGo = _cameraGo = _eventSystemGo = _managerGo = null;
-            _placementGo = _rayGo = _originGo = null;
+            _panelGo = _listPanelGo = _videoPanelGo = _pokeGo = _rigGo = _cameraGo = null;
+            _eventSystemGo = _managerGo = _placementGo = _rayGo = _originGo = null;
             _recipePanel = null;
             _session = null;
             _poke = null;
@@ -191,10 +196,35 @@ namespace KitchenXR.Tests.PlayMode
             };
             _recipePanel.Refresh(_session);
 
+            // 一覧の板（レシピと**同じ場所に重ねる**2枚目）と、動画の板（離れた所）。
+            // 既定は「調理中」——レシピが出ていて一覧は引っ込んでいる。
+            // 起動直後（一覧が出ている）の並びは、それを見る試験の中で入れ替える。
+            _listPanelGo = BuildBarePanel("RecipeListPanel", panelSettings, uxml, null, Vector3.zero);
+            _videoPanelGo = BuildBarePanel("VideoPanel", panelSettings, uxml,
+                1 | (1 << CookingModeInputGate.VideoInteractionLayer), new Vector3(3f, 0f, 0f));
+
+            yield return null;
+
+            PanelVisibility.SetVisible(_listPanelGo, false);
+
             for (var i = 0; i < 10; i++)
             {
                 yield return null;
             }
+        }
+
+        /// <summary>中身の C# を持たない板（重なりと層だけを見るための身代わり）。</summary>
+        private static GameObject BuildBarePanel(
+            string name, PanelSettings panelSettings, VisualTreeAsset uxml, int? interactionLayers,
+            Vector3 position)
+        {
+            var go = new GameObject(name);
+            go.SetActive(false);
+            go.transform.SetPositionAndRotation(position, Quaternion.identity);
+            WorldSpacePanelFactory.Configure(
+                go, panelSettings, uxml, PanelWidthUnits, PanelHeightUnits, interactionLayers);
+            go.SetActive(true);
+            return go;
         }
 
         private IEnumerator BuildPokeInteractor()
@@ -211,13 +241,18 @@ namespace KitchenXR.Tests.PlayMode
             yield return null;
         }
 
-        /// <summary>Bootstrap と同じ組み立て（アンカーは InMemory・控えは一時の場所）。</summary>
+        /// <summary>
+        /// Bootstrap と同じ組み立て（アンカーは InMemory・控えは一時の場所）。
+        ///
+        /// Ray は**実物の Interactor**を使う——ゲートが見るのは <c>enabled</c> だけでなく
+        /// <c>interactionLayers</c>（XRI の層）にもなったので、身代わりの Behaviour では足りない。
+        /// </summary>
         private IEnumerator BuildPlacement()
         {
-            // 「調理モードで止める Ray っぽい Interactor」の身代わり。
-            // 実物（NearFarInteractor）でなくてよい——ゲートが見るのは Behaviour.enabled だけ。
-            _rayGo = new GameObject("Ray Interactor (stand-in)");
-            _rayLike = _rayGo.AddComponent<Light>();
+            _rayGo = new GameObject("Ray Interactor");
+            _rayGo.SetActive(false);
+            _rayLike = _rayGo.AddComponent<XRRayInteractor>();
+            _rayGo.SetActive(true);
 
             _placementGo = new GameObject("Kitchen Panels");
             _gate = _placementGo.AddComponent<CookingModeInputGate>();
@@ -232,7 +267,11 @@ namespace KitchenXR.Tests.PlayMode
             _poseFile = new PanelPoseFile(Path.Combine(_directory, PanelPoseFile.FileName));
 
             _placement.Bind(_anchors, _poseFile, _policy, _gate, _originGo.transform);
-            _placement.Register(PanelPlacement.RecipeKey, _recipePanel);
+
+            // Kitchen.unity と同じ結び方: レシピ（取っ手役）に一覧が付いていく＝**同じ鍵で2枚**。
+            _placement.Register(PanelPlacement.RecipeKey, _recipePanel, _listPanelGo.transform);
+            _placement.Register(PanelPlacement.VideoKey, _videoPanelGo.transform);
+            _gate.AllowRayInCookingMode(_videoPanelGo.transform);
 
             yield return null;
         }
@@ -296,21 +335,32 @@ namespace KitchenXR.Tests.PlayMode
         // ---------------------------------------------------------------- 1. 入力の切り替え
 
         [UnityTest]
-        public IEnumerator 調理モードではRayが止まりPokeが効く()
+        public IEnumerator 調理モードではRayが動画の板だけに届きPokeが効く()
         {
             yield return BuildAll();
 
             Assert.AreEqual(HandInputMode.CookingMode, _policy.CurrentMode, "既定は調理モードのはずです。");
-            Assert.IsFalse(_rayLike.enabled, "調理モードで Ray が生きています（設計 §4.4・§7）。");
+
+            // 2026-09-13: Ray は切らない（切ると壁の奥の板に手が届かない）。触れてよい層で絞る。
+            Assert.IsTrue(_rayLike.enabled, "調理モードで Ray が止まっています（動画の板を遠隔操作できません）。");
+            Assert.AreEqual(CookingModeInputGate.CookingRayInteractionLayers,
+                (int)_rayLike.interactionLayers,
+                "調理モードの Ray が Video 以外の層にも触れます（設計 §11 追補 2026-09-13）。");
+
+            Assert.IsTrue(CookingModeInputGate.IsRayReachable(_videoPanelGo),
+                "調理モードで動画の板にレイが届きません（主人「Youtube だけ遠隔から操作したい」）。");
+            Assert.IsFalse(CookingModeInputGate.IsRayReachable(_panelGo),
+                "調理モードでレシピの板にレイが届きます（レイで『次へ』が押せてしまいます）。");
+
             Assert.IsTrue(CookingModeInputGate.IsUiEnabled(_panelGo), "調理モードで板の UI が止まっています。");
 
             yield return PokeAt(WorldPositionOf(NextButton), 0.05f);
 
-            Assert.AreEqual(1, _nextCount, "調理モードで『次へ』が効きません。");
+            Assert.AreEqual(1, _nextCount, "調理モードで『次へ』が効きません（指では押せるはず）。");
         }
 
         [UnityTest]
-        public IEnumerator 配置モードに入るとPokeが効かずRayが効く()
+        public IEnumerator 配置モードに入るとPokeが効かずRayが全部の板に届く()
         {
             yield return BuildAll();
 
@@ -322,6 +372,15 @@ namespace KitchenXR.Tests.PlayMode
             Assert.IsTrue(_placement.IsPlacing);
             Assert.AreEqual(HandInputMode.PlacementMode, _policy.CurrentMode);
             Assert.IsTrue(_rayLike.enabled, "配置モードで Ray が止まったままです（掴めません）。");
+            Assert.AreEqual(CookingModeInputGate.PlacementRayInteractionLayers,
+                (int)_rayLike.interactionLayers,
+                "配置モードの Ray が一部の層にしか触れません（壁の奥の板を掴めません）。");
+
+            Assert.IsTrue(CookingModeInputGate.IsRayReachable(_panelGo),
+                "配置モードでレシピの板にレイが届きません（主人「配置のときはレイ操作を有効にしてほしい」）。");
+            Assert.IsTrue(CookingModeInputGate.IsRayReachable(_videoPanelGo),
+                "配置モードで動画の板にレイが届きません。");
+
             Assert.IsFalse(CookingModeInputGate.IsUiEnabled(_panelGo),
                 "配置モードなのに調理の板の UI が生きています（誤って工程が進みます）。");
 
@@ -356,6 +415,57 @@ namespace KitchenXR.Tests.PlayMode
             Assert.IsFalse(PanelPlacement.HasFrame(_panelGo), "配置モードを出ても枠が残っています。");
             Assert.IsFalse(grab.enabled);
             Assert.IsTrue(simple.enabled, "調理モードに戻ったのにポークの受け口が戻っていません。");
+        }
+
+        /// <summary>
+        /// 2026-09-13 主人「メインパネルが移動（つかむことすら）できないことがある」の直し。
+        /// 同じ鍵に重ねた2枚（レシピと一覧）のうち、**見えている板**が取っ手役になること。
+        /// 起動直後は一覧の板が出ているので、掴む仕掛けと黄色い枠は一覧の板に付かねばならない。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 一覧が出ているときは一覧の板を掴む()
+        {
+            yield return BuildAll();
+
+            // 起動直後の並び: 一覧が出て、レシピは引っ込んでいる。
+            PanelVisibility.SetVisible(_panelGo, false);
+            PanelVisibility.SetVisible(_listPanelGo, true);
+            yield return null;
+
+            _placement.Enter();
+            yield return null;
+
+            Assert.IsTrue(PanelPlacement.HasFrame(_listPanelGo),
+                "見えている一覧の板に枠が出ていません（どれを掴めばよいか分かりません）。");
+            Assert.IsFalse(PanelPlacement.HasFrame(_panelGo),
+                "引っ込んでいるレシピの板に枠が出ています。");
+
+            var listGrab = _listPanelGo.GetComponent<XRGrabInteractable>();
+            Assert.IsNotNull(listGrab, "一覧の板に掴む仕掛けが足されていません。");
+            Assert.IsTrue(listGrab.enabled, "一覧の板が掴めません（v1.0.7 の「つかむことすらできない」）。");
+
+            // 重なっている見えない板は引っ込めておく。当たり判定を奪い合うと引き当てが運任せになる。
+            Assert.IsFalse(PanelVisibility.IsVisible(_recipePanel),
+                "同じ場所の2枚目（レシピの板）が出たままです（コライダーが重なります）。");
+
+            // 一覧の板を動かして「保存」すると、レシピの板も同じ場所へ揃う。
+            var moved = new Vector3(0.3f, 1.2f, 0.9f);
+            _listPanelGo.transform.position = moved;
+
+            var saving = _placement.SaveAsync();
+            while (saving.Status == Cysharp.Threading.Tasks.UniTaskStatus.Pending)
+            {
+                yield return null;
+            }
+
+            Assert.AreEqual(moved.x, _panelGo.transform.position.x, 1e-3f,
+                "取っ手役（一覧）の場所がレシピの板に伝わっていません。");
+
+            var read = new PanelPoseFile(Path.Combine(_directory, PanelPoseFile.FileName));
+            read.Load();
+            Assert.IsTrue(read.TryGet(PanelPlacement.RecipeKey, out var stored), "控えに鍵がありません。");
+            Assert.AreEqual(moved.x, stored.position.x, 1e-3f,
+                "覚えたのが取っ手役の場所ではありません。");
         }
 
         // ---------------------------------------------------------------- 2. 保存

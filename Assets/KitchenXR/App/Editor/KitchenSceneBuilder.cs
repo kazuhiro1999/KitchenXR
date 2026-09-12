@@ -68,13 +68,11 @@ namespace KitchenXR.App.Editor
         private const float VideoWidthUnits = VideoPanel.LandscapeWidthUnits;
         private const float VideoHeightUnits = VideoPanel.LandscapeHeightUnits;
 
-        // 配置モードの操作板（P2）。40cm×18cm。実行時の位置は Bootstrap が頭の前に置き直す。
-        private const float PlacementWidthUnits = 200f;
-        private const float PlacementHeightUnits = 90f;
-
-        // 手のひらメニュー（P2）。手のひらに乗る大きさ（14cm×7cm）。
-        private const float PlacementMenuWidthUnits = 70f;
-        private const float PlacementMenuHeightUnits = 36f;
+        // 手のひらメニュー（P2 → 配置の操作を全部ここへ集めた。設計 §11 追補「配置とレイ」）。
+        // 70×36（14cm×7cm）では「保存・元に戻す・板を手元に・やめる」の4つが入らないので
+        // 130×92（26cm×18.4cm）へ広げた。中身の寸法の根拠は PlacementMenu.uss に書いた。
+        private const float PlacementMenuWidthUnits = 130f;
+        private const float PlacementMenuHeightUnits = 92f;
 
         /// <summary>XRI の Hands Interaction Demo サンプルにある手のひら追従の設定（読むだけ）。</summary>
         private const string HandsFollowPresetPath =
@@ -85,7 +83,6 @@ namespace KitchenXR.App.Editor
 
         public const string HandMenuObjectName = "Hand Menu";
         public const string PlacementMenuObjectName = "PlacementMenu";
-        public const string PlacementPanelObjectName = "PlacementPanel";
 
         // XRI の World Space UI サンプル（WorldSpacePanel.asset）と同じ値。
         // 「既存のコライダーを使う」＝ UI Document は自前でコライダーを作らない。
@@ -139,22 +136,19 @@ namespace KitchenXR.App.Editor
 
             // 4枚目（動画）。レシピの右上＝タイマーの上（設計 P4）。実行時の位置は
             // Bootstrap.PlaceVideoPanel が頭の向きから決め直すので、ここは Editor で見たときの目安。
+            // 動画の板だけ **Video の Interaction Layer** を名乗る（設計 §11 追補 2026-09-13。
+            // 主人「Youtube プレイヤーだけレイ操作を有効化してほしい」）。Default も残すので、
+            // 指で押す（ポーク）のと配置モードで掴むのは今までどおり。
+            // 調理モードでは Ray の interactionLayers が Video だけになるので、
+            // レイが触れるのはこの板だけになる（CookingModeInputGate を見よ）。
             var videoGo = CreatePanelObject(
                 "VideoPanel", panelsRoot.transform, panelSettings,
                 LoadUxml("Assets/KitchenXR/Presentation/UI/VideoPanel.uxml"),
                 VideoWidthUnits, VideoHeightUnits,
-                new Vector3(0.72f, 1.35f + 0.04f + VideoHeightUnits * 0.002f, 1.05f), Quaternion.Euler(0f, 25f, 0f));
+                new Vector3(0.72f, 1.35f + 0.04f + VideoHeightUnits * 0.002f, 1.05f), Quaternion.Euler(0f, 25f, 0f),
+                VideoInteractionLayers);
             var videoPanel = videoGo.AddComponent<VideoPanel>();
             AttachYoutubePlayer(videoPanel);
-
-            // P2。配置モードの操作板（保存・元に戻す・やめる）。出るのは配置モードの間だけ
-            // （Bootstrap が PanelVisibility で隠す）。実行時の位置は頭の前へ置き直す。
-            var placementGo = CreatePanelObject(
-                PlacementPanelObjectName, panelsRoot.transform, panelSettings,
-                LoadUxml("Assets/KitchenXR/Presentation/UI/PlacementPanel.uxml"),
-                PlacementWidthUnits, PlacementHeightUnits,
-                new Vector3(-0.2f, 0.95f, 1.2f), Quaternion.identity);
-            var placementPanel = placementGo.AddComponent<PlacementPanel>();
 
             var inputGate = panelsRoot.AddComponent<CookingModeInputGate>();
             WireCookingModeInputGate(scene, inputGate);
@@ -169,7 +163,7 @@ namespace KitchenXR.App.Editor
             EnsureUiToolkitInput(scene);
 
             CreateBootstrap(recipeListPanel, recipePanel, ingredientsPanel, timerPanel, videoPanel, inputGate,
-                panelPlacement, placementPanel, placementMenuPanel);
+                panelPlacement, placementMenuPanel);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -310,9 +304,18 @@ namespace KitchenXR.App.Editor
 
         private static VisualTreeAsset LoadUxml(string path) => AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(path);
 
+        /// <summary>
+        /// 動画の板が名乗る Interaction Layer（Default ＋ Video）。
+        /// Default を残すのが肝心——外すと**ポークと配置モードの掴み**まで効かなくなる
+        /// （どちらの Interactor も Default で引き当てている）。
+        /// </summary>
+        private static int VideoInteractionLayers =>
+            1 | (1 << CookingModeInputGate.VideoInteractionLayer);
+
         private static GameObject CreatePanelObject(
             string name, Transform parent, PanelSettings panelSettings, VisualTreeAsset uxml,
-            float widthUnits, float heightUnits, Vector3 localPosition, Quaternion localRotation)
+            float widthUnits, float heightUnits, Vector3 localPosition, Quaternion localRotation,
+            int? interactionLayers = null)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
@@ -322,7 +325,7 @@ namespace KitchenXR.App.Editor
             // (3) 板の組み立ては PlayMode 試験と同じ WorldSpacePanelFactory を通す。
             // UIDocument.pivot を左上に据える（既定の中央のままだとコライダーと板の矩形が
             // 半分ずれて、当たってはいるのにボタンを掴めない）ところまで含めてここが面倒を見る。
-            WorldSpacePanelFactory.Configure(go, panelSettings, uxml, widthUnits, heightUnits);
+            WorldSpacePanelFactory.Configure(go, panelSettings, uxml, widthUnits, heightUnits, interactionLayers);
 
             EditorUtility.SetDirty(go.GetComponent<XRSimpleInteractable>());
 
@@ -371,19 +374,54 @@ namespace KitchenXR.App.Editor
             }
         }
 
+        /// <summary>
+        /// モードで触れてよい層を切り替える Ray を拾って挿す（設計 §4.4・§7・§11 追補）。
+        ///
+        /// MR テンプレートの rig（`MR Interaction Setup` の中の
+        /// `XR Origin Hands (XR Rig)` を `XR Origin (XR Rig)` に改名したもの）が持つ Interactor は
+        /// 2026-09-13 に数えたところ 7 つ:
+        ///   - `Near-Far Interactor`（NearFarInteractor）×4 —— **これだけをここで扱う**。
+        ///     `Camera Offset/` の下の `Left Hand`・`Right Hand`（ハンドトラッキング）と
+        ///     `Left Controller`・`Right Controller`（コントローラ）に1つずつ。
+        ///     つまり**手でもコントローラでも**同じように効く。
+        ///   - `Gaze Interactor`（XRGazeInteractor）×1
+        ///   - `Teleport Interactor`（XRRayInteractor）×2
+        /// ほかに左右の手に `Poke Interactor`（XRPokeInteractor）が1つずつ（ここでは触らない）。
+        ///
+        /// **視線と移動は触らない**（v1.0.7 は調理モードで一緒に止めていた）。
+        ///   - Gaze は <c>XRBaseInteractable.allowGazeInteraction</c>（既定 false）を立てた板にしか
+        ///     効かない。台所の板は誰も立てていないので、生きていても悪さをしない。
+        ///   - Teleport の <c>interactionLayers</c> は Teleport（31 番）だけ。
+        ///     ここで「配置モードでは全層」を当ててしまうと、逆に板を掴んでしまう。
+        ///
+        /// 拾えた数と名前をログに出すのは、rig を差し替えたときに黙って 0 個になるのを防ぐため。
+        /// </summary>
         private static void WireCookingModeInputGate(Scene scene, CookingModeInputGate gate)
         {
             var xrOrigin = FindDeepChild(scene, "XR Origin (XR Rig)");
             if (xrOrigin == null)
             {
-                Debug.LogWarning("[KitchenXR] XR Origin が見つからず、調理モードの Ray 無効化を配線できませんでした。");
+                Debug.LogWarning("[KitchenXR] XR Origin が見つからず、Ray の層の切り替えを配線できませんでした。");
                 return;
             }
 
-            // Ray っぽい Interactor だけを止める。Poke Interactor はそのまま（設計 §4.4・§7）。
-            var rayLike = xrOrigin.GetComponentsInChildren<NearFarInteractor>(true).Cast<Behaviour>()
-                .Concat(xrOrigin.GetComponentsInChildren<XRRayInteractor>(true))
+            // 手や持ち手から前へ伸びる Ray だけ。Poke・Gaze・Teleport はそのまま（設計 §4.4・§7）。
+            var rayLike = xrOrigin.GetComponentsInChildren<NearFarInteractor>(true)
+                .Cast<Behaviour>()
                 .ToArray();
+
+            if (rayLike.Length == 0)
+            {
+                Debug.LogWarning(
+                    "[KitchenXR] rig に Near-Far Interactor が1つもありません。"
+                    + "配置モードで遠くの板を掴めず、動画の板もレイで操作できません。");
+            }
+            else
+            {
+                Debug.Log(
+                    $"[KitchenXR] Ray の Interactor を {rayLike.Length} 個 配線しました: "
+                    + string.Join(", ", rayLike.Select(r => HierarchyPath(r.transform))));
+            }
 
             var so = new SerializedObject(gate);
             var prop = so.FindProperty("_rayLikeInteractors");
@@ -433,7 +471,7 @@ namespace KitchenXR.App.Editor
         private static void CreateBootstrap(
             RecipeListPanel recipeListPanel, RecipePanel recipePanel, IngredientsPanel ingredientsPanel,
             TimerPanel timerPanel, VideoPanel videoPanel, CookingModeInputGate inputGate,
-            PanelPlacement panelPlacement, PlacementPanel placementPanel, PlacementMenuPanel placementMenuPanel)
+            PanelPlacement panelPlacement, PlacementMenuPanel placementMenuPanel)
         {
             var go = new GameObject("Bootstrap");
             var bootstrap = go.AddComponent<Bootstrap>();
@@ -446,7 +484,6 @@ namespace KitchenXR.App.Editor
             so.FindProperty("_videoPanel").objectReferenceValue = videoPanel;
             so.FindProperty("_cookingModeInputGate").objectReferenceValue = inputGate;
             so.FindProperty("_panelPlacement").objectReferenceValue = panelPlacement;
-            so.FindProperty("_placementPanel").objectReferenceValue = placementPanel;
             so.FindProperty("_placementMenuPanel").objectReferenceValue = placementMenuPanel;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
@@ -479,10 +516,13 @@ namespace KitchenXR.App.Editor
         ///     Left Hand／Right Hand の下に `Palm` がある）
         ///   - 追従の設定2つ（XRI の Hands Interaction Demo サンプルの DatumPresets）。
         ///     **無いと HandMenu は OnEnable で自分を無効にする**
-        ///   - 板そのもの（ここで作る UI Toolkit の小さな板）
+        ///   - 板そのもの（ここで作る UI Toolkit の板）
         ///
-        /// **どれか1つでも欠けたら作らない。** 手のひらメニューは実機でしか確かめられないので、
-        /// レシピ／一覧の板の頭の「配置」（2度押し）を確実な入り口として必ず残してある。
+        /// **どれか1つでも欠けたら作らない。**
+        /// 2026-09-13 から配置の「保存・元に戻す・板を手元に・やめる」も全部この板に載っているので、
+        /// 手のひらメニューが無いと**配置モードから出られない**。そのため
+        /// <c>Bootstrap</c> は、この板が挿さっていなければ配置モードへ入らない
+        /// （レシピ／一覧の板の頭の「配置」を押しても何も起きず、ログに残る）。
         /// </summary>
         private static PlacementMenuPanel AttachHandMenu(Scene scene, PanelSettings panelSettings)
         {
@@ -495,7 +535,7 @@ namespace KitchenXR.App.Editor
             {
                 Debug.LogWarning(
                     "[KitchenXR] 手のひらメニューに要るもの（左右の Palm・追従の設定）が揃わないので作りません。"
-                    + "「配置」はレシピ／一覧の板の頭の釦（2度押し）から入れます。");
+                    + "配置の操作は全部この板に載っているので、このままだと配置モードは使えません。");
                 return null;
             }
 
@@ -536,6 +576,18 @@ namespace KitchenXR.App.Editor
             scenes.RemoveAll(s => s.path == KitchenScenePath);
             scenes.Insert(0, new EditorBuildSettingsScene(KitchenScenePath, true));
             EditorBuildSettings.scenes = scenes.ToArray();
+        }
+
+        /// <summary>診断のログ用。rig の中のどこに居る Interactor かを見せる。</summary>
+        private static string HierarchyPath(Transform t)
+        {
+            var path = t.name;
+            for (var p = t.parent; p != null; p = p.parent)
+            {
+                path = p.name + "/" + path;
+            }
+
+            return path;
         }
 
         private static Transform FindDeepChild(Scene scene, string name)

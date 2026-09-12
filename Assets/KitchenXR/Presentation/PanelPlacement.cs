@@ -31,6 +31,13 @@ namespace KitchenXR.Presentation
     ///          **調理の板の UI は効かない**（誤って「次へ」が進まない）
     ///   出る   「保存」→ 全部の板を <see cref="IAnchorStore"/> と控えへ → 調理モードへ戻る
     ///          「元に戻す」→ 入る前の位置へ／「やめる」→ 元に戻して調理モードへ
+    ///
+    /// 2026-09-13 主人の実機確認（v1.0.7）「メインパネルが移動（つかむことすら）できないことがある」:
+    /// 鍵1つに重ねた2枚（レシピと一覧）のうち、**掴む仕掛けを leader に付けていた**のが元。
+    /// 起動直後に見えているのは一覧の板なので、主人が掴もうとした板（一覧）には
+    /// <see cref="XRGrabInteractable"/> が無く、同じ場所に居る見えない板（レシピ）に付いていた。
+    /// 2枚のコライダーは完全に重なっているので、どちらが引き当てられるかは運任せになる。
+    /// 今は**見えている板を取っ手役（Entry.Handle）に選び、残りは引っ込める**。
     /// </summary>
     public sealed class PanelPlacement : MonoBehaviour
     {
@@ -204,15 +211,21 @@ namespace KitchenXR.Presentation
             _poseBeforePlacement.Clear();
             foreach (var entry in _entries)
             {
-                _poseBeforePlacement[entry.Key] = WorldPoseOf(entry.Leader);
-
-                // 動かす対象は全部見えていないと置けない。一覧のように「今は引っ込んでいる板」は
-                // 取っ手役（leader）だけを出し、付いていく板は隠したままにする。
+                // 動かす対象は1枚だけ出す。**見えている板**を取っ手役に選び、同じ鍵の残りは
+                // 引っ込める——重ねて置いた2枚（レシピと一覧）のコライダーは完全に一致するので、
+                // 両方出したままだとどちらが掴まれるか運任せになる（v1.0.7 の不具合）。
                 entry.RememberVisibility();
-                PanelVisibility.SetVisible(entry.Leader.gameObject, true);
+                entry.Handle = entry.PickVisible();
+
+                _poseBeforePlacement[entry.Key] = WorldPoseOf(entry.Grip);
+
+                foreach (var panel in entry.All)
+                {
+                    PanelVisibility.SetVisible(panel.gameObject, panel == entry.Handle);
+                }
 
                 SetGrabbable(entry, true);
-                SetFrameVisible(entry.Leader.gameObject, true);
+                SetFrameVisible(entry.Grip.gameObject, true);
             }
 
             _policy?.SetMode(HandInputMode.PlacementMode);
@@ -264,7 +277,9 @@ namespace KitchenXR.Presentation
                     break;
                 }
 
-                var world = WorldPoseOf(entry.Leader);
+                // 動かしたのは取っ手役の板。配置モード中は leader が引っ込んでいることもある
+                // （起動直後は一覧の板が取っ手役）ので、覚えるのは取っ手役の姿。
+                var world = WorldPoseOf(entry.Grip);
 
                 if (_anchors != null)
                 {
@@ -303,12 +318,13 @@ namespace KitchenXR.Presentation
 
             foreach (var entry in _entries)
             {
-                SetFrameVisible(entry.Leader.gameObject, false);
+                SetFrameVisible(entry.Grip.gameObject, false);
                 SetGrabbable(entry, false);
 
-                // 付いていく板を取っ手役に揃える（一覧はレシピと同じ場所・同じ向き）。
-                ApplyPose(entry, WorldPoseOf(entry.Leader));
+                // 残りの板を取っ手役に揃える（一覧はレシピと同じ場所・同じ向き）。
+                ApplyPose(entry, WorldPoseOf(entry.Grip));
 
+                entry.Handle = null;
                 entry.RestoreVisibility();
             }
 
@@ -328,7 +344,7 @@ namespace KitchenXR.Presentation
         /// </summary>
         private static void SetGrabbable(Entry entry, bool grabbable)
         {
-            var go = entry.Leader.gameObject;
+            var go = entry.Grip.gameObject;
             var simple = go.GetComponent<XRSimpleInteractable>();
 
             if (grabbable)
@@ -582,6 +598,42 @@ namespace KitchenXR.Presentation
             public string Key { get; }
             public Transform Leader { get; }
             public List<Transform> Followers { get; } = new List<Transform>();
+
+            /// <summary>
+            /// 配置モードの間だけ決まる「掴む板」。入るときに**見えている板**を選ぶ
+            /// （起動直後は一覧の板、調理中はレシピの板）。配置モードの外では null。
+            /// </summary>
+            public Transform Handle { get; set; }
+
+            /// <summary>掴む板（配置モードの外や、取っ手役が決まっていなければ leader）。</summary>
+            public Transform Grip => Handle != null ? Handle : Leader;
+
+            /// <summary>この鍵に結ばれた板を全部（取っ手役 ＋ 付いていく板）。</summary>
+            public IEnumerable<Transform> All
+            {
+                get
+                {
+                    yield return Leader;
+                    foreach (var follower in Followers)
+                    {
+                        yield return follower;
+                    }
+                }
+            }
+
+            /// <summary>今見えている板（無ければ leader）。配置モードの取っ手役に選ぶ。</summary>
+            public Transform PickVisible()
+            {
+                foreach (var panel in All)
+                {
+                    if (PanelVisibility.IsVisible(panel))
+                    {
+                        return panel;
+                    }
+                }
+
+                return Leader;
+            }
 
             public bool SimpleInteractableWasEnabled { get; set; } = true;
 

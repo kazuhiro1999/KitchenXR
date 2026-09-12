@@ -79,6 +79,8 @@
 .recipe-image-area {
     flex-shrink: 0;
     align-self: flex-start;
+    /* 主人（2026-09-13）「画像が少し大きすぎ」——四方に 1cm の余白（RecipePanel.ImageInsetUnits と対）。 */
+    margin: 5px;
     background-color: var(--color-chip-bg);
     background-size: contain;
     background-repeat: no-repeat;

@@ -53,7 +53,7 @@ namespace KitchenXR.Tests.EditMode
         }
 
         [Test]
-        public void 二回目は同梱を見ずに手元のものを読む()
+        public void 手元があれば手元を読む_控えが無ければ主人のものを守る()
         {
             var reader = new FakeBundledTextReader(@"[{""title"":""見本"",""video_id"":""abcdefghijk""}]");
             var store = Create(reader);
@@ -65,7 +65,7 @@ namespace KitchenXR.Tests.EditMode
             var items = store.LoadAsync().GetAwaiter().GetResult();
 
             Assert.AreEqual("主人が入れたもの", items[0].Title, "手元のものより同梱が優先されています。");
-            Assert.AreEqual(1, reader.ReadCount, "手元にあるのに同梱を読みに行っています。");
+            Assert.IsTrue(File.Exists(store.BundledCopyPath), "同梱の控えが作られていません。");
         }
 
         [Test]
@@ -105,6 +105,31 @@ namespace KitchenXR.Tests.EditMode
                 ReadCount++;
                 return UniTask.FromResult(_content);
             }
+        }
+
+        [Test]
+        public void 同梱が新しくなり端末側が手つかずなら入れ替える()
+        {
+            var first = new FakeBundledTextReader(@"[{""title"":""見本"",""video_id"":""abcdefghijk""}]");
+            Create(first).LoadAsync().GetAwaiter().GetResult();
+
+            var second = new FakeBundledTextReader(@"[{""title"":""新しい見本"",""video_id"":""bbbbbbbbbbb""}]");
+            var items = Create(second).LoadAsync().GetAwaiter().GetResult();
+
+            Assert.AreEqual("新しい見本", items[0].Title, "APK を入れ替えたのに古い一覧のままです（主人の 2026-09-13 の指摘）。");
+        }
+
+        [Test]
+        public void 同梱が新しくなっても端末側を直していれば端末側を守る()
+        {
+            var first = new FakeBundledTextReader(@"[{""title"":""見本"",""video_id"":""abcdefghijk""}]");
+            Create(first).LoadAsync().GetAwaiter().GetResult();
+            File.WriteAllText(LocalPath, @"[{""title"":""主人が入れたもの"",""video_id"":""ZZZZZZZZZZZ""}]");
+
+            var second = new FakeBundledTextReader(@"[{""title"":""新しい見本"",""video_id"":""bbbbbbbbbbb""}]");
+            var items = Create(second).LoadAsync().GetAwaiter().GetResult();
+
+            Assert.AreEqual("主人が入れたもの", items[0].Title, "端末側で直したものが同梱に上書きされました。");
         }
     }
 }

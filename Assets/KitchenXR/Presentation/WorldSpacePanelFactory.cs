@@ -75,9 +75,15 @@ namespace KitchenXR.Presentation
         /// 既にある <paramref name="go"/> をワールド空間の押せる板に仕立てる。
         /// Transform の位置と向きは呼び出し側の責任（ここでは縮尺だけ合わせる）。
         /// </summary>
+        /// <param name="interactionLayers">
+        /// 板が名乗る XRI の Interaction Layer。既定（null）は Default の1枚だけで、
+        /// 今までどおり「指で押せる・配置モードで掴める」板になる。
+        /// 動画の板だけは Default ＋ Video を名乗る——調理中も Ray で操作させるため
+        /// （設計 §11 追補 2026-09-13。<see cref="CookingModeInputGate"/> に理由を書いた）。
+        /// </param>
         public static UIDocument Configure(
             GameObject go, PanelSettings panelSettings, VisualTreeAsset uxml,
-            float widthUnits, float heightUnits)
+            float widthUnits, float heightUnits, int? interactionLayers = null)
         {
             go.transform.localScale = new Vector3(PanelLocalScale, PanelLocalScale, PanelLocalScale);
 
@@ -120,6 +126,11 @@ namespace KitchenXR.Presentation
             {
                 interactable.colliders.Clear();
                 interactable.colliders.Add(collider);
+            }
+
+            if (interactionLayers.HasValue)
+            {
+                interactable.interactionLayers = interactionLayers.Value;
             }
 
             var pokeFilter = go.GetComponent<XRPokeFilter>();

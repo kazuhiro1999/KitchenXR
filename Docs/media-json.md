@@ -38,3 +38,9 @@ adb push media.json /sdcard/Android/data/com.kazuhiro.kitchenxr/files/media.json
 再生を頼んで約 1 秒しても YouTube が「再生中」と返さないときは、板が WebView の中央を一度
 タップする（Android の WebView は人の操作を伴わない再生を拒むことがあるため。1 行目の末尾に
 「タップ n」と出る）。それでも始まらないときは、この 3 行を読み上げていただければ絞り込める。
+
+**同梱を直して APK を入れ直したとき（2026-09-13 改め）。** 起動のたびに同梱も読み、前回写した控え
+（`media.bundled.json`、`media.json` と同じ場所）と違えば「APK 側が変わった」と見なす。端末側の
+`media.json` が控えと同じ（誰も直していない）なら新しい同梱で置き換え、違う（`adb push` で直した）
+なら端末側を残す。両方直したときは端末側が勝つので、同梱の変更を反映したければ端末側の
+`media.json` を一度消す。

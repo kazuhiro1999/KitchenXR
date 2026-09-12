@@ -60,8 +60,14 @@ namespace KitchenXR.Presentation.Video
         public const float PortraitWidthUnits = 156f;   // ≒ 31.2cm
         public const float PortraitHeightUnits = 296f;  // ≒ 59.2cm
 
-        /// <summary>絵を板の面より手前へ出す量（板のローカル単位。負が手前）。実寸 0.6mm。</summary>
-        private const float SurfaceOffset = -0.003f;
+        /// <summary>
+        /// 絵を板の面より手前へ出す量（板のローカル単位。負が手前）。実寸 1cm。
+        /// v1.0.7 までは 0.6mm だったが、主人の実機確認で「薄白いカバーがかかって鮮明でない」——
+        /// 板（UI Toolkit）と絵（uGUI）はどちらも深度を書かない半透明なので、描く順は
+        /// カメラからの距離で決まる。0.6mm では板の方が後に描かれて白 85% が絵に乗った。
+        /// 1cm 離せば絵が確実に手前になる。当たり判定は板の面のままなので、押し心地は変わらない。
+        /// </summary>
+        private const float SurfaceOffset = -0.05f;
 
         /// <summary>
         /// プレハブの根の縮尺（板のローカル単位／Canvas px）。
@@ -340,6 +346,11 @@ namespace KitchenXR.Presentation.Video
         /// </summary>
         public void ApplyAspect(VideoAspect aspect)
         {
+            // 主人の実機確認（v1.0.7）「向きを変えると板の位置が変わり、9:16 が壁の奥へ行った」。
+            // 覚えていた下辺の中央（起動時に Bootstrap が置いた点）は、配置モードやアンカーの復元で
+            // 板が動いたあとは古い。だから寸法を変える**直前に今の Transform から**取り直す。
+            RememberBottomCenterFromTransform();
+
             Aspect = aspect;
 
             var width = aspect == VideoAspect.Portrait ? PortraitWidthUnits : LandscapeWidthUnits;
@@ -373,6 +384,30 @@ namespace KitchenXR.Presentation.Video
             _anchored = true;
             ApplyAnchor();
             LayoutSurface();
+        }
+
+        /// <summary>
+        /// 今の位置・向き・寸法から下辺の中央を取り直す。
+        /// まだ一度も置かれていない（試験や Awake の最中）なら何もしない——
+        /// 寸法が既定値のままで計算すると、板が原点からずれる。
+        /// </summary>
+        private void RememberBottomCenterFromTransform()
+        {
+            if (!_anchored || _document == null)
+            {
+                return;
+            }
+
+            var size = _document.worldSpaceSize;
+            if (size.x <= 0f || size.y <= 0f)
+            {
+                return;
+            }
+
+            _rotation = transform.rotation;
+            var right = _rotation * Vector3.right;
+            var up = _rotation * Vector3.up;
+            _bottomCenter = transform.position + right * (ToMeters(size.x) / 2f) - up * ToMeters(size.y);
         }
 
         private void ApplyAnchor()

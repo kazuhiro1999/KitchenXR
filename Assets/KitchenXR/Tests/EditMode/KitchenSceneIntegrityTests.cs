@@ -507,9 +507,10 @@ namespace KitchenXR.Tests.EditMode
         // ---------------------------------------------------------------- 配置モード（P2）
 
         /// <summary>
-        /// 板を置き直す仕掛け一式がシーンに在ること（ROADMAP P2・設計 §4.4）。
-        /// 手のひらメニューは実機でしか確かめられないので**必須にしない**——
-        /// レシピ／一覧の板の頭の「配置」（2度押し）が確実な入り口として残っている。
+        /// 板を置き直す仕掛け一式がシーンに在ること（ROADMAP P2・設計 §4.4・§11 追補 2026-09-13）。
+        ///
+        /// 2026-09-13 から配置の操作は**全部 手のひらメニュー**（頭の前に出していた操作板は廃止）。
+        /// 保存もやめるもこの板にしか無いので、無ければ配置モードから出られない＝必須にする。
         /// </summary>
         [Test]
         public void 配置モードの仕掛けがシーンに在る()
@@ -521,15 +522,87 @@ namespace KitchenXR.Tests.EditMode
             Assert.IsNotNull(so.FindProperty("_originTransform").objectReferenceValue,
                 "控え（panels.json）の基準になる XR Origin が挿さっていません（相対で覚えられません）。");
 
-            var panel = Object.FindFirstObjectByType<PlacementPanel>(FindObjectsInactive.Include);
-            Assert.IsNotNull(panel, "配置モードの操作板（保存・元に戻す・やめる）がありません。");
+            var menu = Object.FindFirstObjectByType<PlacementMenuPanel>(FindObjectsInactive.Include);
+            Assert.IsNotNull(menu,
+                "手のひらメニューがありません。配置の「保存」「やめる」が押せず、配置モードから出られません。");
 
-            var doc = panel.GetComponent<UIDocument>();
-            Assert.IsNotNull(doc, "PlacementPanel に UIDocument がありません。");
-            Assert.IsNotNull(panel.GetComponent<XRSimpleInteractable>(),
-                "PlacementPanel に XRSimpleInteractable がありません（指で押せません）。");
+            var doc = menu.GetComponent<UIDocument>();
+            Assert.IsNotNull(doc, "手のひらメニューに UIDocument がありません。");
+            Assert.IsNotNull(menu.GetComponent<XRSimpleInteractable>(),
+                "手のひらメニューに XRSimpleInteractable がありません（指で押せません）。");
             Assert.AreEqual(WorldSpacePanelFactory.PanelPivot, doc.pivot,
-                "PlacementPanel の原点が左上でないと、板とコライダーが半分ずれます。");
+                "手のひらメニューの原点が左上でないと、板とコライダーが半分ずれます。");
+        }
+
+        /// <summary>
+        /// 配置の操作が**全部**手のひらメニューの uxml に在ること（主人「配置の確定等も手元に」）。
+        /// </summary>
+        [Test]
+        public void 配置の操作が手のひらメニューに揃っている()
+        {
+            var text = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(),
+                "Assets/KitchenXR/Presentation/UI/PlacementMenu.uxml"));
+
+            foreach (var name in new[]
+                     {
+                         "placementButton", "saveButton", "undoButton", "recallButton", "cancelButton",
+                         "hintLabel", PlacementMenuPanel.IdleGroupName, PlacementMenuPanel.PlacingGroupName,
+                     })
+            {
+                StringAssert.Contains($"name=\"{name}\"", text,
+                    $"PlacementMenu.uxml に {name} がありません（配置モードから出られなくなります）。");
+            }
+        }
+
+        /// <summary>
+        /// 動画の板だけが Video の Interaction Layer を名乗ること（設計 §11 追補 2026-09-13。
+        /// 主人「Youtube プレイヤーだけレイ操作を有効化してほしい」）。
+        /// Default を落としていないことも一緒に見る——落とすとポークも配置の掴みも効かなくなる。
+        /// </summary>
+        [Test]
+        public void 動画の板だけがVideoの層を名乗る()
+        {
+            var videoBit = 1 << CookingModeInputGate.VideoInteractionLayer;
+
+            foreach (var doc in AllPanelDocuments())
+            {
+                var interactable = doc.GetComponent<XRSimpleInteractable>();
+                Assert.IsNotNull(interactable, $"{doc.name} に XRSimpleInteractable がありません。");
+
+                var layers = (int)interactable.interactionLayers;
+                var isVideo = doc.name == "VideoPanel";
+
+                Assert.AreEqual(isVideo, (layers & videoBit) != 0,
+                    isVideo
+                        ? "動画の板が Video の層を名乗っていません（調理中にレイで操作できません）。"
+                        : $"{doc.name} が Video の層を名乗っています（調理中にレイが当たってしまいます）。");
+
+                Assert.AreNotEqual(0, layers & 1,
+                    $"{doc.name} が Default の層を外しています（ポークも配置の掴みも効かなくなります）。");
+            }
+        }
+
+        /// <summary>
+        /// 「レイを分ける」ための2つの層が、設定の側に**名前付きで**在ること。
+        /// どちらも番号で使うので、名前が消えたり別の意味で使い回されたりすると黙って壊れる。
+        /// </summary>
+        [Test]
+        public void レイを分ける層が設定に在る()
+        {
+            Assert.AreEqual(CookingModeInputGate.OffRayPhysicsLayerName,
+                LayerMask.LayerToName(CookingModeInputGate.OffRayPhysicsLayer),
+                $"物理層 {CookingModeInputGate.OffRayPhysicsLayer} 番が別のものになっています"
+                + "（調理中にレイがレシピの板へ届いてしまいます）。");
+
+            // XRI の Interaction Layer は InteractionLayerSettings（Resources から読む）が持つ。
+            var settings = Resources.Load("InteractionLayerSettings");
+            Assert.IsNotNull(settings, "InteractionLayerSettings が Resources にありません。");
+
+            var names = new SerializedObject(settings).FindProperty("m_LayerNames");
+            Assert.AreEqual("Video",
+                names.GetArrayElementAtIndex(CookingModeInputGate.VideoInteractionLayer).stringValue,
+                $"Interaction Layer {CookingModeInputGate.VideoInteractionLayer} 番が Video ではありません"
+                + "（動画の板を調理中にレイで操作できません）。");
         }
 
         [Test]
@@ -541,13 +614,14 @@ namespace KitchenXR.Tests.EditMode
             var so = new SerializedObject(bootstrap);
             Assert.IsNotNull(so.FindProperty("_panelPlacement").objectReferenceValue,
                 "Bootstrap に PanelPlacement が挿さっていません（起動しても板の位置が戻りません）。");
-            Assert.IsNotNull(so.FindProperty("_placementPanel").objectReferenceValue,
-                "Bootstrap に配置モードの操作板が挿さっていません（配置モードから出られません）。");
+            Assert.IsNotNull(so.FindProperty("_placementMenuPanel").objectReferenceValue,
+                "Bootstrap に手のひらメニューが挿さっていません（配置モードから出られません）。");
         }
 
         /// <summary>
         /// 「配置」の釦が**両方の板**（調理中のレシピの板と、起動直後の一覧の板）にあること。
-        /// 手のひらメニューが実機で出なくても、ここから必ず入れる。
+        /// 手のひらメニューを出すのに手を返すのが面倒な場面（両手が塞がっている等）の入り口。
+        /// 出口は手のひらメニューにしか無いので、こちらは入り口の控えという位置付け。
         /// </summary>
         [Test]
         public void 配置の釦がレシピと一覧の板にある()

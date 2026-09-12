@@ -40,9 +40,8 @@ namespace KitchenXR.App
         [SerializeField] private VideoPanel _videoPanel;
         [SerializeField] private CookingModeInputGate _cookingModeInputGate;
 
-        [Header("配置モード（P2。設計 §4.4）")]
+        [Header("配置モード（P2。設計 §4.4。操作は全部 手のひらメニュー側）")]
         [SerializeField] private PanelPlacement _panelPlacement;
-        [SerializeField] private PlacementPanel _placementPanel;
         [SerializeField] private PlacementMenuPanel _placementMenuPanel;
 
         [Header("初期配置（設計 §9: 頭の前0.8m・目線より少し下に3枚）")]
@@ -128,6 +127,10 @@ namespace KitchenXR.App
             if (_placementMenuPanel != null)
             {
                 _placementMenuPanel.PlacementRequested += HandlePlacementRequested;
+                _placementMenuPanel.SaveRequested += HandlePlacementSave;
+                _placementMenuPanel.UndoRequested += HandlePlacementUndo;
+                _placementMenuPanel.CancelRequested += HandlePlacementCancel;
+                _placementMenuPanel.RecallRequested += HandlePlacementRecall;
             }
 
             if (_cookingModeInputGate != null)
@@ -143,9 +146,8 @@ namespace KitchenXR.App
 
         private void Start()
         {
-            // 念のためもう一度（Awake の時点で UIDocument の root が出来ていない構成もありうる）。
-            // 配置の板は配置モードの間だけ出る。
-            PanelVisibility.SetVisible(_placementPanel, false);
+            // 手のひらメニューは「配置」だけを出した状態から始める（配置モードの外）。
+            _placementMenuPanel?.SetPlacing(false);
 
             // 板の縮尺は控え（panels.json）にもアンカーにも入っていない（位置と向きだけ）ので、
             // 起動のたびにここで当て直す。文字のクラスも板の root が出来てからでないと付かない。
@@ -191,13 +193,10 @@ namespace KitchenXR.App
             if (_placementMenuPanel != null)
             {
                 _placementMenuPanel.PlacementRequested -= HandlePlacementRequested;
-            }
-
-            if (_placementPanel != null)
-            {
-                _placementPanel.SaveRequested -= HandlePlacementSave;
-                _placementPanel.UndoRequested -= HandlePlacementUndo;
-                _placementPanel.CancelRequested -= HandlePlacementCancel;
+                _placementMenuPanel.SaveRequested -= HandlePlacementSave;
+                _placementMenuPanel.UndoRequested -= HandlePlacementUndo;
+                _placementMenuPanel.CancelRequested -= HandlePlacementCancel;
+                _placementMenuPanel.RecallRequested -= HandlePlacementRecall;
             }
 
             if (_panelPlacement != null)
@@ -631,15 +630,11 @@ namespace KitchenXR.App
             _panelPlacement.Register(PanelPlacement.TimerKey, _timerPanel);
             _panelPlacement.Register(PanelPlacement.VideoKey, _videoPanel);
 
-            _panelPlacement.PlacementFinished += HandlePlacementFinished;
+            // 調理中もレイで操作してよいのは動画の板だけ（主人の指示。設計 §11 追補）。
+            // Register で全ての板が gate に登録された**後**に決める。
+            _cookingModeInputGate?.AllowRayInCookingMode(_videoPanel);
 
-            if (_placementPanel != null)
-            {
-                _placementPanel.SaveRequested += HandlePlacementSave;
-                _placementPanel.UndoRequested += HandlePlacementUndo;
-                _placementPanel.CancelRequested += HandlePlacementCancel;
-                PanelVisibility.SetVisible(_placementPanel, false);
-            }
+            _panelPlacement.PlacementFinished += HandlePlacementFinished;
         }
 
         /// <summary>覚えている場所へ戻す（アンカー → 控え → 既定）。</summary>
@@ -655,8 +650,11 @@ namespace KitchenXR.App
 
         /// <summary>
         /// 配置モードへ入る（手のひらメニュー、またはレシピ／一覧の板の「配置」2度押し）。
-        /// 操作の板は**その場で頭の前に**出す——板を動かしている間も手が届く場所に居てほしいので、
-        /// 決まった場所に置かない。
+        ///
+        /// **操作の板を空間に出さない**（2026-09-13・設計 §11 追補「配置とレイ」。主人の指示
+        /// 「配置の確定等も手元に表示してほしい」）。頭の前に出していた 200×90 の板は、
+        /// レシピ／一覧の板と重なって当たり判定を奪い合い、レイでも指でも押せなくなっていた。
+        /// 代わりに手のひらメニューを「保存・元に戻す・板を手元に・やめる」へ差し替える。
         /// </summary>
         private void HandlePlacementRequested()
         {
@@ -665,17 +663,23 @@ namespace KitchenXR.App
                 return;
             }
 
-            PlacePlacementPanelInFrontOfHead();
-            PanelVisibility.SetVisible(_placementPanel, true);
-            _placementPanel?.SetHint("板を掴んで動かし、終わったら「保存」");
+            // 出口（保存・やめる）は手のひらメニューにしか無い。板が無いまま入ると
+            // 配置モードから二度と出られなくなるので、入らない（設計 §7 の「行き止まりを作らない」）。
+            if (_placementMenuPanel == null)
+            {
+                Debug.LogWarning(
+                    "[KitchenXR] 手のひらメニューが無いので配置モードへ入りません（出口がありません）。");
+                return;
+            }
 
+            _placementMenuPanel.SetPlacing(true);
             _panelPlacement.Enter();
         }
 
         private void HandlePlacementUndo()
         {
             _panelPlacement?.Undo();
-            _placementPanel?.SetHint("入る前の位置に戻しました");
+            _placementMenuPanel?.SetHint("入る前の位置に戻しました");
         }
 
         private void HandlePlacementCancel() => _panelPlacement?.Cancel();
@@ -687,7 +691,7 @@ namespace KitchenXR.App
                 return;
             }
 
-            _placementPanel?.SetHint("覚えています…");
+            _placementMenuPanel?.SetHint("覚えています…");
             SavePlacementAsync(_cts.Token).Forget();
         }
 
@@ -696,44 +700,32 @@ namespace KitchenXR.App
             await _panelPlacement.SaveAsync(token);
         }
 
-        /// <summary>配置モードを出た（保存でも取り消しでも）。操作の板を引っ込める。</summary>
-        private void HandlePlacementFinished()
+        /// <summary>
+        /// 「板を手元に」——迷子の板の救済（設計 §11 追補 2026-09-13。主人「壁の奥に行って
+        /// しまったらつかめないので何とかしたい」）。
+        ///
+        /// 全部の板を、**今の頭の向き**から決めた初期配置（起動時と同じ並び）へ戻す。
+        /// 壁の奥・床の下・背中側へ行った板はこれで必ず目の前に戻る。
+        /// 配置モードは**続いたまま**なので、そのまま掴み直して「保存」で確定できる。
+        ///
+        /// 設計 §7 の「取り消せない操作は2度押し」に照らして、これは**1度押しでよい**——
+        /// 「元に戻す」で配置モードに入る前の位置へ戻せる（＝取り消せる）。
+        /// </summary>
+        private void HandlePlacementRecall()
         {
-            PanelVisibility.SetVisible(_placementPanel, false);
+            if (_panelPlacement == null || !_panelPlacement.IsPlacing)
+            {
+                return;
+            }
+
+            PlaceInitialPanels();
+            _placementMenuPanel?.SetHint("板を手元に並べ直しました");
         }
 
-        /// <summary>操作の板を頭の前 0.7m・目線の少し下へ。</summary>
-        private void PlacePlacementPanelInFrontOfHead()
+        /// <summary>配置モードを出た（保存でも取り消しでも）。手のひらメニューを「配置」へ戻す。</summary>
+        private void HandlePlacementFinished()
         {
-            if (_placementPanel == null)
-            {
-                return;
-            }
-
-            var head = _headTransform != null ? _headTransform : Camera.main != null ? Camera.main.transform : null;
-            if (head == null)
-            {
-                return;
-            }
-
-            var flatForward = head.forward;
-            flatForward.y = 0f;
-            if (flatForward.sqrMagnitude < 1e-6f)
-            {
-                flatForward = Vector3.forward;
-            }
-
-            flatForward.Normalize();
-
-            var rotation = Quaternion.LookRotation(flatForward, Vector3.up);
-
-            // 板の原点は左上なので、中央に来るよう左へ半分ずらす（操作の板は 200px ≒ 40cm 幅）。
-            const float placementWidthMeters = 0.40f;
-            var right = rotation * Vector3.right;
-            var position = head.position + flatForward * 0.7f + Vector3.down * 0.35f
-                           - right * (placementWidthMeters / 2f);
-
-            _placementPanel.transform.SetPositionAndRotation(position, rotation);
+            _placementMenuPanel?.SetPlacing(false);
         }
 
         // ---------------------------------------------------------------- 板の出し入れ
