@@ -1,0 +1,7 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="theme.uss" />
+    <ui:Style src="HazardDelete.uss" />
+    <ui:VisualElement name="root" class="root-panel hazard-delete-root">
+        <ui:Button name="deleteButton" text="消す" class="kitchen-button kitchen-button--secondary hazard-delete-button" />
+    </ui:VisualElement>
+</ui:UXML>

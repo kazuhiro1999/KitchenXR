@@ -1,0 +1,25 @@
+/*
+ * 注意の板の「消す」（34×24 = 6.8×4.8cm）。注意の板の右横に、配置モードの間だけ出る別の板。
+ *
+ * 注意の板そのものに載せられない理由は HazardPanel.uss に書いた（掴む相手と押す釦が
+ * 同じコライダーを奪い合う）。釦は 20px（4cm）角の下限を満たす。2度押し——消すのは
+ * 取り消せない操作なので。
+ */
+
+.hazard-delete-root {
+    padding: 2px;
+    justify-content: center;
+    align-items: center;
+}
+
+.hazard-delete-button {
+    min-width: 26px;
+    min-height: var(--button-min);
+    margin: 0px;
+}
+
+/* 1度目を押して2度目を待っている間（TwoPressButton が付け外しする）。 */
+.hazard-delete-button--armed {
+    background-color: var(--color-alarm-bg);
+    color: var(--color-alarm);
+}

@@ -13,6 +13,7 @@ using UnityEngine.XR.Interaction.Toolkit.Interactors;
 using UnityEngine.XR.Interaction.Toolkit.Interactors.Casters;
 using UnityEngine.XR.Interaction.Toolkit.UI;
 using KitchenXR.Presentation;
+using KitchenXR.Presentation.Hazard;
 using KitchenXR.Presentation.Video;
 
 namespace KitchenXR.App.Editor
@@ -67,11 +68,11 @@ namespace KitchenXR.App.Editor
         private const float VideoWidthUnits = VideoPanel.LandscapeWidthUnits;
         private const float VideoHeightUnits = VideoPanel.LandscapeHeightUnits;
 
-        // 手元のメニュー（配置の操作を全部ここへ集めてある）。
-        // 「保存・元に戻す・板を手元に・やめる」の4つが入るよう 130×92（26cm×18.4cm）。
+        // 手元のメニュー（配置の操作を全部ここへ集めてある）。ここは調理中（「配置」1つ）の
+        // 寸法で、頁を変えると PlacementMenuPanel が高さを変える（プリセットの一覧は縦に5行）。
         // 中身の寸法の根拠は PlacementMenu.uss に書いた。
-        private const float PlacementMenuWidthUnits = 130f;
-        private const float PlacementMenuHeightUnits = 92f;
+        private const float PlacementMenuWidthUnits = PlacementMenuPanel.WidthUnits;
+        private const float PlacementMenuHeightUnits = PlacementMenuPanel.IdleHeightUnits;
 
         // 手首の釦。22×22 ≒ 4.4cm 角——「押す釦は最小 4cm 角」をちょうど満たす
         // 一番小さい板（WristToggle.uss）。
@@ -83,6 +84,9 @@ namespace KitchenXR.App.Editor
 
         public const string WristToggleObjectName = "WristToggle";
         public const string PlacementMenuObjectName = "PlacementMenu";
+
+        /// <summary>注意の板と領域を載せる根（板は実行時に作るので、ここには空の根だけ）。</summary>
+        public const string HazardRootObjectName = "Kitchen Hazards";
 
         /// <summary>指先の光る点を載せる子の名前（左右の Poke Interactor の下に1つずつ）。</summary>
         public const string FingertipCursorObjectName = "Fingertip Cursor";
@@ -162,10 +166,13 @@ namespace KitchenXR.App.Editor
             // 揃わなければ黙って作らない——レシピ／一覧の板の頭の「配置」（2度押し）が確実な入り口。
             var placementMenuPanel = AttachWristMenu(scene, panelSettings, out var wristMenu);
 
+            // 火気の注意（注意の板とコンロの領域）。板も線も実行時に作るので、根と部品だけ置く。
+            var hazards = AttachHazards(scene, panelSettings);
+
             EnsureUiToolkitInput(scene);
 
             CreateBootstrap(recipeListPanel, recipePanel, ingredientsPanel, timerPanel, videoPanel, inputGate,
-                panelPlacement, placementMenuPanel, wristMenu);
+                panelPlacement, placementMenuPanel, wristMenu, hazards);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -610,7 +617,8 @@ namespace KitchenXR.App.Editor
         private static void CreateBootstrap(
             RecipeListPanel recipeListPanel, RecipePanel recipePanel, IngredientsPanel ingredientsPanel,
             TimerPanel timerPanel, VideoPanel videoPanel, CookingModeInputGate inputGate,
-            PanelPlacement panelPlacement, PlacementMenuPanel placementMenuPanel, WristMenu wristMenu)
+            PanelPlacement panelPlacement, PlacementMenuPanel placementMenuPanel, WristMenu wristMenu,
+            HazardParts hazards)
         {
             var go = new GameObject("Bootstrap");
             var bootstrap = go.AddComponent<Bootstrap>();
@@ -625,7 +633,120 @@ namespace KitchenXR.App.Editor
             so.FindProperty("_panelPlacement").objectReferenceValue = panelPlacement;
             so.FindProperty("_placementMenuPanel").objectReferenceValue = placementMenuPanel;
             so.FindProperty("_wristMenu").objectReferenceValue = wristMenu;
+            so.FindProperty("_hazardBoards").objectReferenceValue = hazards.Boards;
+            so.FindProperty("_hazardZones").objectReferenceValue = hazards.Zones;
+            so.FindProperty("_hazardProximity").objectReferenceValue = hazards.Proximity;
+
+            // 頭の Transform は注意の板の置き場と近さの判定にも要る（未指定なら Camera.main）。
+            var head = Object.FindFirstObjectByType<Camera>(FindObjectsInactive.Include);
+            so.FindProperty("_headTransform").objectReferenceValue =
+                head != null ? head.transform : null;
+
             so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>火気の注意の部品（<see cref="AttachHazards"/> が返す一組）。</summary>
+        private readonly struct HazardParts
+        {
+            public HazardParts(HazardBoards boards, HazardZones zones, HazardProximity proximity)
+            {
+                Boards = boards;
+                Zones = zones;
+                Proximity = proximity;
+            }
+
+            public HazardBoards Boards { get; }
+            public HazardZones Zones { get; }
+            public HazardProximity Proximity { get; }
+        }
+
+        /// <summary>
+        /// 火気の注意（注意の板とコンロの領域）。根1つに5つの部品を載せるだけで、
+        /// 板も床の線も実行時に作る——プリセットの数だけシーンに板を並べる作りにすると、
+        /// プリセットを1つ足すたびにシーンを組み直すことになる。
+        ///
+        /// レイ（Near-Far Interactor）は領域を囲むピンチに、Poke Interactor は手の位置に使う。
+        /// 拾えた数をログに出すのは、rig を差し替えたときに黙って 0 個になるのを防ぐため
+        /// （レイの線・指先カーソルと同じ流儀）。
+        /// </summary>
+        private static HazardParts AttachHazards(Scene scene, PanelSettings panelSettings)
+        {
+            var root = new GameObject(HazardRootObjectName);
+
+            var boards = root.AddComponent<HazardBoards>();
+            var drawing = root.AddComponent<HazardZoneDrawing>();
+            var zones = root.AddComponent<HazardZones>();
+            var sound = root.AddComponent<HazardSound>();
+            var proximity = root.AddComponent<HazardProximity>();
+
+            var xrOrigin = FindDeepChild(scene, "XR Origin (XR Rig)");
+            var head = FindDeepChild(scene, "Main Camera");
+
+            var rayLike = xrOrigin != null
+                ? xrOrigin.GetComponentsInChildren<NearFarInteractor>(true)
+                : System.Array.Empty<NearFarInteractor>();
+            var pokes = xrOrigin != null
+                ? xrOrigin.GetComponentsInChildren<XRPokeInteractor>(true)
+                : System.Array.Empty<XRPokeInteractor>();
+
+            if (rayLike.Length == 0 || pokes.Length == 0)
+            {
+                Debug.LogWarning(
+                    "[KitchenXR] rig の Interactor が拾えず、領域の作図か近さの判定が効きません"
+                    + $"（レイ {rayLike.Length} 個・ポーク {pokes.Length} 個）。");
+            }
+            else
+            {
+                Debug.Log(
+                    $"[KitchenXR] 火気の注意を配線しました（レイ {rayLike.Length} 個・"
+                    + $"ポーク {pokes.Length} 個）。");
+            }
+
+            var boardsSo = new SerializedObject(boards);
+            boardsSo.FindProperty("_panelSettings").objectReferenceValue = panelSettings;
+            boardsSo.FindProperty("_boardUxml").objectReferenceValue =
+                LoadUxml("Assets/KitchenXR/Presentation/UI/HazardPanel.uxml");
+            boardsSo.FindProperty("_deleteUxml").objectReferenceValue =
+                LoadUxml("Assets/KitchenXR/Presentation/UI/HazardDelete.uxml");
+            boardsSo.FindProperty("_headTransform").objectReferenceValue = head;
+            boardsSo.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(boards);
+
+            var drawingSo = new SerializedObject(drawing);
+            AssignArray(drawingSo.FindProperty("_interactors"), rayLike);
+            drawingSo.FindProperty("_headTransform").objectReferenceValue = head;
+            drawingSo.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(drawing);
+
+            var zonesSo = new SerializedObject(zones);
+            zonesSo.FindProperty("_originTransform").objectReferenceValue = xrOrigin;
+            zonesSo.FindProperty("_drawing").objectReferenceValue = drawing;
+            zonesSo.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(zones);
+
+            var proximitySo = new SerializedObject(proximity);
+            proximitySo.FindProperty("_zones").objectReferenceValue = zones;
+            proximitySo.FindProperty("_sound").objectReferenceValue = sound;
+            AssignArray(proximitySo.FindProperty("_hands"), pokes);
+            proximitySo.FindProperty("_headTransform").objectReferenceValue = head;
+            proximitySo.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(proximity);
+
+            return new HazardParts(boards, zones, proximity);
+        }
+
+        private static void AssignArray(SerializedProperty property, Object[] values)
+        {
+            if (property == null)
+            {
+                return;
+            }
+
+            property.arraySize = values.Length;
+            for (var i = 0; i < values.Length; i++)
+            {
+                property.GetArrayElementAtIndex(i).objectReferenceValue = values[i];
+            }
         }
 
         /// <summary>

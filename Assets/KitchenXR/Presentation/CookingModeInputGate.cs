@@ -107,6 +107,29 @@ namespace KitchenXR.Presentation
         }
 
         /// <summary>
+        /// 板を一覧から外す（注意の板を消したとき）。元の物理層へ戻してから忘れる——
+        /// 忘れるだけだと、消される直前の板が調理モードの層に取り残される。
+        /// </summary>
+        public void RemoveUiPanel(GameObject panel)
+        {
+            if (panel == null || !_uiPanels.Remove(panel))
+            {
+                return;
+            }
+
+            if (_panelHomeLayer.TryGetValue(panel, out var home))
+            {
+                panel.layer = home;
+                _panelHomeLayer.Remove(panel);
+            }
+
+            if (_rayReachableWhileCooking == panel)
+            {
+                _rayReachableWhileCooking = null;
+            }
+        }
+
+        /// <summary>
         /// 調理中もレイで操作してよい板を決める（動画の板）。
         /// この板だけは調理モードでも元の物理層に残る。
         /// Interaction Layer の側（Video を名乗らせる）は板を組み立てるときに決めてある

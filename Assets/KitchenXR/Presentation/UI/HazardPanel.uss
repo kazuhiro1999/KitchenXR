@@ -1,0 +1,57 @@
+/*
+ * 注意の板（100×60 = 20×12cm。1 UI px ≒ 2mm）。
+ *
+ * 触れない板なので釦は無い。遠目に「何の注意か」だけ伝わればよいので、上に色の帯（琥珀か赤）
+ * ＋ 記号 ＋ 題名、下に1〜2行の本文。絵文字は使わない——記号（▲／△）と帯の色で段を示す。
+ * 地は他の板と同じ白 85%（台所の中で浮かないこと）。
+ *
+ * 消すための釦はこの板には入っていない（HazardDelete.uxml の小さな別の板）。配置モードの間
+ * この板は掴む相手（XRGrabInteractable）になるので、同じコライダーに押せる釦を載せると
+ * 掴みと押しが引き当てを奪い合う。
+ */
+
+.hazard-root {
+    padding: 0px;
+    overflow: hidden;
+}
+
+/* 帯の高さ 20px = 4cm。題名（10px）が1行で収まる一番低い帯。 */
+.hazard-band {
+    flex-direction: row;
+    align-items: center;
+    height: 20px;
+    padding-left: 4px;
+    padding-right: 4px;
+    background-color: var(--color-accent);
+    border-top-left-radius: var(--radius-large);
+    border-top-right-radius: var(--radius-large);
+    flex-shrink: 0;
+}
+
+.hazard-band--red {
+    background-color: var(--color-alarm);
+}
+
+.hazard-mark {
+    font-size: 13px;
+    color: var(--color-accent-text);
+    margin: 0px;
+    margin-right: 4px;
+    padding: 0px;
+    flex-shrink: 0;
+}
+
+.hazard-title {
+    font-size: var(--font-size-heading);
+    color: var(--color-accent-text);
+    margin: 0px;
+    padding: 0px;
+    flex-shrink: 1;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.hazard-body {
+    padding: 4px;
+    -unity-text-align: upper-left;
+}
