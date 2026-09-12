@@ -74,6 +74,18 @@ namespace KitchenXR.App
         private CookEventQueue _eventQueue;
         private LastSessionStore _lastSessionStore;
 
+        /// <summary>端末の鍵の控え（`manor-device.json`。ADR-017 D2-5）。</summary>
+        private ManorDeviceFile _deviceFile;
+
+        /// <summary>
+        /// manor に繋げないときに一覧の札へ出す理由（「manor が見つかりません（見本だけ）」など）。
+        /// 繋がっているときは空。
+        /// </summary>
+        private string _manorStatus = string.Empty;
+
+        /// <summary>今ペアリングの最中か（番号を二重に取らない・覆いを取り合わない）。</summary>
+        private bool _pairing;
+
         private CookSession _session;
 
         /// <summary>今の調理の manor 側のセッション id。見本・manor 未設定のときは null。</summary>
@@ -98,6 +110,11 @@ namespace KitchenXR.App
 
             _recipeStore = RecipeStore.CreateDefault();
             _manor = ManorClient.CreateDefault();
+            _deviceFile = ManorDeviceFile.CreateDefault();
+
+            // 鍵が失効したら（manor が 401 を返したら）ペアリングをやり直す（ADR-017 D6）。
+            _manor.DeviceRevoked += HandleDeviceRevoked;
+
             _eventQueue = CookEventQueue.CreateDefault();
             _lastSessionStore = LastSessionStore.CreateDefault();
 
@@ -168,9 +185,9 @@ namespace KitchenXR.App
             // 起動の道筋（一覧・復帰）とは独立に走らせる——板の位置は中身より先に決まってよい。
             RestorePlacementAsync(_cts.Token).Forget();
 
-            // 動画の一覧（`StreamingAssets/media.json` → persistentDataPath）。設計 §6・ROADMAP P4。
-            LoadMediaAsync(_cts.Token).Forget();
-
+            // 動画の一覧（`StreamingAssets/media.json` → persistentDataPath）は
+            // **manor に繋ぎ終えてから**（StartupAsync の中で）始める。v1.0.10 で順を変えた——
+            // 鍵が決まる前に走らせると、繋がっているのに手元の写しのままになる。設計 §6・ROADMAP P4。
             StartupAsync(_cts.Token).Forget();
         }
 
@@ -211,6 +228,11 @@ namespace KitchenXR.App
                 _panelPlacement.PlacementFinished -= HandlePlacementFinished;
             }
 
+            if (_manor != null)
+            {
+                _manor.DeviceRevoked -= HandleDeviceRevoked;
+            }
+
             _cts?.Cancel();
             _cts?.Dispose();
         }
@@ -219,25 +241,284 @@ namespace KitchenXR.App
 
         /// <summary>
         /// 起動して最初にやること。順番に意味がある:
-        ///   1. **溜まっている進行の記録を流す**（前回オフラインで終えた分。送れなければ残るだけ）
-        ///   2. **途中の調理を探す**（manor → 無ければ手元の控え）。あれば一覧を飛ばして続きから
-        ///   3. 無ければ一覧を出す
+        ///   1. **manor の場所と鍵を決める**（`manor.json` → 控え → 探索。ADR-017 D3・D6）
+        ///   2. 動画リストを読む（娯楽の板。調理の道筋とは独立に走らせる）
+        ///   3. **溜まっている進行の記録を流す**（前回オフラインで終えた分。送れなければ残るだけ）
+        ///   4. **途中の調理を探す**（manor → 無ければ手元の控え）。あれば一覧を飛ばして続きから
+        ///   5. 無ければ一覧を出す
+        ///   6. **鍵が無ければペアリング**（番号を覆いに出す）。許可されたら 2・5 をやり直す
+        ///
+        /// ペアリングを**一覧を出した後**に置いているのは、主人が台所に来るまでの間も
+        /// 動画の板と見本のレシピが揃っているようにするため（覆いが出るのは番号を貰えてから）。
         /// </summary>
         private async UniTaskVoid StartupAsync(CancellationToken token)
         {
+            await ConnectManorAsync(token);
+
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            // 場所と鍵が決まってから動画リスト（先に走らせると、繋がっているのに手元の写しのままになる）。
+            LoadMediaAsync(token).Forget();
+
             if (_manor.IsConfigured)
             {
-                _recipeListPanel?.ShowBusy("manor に繋いでいます");
-                await _manor.LoginAsync(token);
                 await _eventQueue.FlushAsync(_manor, token);
             }
 
             if (await TryResumeAsync(token))
             {
+                // 調理の続きが出ている。ペアリングはしない——番号の板は一覧の覆いなので、
+                // 今出しても見えないし、許可されたら一覧へ戻してしまう。次の起動で出す。
                 return;
             }
 
             await RefreshListAsync(token);
+
+            // 場所は分かっているのに鍵が無い＝まだ許可されていない端末（初回・失効のあと）。
+            if (_manor.HasBaseUrl && !_manor.HasDeviceToken && await PairAsync(token))
+            {
+                LoadMediaAsync(token).Forget();
+                await RefreshListAsync(token);
+            }
+        }
+
+        /// <summary>
+        /// manor の場所と鍵を決める（ADR-017 D3・D6）。順はこう:
+        ///
+        ///   1. **繋ぎ先**: `manor.json` の `base_url`（主人が明示した上書き。tailnet 越しなど）
+        ///      → 端末の控えが覚えている口 → 探索（UDP 8791）
+        ///   2. **鍵**: 端末の控え（無ければ <see cref="PairAsync"/> が貰いに行く）
+        ///
+        /// `manor.json` を控えより先に見るのは ADR-017 D3 のとおり——探索が届かない置き方
+        /// （tailnet 越し・ポートを変えた）を主人が明示したのなら、そちらが正しい。
+        /// どれも決まらなければ札を出して**見本だけで動く**（起動そのものは止めない）。
+        /// </summary>
+        private async UniTask ConnectManorAsync(CancellationToken token)
+        {
+            var device = _deviceFile.Load();
+
+            if (_manor.Settings.IsConfigured)
+            {
+                Debug.Log($"[KitchenXR] manor の場所は {ManorSettings.FileName} の指定です: {_manor.Settings.BaseUrl}");
+            }
+            else if (device != null && device.HasBaseUrl)
+            {
+                _manor.UseBaseUrl(device.BaseUrl, "控え");
+            }
+            else
+            {
+                _recipeListPanel?.ShowBusy("manor を探しています");
+                var found = await new ManorDiscovery().FindBaseUrlAsync(token: token);
+                if (!string.IsNullOrEmpty(found))
+                {
+                    _manor.UseBaseUrl(found, "探索");
+                }
+            }
+
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (!_manor.HasBaseUrl)
+            {
+                // manor が寝ている・ループバックで立っている・tailnet の向こうに居る。
+                _manorStatus = "manor が見つかりません（見本だけ）";
+                _recipeListPanel?.HideBusy();
+                return;
+            }
+
+            // 見つけた口（または控えの口）を覚える。次の起動は探索を飛ばせる。
+            _deviceFile.SaveBaseUrl(_manor.Settings.BaseUrl);
+
+            _recipeListPanel?.HideBusy();
+
+            if (device != null && device.HasToken)
+            {
+                _manor.UseDeviceToken(device.Token);
+                _manorStatus = string.Empty;
+                return;
+            }
+
+            // 鍵が無い。番号を貰うのは一覧を出した後（<see cref="StartupAsync"/>）。
+            _manorStatus = "manor と繋いでいません（見本だけ）";
+        }
+
+        /// <summary>
+        /// ペアリング（ADR-017 D2）。番号を貰って板に大きく出し、主人が manor の Web の
+        /// 設定 → 端末 で許可するのを `poll_after` 秒おきに訊く。
+        ///
+        /// 番号は5分で失効するので、`expired` が返ったら**新しい番号を取り直す**
+        /// （主人が台所へ来るまでに何度切れても、板にはいつも生きた番号が出ている）。
+        /// 繋がらなくなったら止める——圏外で番号を出し続けても意味が無い。
+        /// </summary>
+        private async UniTask<bool> PairAsync(CancellationToken token)
+        {
+            if (_pairing)
+            {
+                return false;
+            }
+
+            _pairing = true;
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    var started = await _manor.PairStartAsync(DeviceName(), ManorClient.DeviceKind, token);
+                    if (!started.IsSuccess)
+                    {
+                        _manorStatus = started.IsOffline
+                            ? "manor に繋がりません（見本だけ）"
+                            : $"ペアリングできません（{started.Message}）";
+                        _recipeListPanel?.HideBusy();
+                        return false;
+                    }
+
+                    _recipeListPanel?.ShowPairing(started.Value.Code);
+                    Debug.Log($"[KitchenXR] ペアリングの番号: {started.Value.Code}"
+                              + "（manor の 設定 → 端末 で許可してください）");
+
+                    var outcome = await PollUntilApprovedAsync(started.Value, token);
+                    if (outcome == PairOutcome.Approved)
+                    {
+                        return true;
+                    }
+
+                    if (outcome != PairOutcome.Expired)
+                    {
+                        return false; // 繋がらなくなった・断たれた（札に理由が入っている）。
+                    }
+
+                    // 番号が失効しただけ（5 分）。次の番号を取り直す。
+                }
+
+                return false;
+            }
+            finally
+            {
+                _pairing = false;
+            }
+        }
+
+        /// <summary>1つの番号の行き先。</summary>
+        private enum PairOutcome
+        {
+            /// <summary>許可された（鍵を控えた）。</summary>
+            Approved,
+
+            /// <summary>番号が死んだ。取り直せばよい。</summary>
+            Expired,
+
+            /// <summary>繋がらない・断られた・アプリが終わる。やめる。</summary>
+            Failed,
+        }
+
+        /// <summary>
+        /// 1つの番号について許可を待つ。`approved` なら鍵を控える。
+        /// `expired` なら呼び出し側が番号を取り直す。
+        /// </summary>
+        private async UniTask<PairOutcome> PollUntilApprovedAsync(PairStart pair, CancellationToken token)
+        {
+            var interval = Mathf.Clamp(pair.PollAfterSeconds, 1, 30);
+            var attempts = Mathf.Max(1, pair.ExpiresInSeconds / interval);
+
+            for (var i = 0; i < attempts; i++)
+            {
+                await UniTask.Delay(interval * 1000, ignoreTimeScale: true, cancellationToken: token)
+                    .SuppressCancellationThrow();
+
+                if (token.IsCancellationRequested)
+                {
+                    return PairOutcome.Failed;
+                }
+
+                var polled = await _manor.PairPollAsync(pair.PairId, token);
+                if (!polled.IsSuccess)
+                {
+                    _manorStatus = polled.IsOffline
+                        ? "manor に繋がりません（見本だけ）"
+                        : $"ペアリングできません（{polled.Message}）";
+                    _recipeListPanel?.HideBusy();
+                    return PairOutcome.Failed;
+                }
+
+                if (polled.Value.IsApproved)
+                {
+                    // 鍵は**一度しか返らない**（ADR-017 D2-2）。受けた順に控えてから当てる。
+                    _deviceFile.Save(
+                        _manor.Settings.BaseUrl, polled.Value.Token,
+                        polled.Value.DeviceId, polled.Value.UserId);
+                    _manor.UseDeviceToken(polled.Value.Token);
+
+                    _manorStatus = string.Empty;
+                    _recipeListPanel?.HideBusy();
+                    Debug.Log("[KitchenXR] 端末が許可されました（鍵を控えました）。");
+                    return PairOutcome.Approved;
+                }
+
+                if (polled.Value.IsExpired)
+                {
+                    return PairOutcome.Expired; // 5 分が過ぎた。新しい番号を取り直す。
+                }
+            }
+
+            return PairOutcome.Expired;
+        }
+
+        /// <summary>
+        /// manor の 設定 → 端末 の一覧に並ぶ名前。機種を添えるのは、家に2台あるときの見分け
+        /// （<c>SystemInfo.deviceModel</c> は Quest では "Oculus Quest" のような文字列）。
+        /// </summary>
+        private static string DeviceName()
+        {
+            var model = SystemInfo.deviceModel;
+            return string.IsNullOrEmpty(model) || model == SystemInfo.unsupportedIdentifier
+                ? "Quest 3"
+                : $"Quest 3 ({model})";
+        }
+
+        /// <summary>
+        /// 鍵が通らなくなった（manor が 401 を返した＝主人が Web で失効させた）。
+        /// 控えから鍵を消して**ペアリングからやり直す**（ADR-017 D6）。繋ぎ先は残す。
+        /// </summary>
+        private void HandleDeviceRevoked()
+        {
+            _deviceFile?.ForgetToken();
+
+            if (_cts == null || _pairing)
+            {
+                return;
+            }
+
+            RepairAsync(_cts.Token).Forget();
+        }
+
+        /// <summary>
+        /// やり直したペアリングが通ったら一覧を読み直す（札も書き換わる）。
+        ///
+        /// **調理の最中なら一覧へ戻さない**——工程の進みは待ち行列に積まれていて失われないので、
+        /// 鍵の入れ替えのために板を取り替えるほうが悪い（送れないことで調理を止めない。設計 §11 追補）。
+        /// 番号は一覧の板の覆いに出たままなので、調理を終えて戻れば見える。
+        /// </summary>
+        private async UniTaskVoid RepairAsync(CancellationToken token)
+        {
+            var paired = await PairAsync(token);
+            if (token.IsCancellationRequested || _session != null)
+            {
+                return;
+            }
+
+            if (paired)
+            {
+                await RefreshListAsync(token);
+            }
+            else
+            {
+                _recipeListPanel?.SetStatus(_manorStatus);
+            }
         }
 
         /// <summary>
@@ -296,7 +577,8 @@ namespace KitchenXR.App
             var status = string.Empty;
             if (!_manor.IsConfigured)
             {
-                status = "manor 未設定（見本だけ）";
+                // 繋ぎ先が分からない・鍵が無い（ConnectManorAsync が理由を入れてある）。
+                status = string.IsNullOrEmpty(_manorStatus) ? "manor が見つかりません（見本だけ）" : _manorStatus;
             }
             else
             {

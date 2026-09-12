@@ -21,6 +21,15 @@ namespace KitchenXR.Presentation.Video
 
         public string StatusLine => "Editor（動画は実機で）";
 
+        /// <summary>試験が差し替える（実機の「html 読込済」の代わり）。</summary>
+        public bool IsHtmlLoaded { get; set; }
+
+        /// <summary>
+        /// 試験が差し替える（実機の <c>TLabWebView.GetUrl()</c> の代わり）。
+        /// ここに youtube.com の URL を置くと、板が「関連動画へ出た」と見なして連れ戻す。
+        /// </summary>
+        public string CurrentUrl { get; set; }
+
         public string LastError { get; set; }
 
         /// <summary>頼まれた順の動画 id（試験が見る）。</summary>
@@ -33,6 +42,10 @@ namespace KitchenXR.Presentation.Video
         public int PauseCount { get; private set; }
 
         public int TapCount { get; private set; }
+
+        public int ReloadHtmlCount { get; private set; }
+
+        public int SuppressPageScrollCount { get; private set; }
 
         public int Volume { get; private set; } = -1;
 
@@ -52,7 +65,11 @@ namespace KitchenXR.Presentation.Video
 
         public void SetAspect(VideoAspect aspect) => Aspect = aspect;
 
-        public void TapCenter() => TapCount++;
+        public void TapCenter()
+        {
+            TapCount++;
+            Tap(0.5f, 0.5f);
+        }
 
         /// <summary>窓への触りの記録（PlayMode 試験が見る。段と、絵の中の比の位置）。</summary>
         public readonly struct TouchRecord
@@ -74,15 +91,35 @@ namespace KitchenXR.Presentation.Video
         }
 
         private readonly List<TouchRecord> _touches = new List<TouchRecord>();
+        private readonly List<TouchRecord> _taps = new List<TouchRecord>();
 
         /// <summary>頼まれた順の触り（試験が見る）。</summary>
         public IReadOnlyList<TouchRecord> Touches => _touches;
+
+        /// <summary>「叩いた」だけを抜いたもの（試験が見る。段は常に Down）。</summary>
+        public IReadOnlyList<TouchRecord> Taps => _taps;
 
         public int GoBackCount { get; private set; }
 
         public void Touch(VideoTouchPhase phase, float u, float v) =>
             _touches.Add(new TouchRecord(phase, u, v));
 
+        /// <summary>
+        /// 実機の <see cref="YoutubePlayerBridge.Tap"/> は 80ms 空けて押し上げるが、
+        /// ここでは待たずに両方を積む——試験が「同じ座標で Down → Up が届いた」を
+        /// フレームを跨がずに確かめられるように。
+        /// </summary>
+        public void Tap(float u, float v)
+        {
+            _taps.Add(new TouchRecord(VideoTouchPhase.Down, u, v));
+            _touches.Add(new TouchRecord(VideoTouchPhase.Down, u, v));
+            _touches.Add(new TouchRecord(VideoTouchPhase.Up, u, v));
+        }
+
         public void GoBack() => GoBackCount++;
+
+        public void ReloadHtml() => ReloadHtmlCount++;
+
+        public void SuppressPageScroll() => SuppressPageScrollCount++;
     }
 }

@@ -260,9 +260,17 @@ namespace KitchenXR.Tests.PlayMode
             }
         }
 
-        private ManorClient BuildManorClient(FakeManorTransport transport) =>
-            new ManorClient(
+        /// <summary>
+        /// 端末の鍵で叩く客（v1.0.10。ADR-017 D1）。鍵が無いと <c>IsConfigured</c> が false で、
+        /// 料理長の口はそもそも叩かれない。
+        /// </summary>
+        private ManorClient BuildManorClient(FakeManorTransport transport)
+        {
+            var client = new ManorClient(
                 ManorSettings.Parse("{\"base_url\": \"https://manor.example.invalid\"}"), transport);
+            client.UseDeviceToken("device-token");
+            return client;
+        }
 
         private RecipeStore BuildStore()
         {
@@ -581,6 +589,62 @@ namespace KitchenXR.Tests.PlayMode
             yield return Settle();
 
             Assert.IsFalse(complete.ClassListContains("is-hidden"), "完了しても『作り終えた』が出ません。");
+        }
+
+        // ---------------------------------------------------------------- ペアリングの番号
+
+        /// <summary>
+        /// v1.0.10（manor の ADR-017 D2）。鍵が無いときは覆いに**6桁を大きく**出し、
+        /// 主人が manor の Web の 設定 → 端末 で許可する。板に文字入力は置かない（設計 §6）。
+        ///
+        /// 大きさを見るのは、これが「離れた所から読み上げる」ための文字だから——
+        /// 20px は実寸 4cm（theme.uss の換算）で、設計 §7 の押せる的と同じ寸法。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 覆いにペアリングの番号が大きく出る()
+        {
+            yield return BuildRig();
+            yield return BuildPanel("RecipeListPanel", ListUxmlPath);
+
+            var panel = _panelGo.AddComponent<RecipeListPanel>();
+            panel.Show(SampleAndManorItems(), "manor と繋いでいません（見本だけ）");
+            yield return Settle();
+
+            Assert.IsFalse(panel.IsBusy, "一覧を出した時点で覆いが出ています。");
+            Assert.IsEmpty(panel.PairingCode);
+
+            panel.ShowPairing("482913");
+            yield return Settle();
+
+            Assert.IsTrue(panel.IsBusy, "ペアリングの間は覆いで一覧を隠します（鍵が無いと開けません）。");
+            Assert.AreEqual("482913", panel.PairingCode, "6桁が覆いに出ていません。");
+
+            var code = Root.Q<Label>("pairCodeLabel");
+            var hint = Root.Q<Label>("pairHintLabel");
+            Assert.IsNotNull(code, "pairCodeLabel が UXML にありません。");
+            Assert.IsFalse(code.ClassListContains("is-hidden"));
+            Assert.GreaterOrEqual(code.resolvedStyle.fontSize, 19.9f,
+                "番号が小さすぎます（離れた所から読めません）。");
+
+            Assert.IsNotNull(hint, "pairHintLabel が UXML にありません。");
+            Assert.IsFalse(hint.ClassListContains("is-hidden"));
+            StringAssert.Contains("設定", hint.text, "どこで許可するのかが書かれていません。");
+            StringAssert.Contains("端末", hint.text);
+
+            // 許可されたら覆いごと消える（番号は残らない）。
+            panel.HideBusy();
+            yield return Settle();
+
+            Assert.IsFalse(panel.IsBusy);
+            Assert.IsEmpty(panel.PairingCode);
+            Assert.IsTrue(code.ClassListContains("is-hidden"), "番号が覆いの外に残っています。");
+
+            // 「準備中」の覆いには番号を出さない（用が違う）。
+            panel.ShowBusy("準備中");
+            yield return Settle();
+
+            Assert.IsTrue(panel.IsBusy);
+            Assert.IsEmpty(panel.PairingCode, "準備中の覆いに番号が出ています。");
         }
     }
 }

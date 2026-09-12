@@ -85,6 +85,48 @@ namespace KitchenXR.Tests.EditMode
             Assert.AreEqual("abcdefghijk", items[0].Title);
         }
 
+        /// <summary>
+        /// manor の一覧（ADR-016）の <c>thumbnail_url</c> を読む
+        /// （2026-09-13 主人の実機確認 v1.0.9「サムネ＋タイトル」）。
+        /// </summary>
+        [Test]
+        public void サムネイルのURLを読む()
+        {
+            var items = MediaJson.Parse(
+                @"{""items"":[{""title"":""あ"",""video_id"":""abcdefghijk"",
+                  ""thumbnail_url"":""https://example.test/a.jpg""}]}");
+
+            Assert.AreEqual(1, items.Count);
+            Assert.AreEqual("https://example.test/a.jpg", items[0].ThumbnailUrl);
+        }
+
+        /// <summary>
+        /// manor が絵の URL を返さなくても、動画 id から組み立てる
+        /// ——板は「絵が無い行」を作らずに済む。
+        /// </summary>
+        [Test]
+        public void サムネイルのURLが無ければidから組み立てる()
+        {
+            var items = MediaJson.Parse(@"[{""title"":""あ"",""video_id"":""abcdefghijk""}]");
+
+            Assert.AreEqual(1, items.Count);
+            Assert.AreEqual("https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg", items[0].ThumbnailUrl);
+            Assert.AreEqual(items[0].ThumbnailUrl, MediaJson.DefaultThumbnailUrl("abcdefghijk"));
+        }
+
+        /// <summary>URL に見えないもの（空白・相対パス）は捨てて既定へ落とす。</summary>
+        [Test]
+        public void サムネイルのURLが壊れていても既定へ落ちる()
+        {
+            var items = MediaJson.Parse(
+                @"[{""video_id"":""abcdefghijk"",""thumbnail_url"":""   ""},
+                   {""video_id"":""bbcdefghijk"",""thumbnail_url"":""/relative/a.jpg""}]");
+
+            Assert.AreEqual(2, items.Count);
+            Assert.AreEqual(MediaJson.DefaultThumbnailUrl("abcdefghijk"), items[0].ThumbnailUrl);
+            Assert.AreEqual(MediaJson.DefaultThumbnailUrl("bbcdefghijk"), items[1].ThumbnailUrl);
+        }
+
         [Test]
         public void 壊れたJSONでも空の一覧を返す()
         {

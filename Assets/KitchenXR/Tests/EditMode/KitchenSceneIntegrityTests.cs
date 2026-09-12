@@ -15,6 +15,7 @@ using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 using UnityEngine.XR.Interaction.Toolkit.Filtering;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using UnityEngine.XR.Interaction.Toolkit.Interactors;
 using UnityEngine.XR.Interaction.Toolkit.UI;
 
 namespace KitchenXR.Tests.EditMode
@@ -441,6 +442,14 @@ namespace KitchenXR.Tests.EditMode
                 "絵は板の中に置きます（板が動けば絵も動く）。");
         }
 
+        /// <summary>
+        /// 設計 P4「16:9 で窓の幅 50cm」。
+        ///
+        /// 2026-09-13（v1.0.9）で板は「左に窓・右に一覧」になったので、板の幅は
+        /// **窓 ＋ 間 ＋ 一覧** で決まる。VideoPanel.uss の <c>.video-list-block</c> の
+        /// <c>width</c>／<c>margin-left</c> がこの3つと食い違うと窓が 50cm でなくなるので、
+        /// 定数の足し算が合っていることをここで縛る（実測は PlayMode の VideoPanelTests）。
+        /// </summary>
         [Test]
         public void 動画の板の寸法が16対9の窓に合っている()
         {
@@ -448,9 +457,68 @@ namespace KitchenXR.Tests.EditMode
             Assert.AreEqual(VideoPanel.LandscapeWidthUnits, doc.worldSpaceSize.x, 0.01f);
             Assert.AreEqual(VideoPanel.LandscapeHeightUnits, doc.worldSpaceSize.y, 0.01f);
 
-            // 設計 P4「16:9 で幅 50 cm」。板の内側（左右の余白 8px ずつ）が 50cm = 250px。
-            var windowCm = (VideoPanel.LandscapeWidthUnits - 16f) * 0.2f;
+            Assert.AreEqual(
+                VideoPanel.LandscapeWindowWidthUnits + VideoPanel.ListGapUnits + VideoPanel.ListWidthUnits,
+                VideoPanel.LandscapeWidthUnits, 0.01f,
+                "板の幅が「窓 ＋ 間 ＋ 一覧」になっていません。");
+
+            var windowCm = VideoPanel.LandscapeWindowWidthUnits * 0.2f;
             Assert.AreEqual(50f, windowCm, 0.5f, "動画の窓の幅が 50cm ではありません（設計 P4）。");
+
+            // 9:16（ショーツ）は窓の**高さ**を 36cm に取り、幅はその 9:16。
+            Assert.AreEqual(36f, VideoPanel.PortraitWindowHeightUnits * 0.2f, 0.5f,
+                "9:16 の窓の高さが 36cm ではありません。");
+            Assert.AreEqual(
+                VideoPanel.PortraitWindowHeightUnits * 9f / 16f, VideoPanel.PortraitWindowWidthUnits, 1f,
+                "9:16 の窓の幅が高さの 9:16 になっていません。");
+            Assert.AreEqual(
+                VideoPanel.PortraitWindowWidthUnits + VideoPanel.ListGapUnits + VideoPanel.ListWidthUnits,
+                VideoPanel.PortraitWidthUnits, 0.01f,
+                "9:16 の板の幅が「窓 ＋ 間 ＋ 一覧」になっていません。");
+        }
+
+        /// <summary>
+        /// 一覧の寸法が USS と合っていること（2026-09-13 主人の実機確認 v1.0.9 の一覧の組み替え）。
+        /// C# の定数と <c>VideoPanel.uss</c> は別の場所にあり、片方だけ直すと
+        /// 窓の幅が静かに 50cm から外れる——数字そのものを突き合わせる。
+        /// </summary>
+        [Test]
+        public void 動画の一覧の幅がUSSと合っている()
+        {
+            var uss = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(),
+                "Assets/KitchenXR/Presentation/UI/VideoPanel.uss"));
+
+            StringAssert.Contains($"width: {VideoPanel.ListWidthUnits:0}px", uss,
+                "VideoPanel.uss の .video-list-block の幅が VideoPanel.ListWidthUnits と違います。");
+            StringAssert.Contains($"margin-left: {VideoPanel.ListGapUnits:0}px", uss,
+                "VideoPanel.uss の .video-list-block の間隔が VideoPanel.ListGapUnits と違います。");
+        }
+
+        /// <summary>
+        /// 指先の光る点が左右の Poke Interactor に付いていること
+        /// （設計 §11 追補 2026-09-13 v1.0.9 の⑤。主人「指先カーソルの表示対策」）。
+        /// rig を差し替えたときに黙って 0 個になるのを防ぐ。
+        /// </summary>
+        [Test]
+        public void 指先カーソルが左右のPokeInteractorに付いている()
+        {
+            var pokes = Object.FindObjectsByType<XRPokeInteractor>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+            Assert.GreaterOrEqual(pokes.Length, 2,
+                "rig に Poke Interactor が2つ（左右の手）ありません。");
+
+            foreach (var poke in pokes)
+            {
+                var cursor = poke.GetComponentInChildren<FingertipCursor>(true);
+                Assert.IsNotNull(cursor,
+                    $"{poke.name} に指先カーソル（FingertipCursor）がありません"
+                    + "（奥行きの距離感がつかめなくなります）。");
+
+                var so = new SerializedObject(cursor);
+                Assert.AreSame(poke, so.FindProperty("_interactor").objectReferenceValue,
+                    "指先カーソルに Poke Interactor が挿さっていません（指先の位置が読めません）。");
+            }
         }
 
         [Test]

@@ -30,6 +30,11 @@
         </ui:VisualElement>
         <ui:VisualElement name="busySection" class="recipe-list-busy is-hidden">
             <ui:Label name="busyLabel" text="準備中" class="heading" />
+            <!-- ペアリングの番号（manor の ADR-017 D2）。板に文字入力を置かないので、
+                 番号はこちらに出して主人が manor の Web に入れる。6桁は離れた所からでも
+                 読めるよう専用のクラスで大きく出す。 -->
+            <ui:Label name="pairCodeLabel" text="" class="recipe-pair-code is-hidden" />
+            <ui:Label name="pairHintLabel" text="" class="caption recipe-pair-hint is-hidden" />
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

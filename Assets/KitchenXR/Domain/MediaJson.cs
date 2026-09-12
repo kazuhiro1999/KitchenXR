@@ -32,6 +32,16 @@ namespace KitchenXR.Domain
             @"(?:v=|youtu\.be/|/shorts/|/embed/|/live/)([A-Za-z0-9_-]{5,32})", RegexOptions.Compiled);
 
         /// <summary>
+        /// manor が絵の URL を返さないときに組み立てる先（2026-09-13 主人の実機確認 v1.0.9）。
+        /// YouTube のサムネイルは動画 id から決まる場所にあり、鍵も要らない。
+        /// <c>hqdefault</c>（480×360）を選ぶのは、板の行が 9.2cm ＝ 46 UI px で
+        /// <c>mqdefault</c>（320×180）でも足りるが、9:16 のショーツだと横が切れて見えるため
+        /// ——大きい方を取って板の側で収める。
+        /// </summary>
+        public static string DefaultThumbnailUrl(string videoId) =>
+            string.IsNullOrEmpty(videoId) ? null : $"https://i.ytimg.com/vi/{videoId}/hqdefault.jpg";
+
+        /// <summary>
         /// `media.json` の中身を読む。壊れていれば空の一覧を返す（例外は投げない）。
         /// </summary>
         public static IReadOnlyList<MediaItem> Parse(string json)
@@ -103,7 +113,16 @@ namespace KitchenXR.Domain
                 title = title.Substring(0, MaxTitleLength - 1) + "…";
             }
 
-            return new MediaItem(title, videoId);
+            // 絵の URL（ADR-016 の `thumbnail_url`）。無ければ id から組み立てる——
+            // 板は「絵が無い行」を作らずに済み、manor の契約が育っても壊れない。
+            var thumbnail = ((string)obj["thumbnail_url"] ?? (string)obj["thumbnailUrl"]
+                             ?? (string)obj["thumbnail"] ?? string.Empty).Trim();
+            if (thumbnail.Length == 0 || !thumbnail.StartsWith("http", System.StringComparison.OrdinalIgnoreCase))
+            {
+                thumbnail = DefaultThumbnailUrl(videoId);
+            }
+
+            return new MediaItem(title, videoId, thumbnail);
         }
 
         /// <summary>

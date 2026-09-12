@@ -2,6 +2,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using KitchenXR.Domain;
@@ -114,6 +115,12 @@ namespace KitchenXR.Tests.PlayMode
 
             _player = new NullVideoPlayer();
             _panel.BindPlayer(_player);
+
+            // 絵は取りに行かない（EditMode・PlayMode 試験はネットに出ない。設計 §11 追補）。
+            // 取得口を持たない保管庫を挿しておけば、行は下地のまま並ぶ。
+            _panel.BindThumbnailCache(new MediaThumbnailCache(
+                Path.Combine(Application.temporaryCachePath, "video-panel-tests"), null));
+
             _panel.BindMedia(SampleItems(itemCount));
 
             for (var i = 0; i < 10; i++)
@@ -183,6 +190,44 @@ namespace KitchenXR.Tests.PlayMode
             }
         }
 
+        /// <summary>
+        /// 突いたまま**横へ引いて**から抜く（＝スクロール）。
+        /// <paramref name="worldOffset"/> は板の面に沿った動き。
+        /// </summary>
+        private IEnumerator PokeAndDrag(Vector3 worldTarget, float depthMeters, Vector3 worldOffset)
+        {
+            var forward = _panelGo.transform.forward;
+
+            for (var d = StartDepthMeters; d <= depthMeters; d += 0.002f)
+            {
+                _pokeGo.transform.position = worldTarget + forward * d;
+                yield return null;
+            }
+
+            for (var i = 0; i < 5; i++)
+            {
+                yield return null;
+            }
+
+            for (var i = 1; i <= 10; i++)
+            {
+                _pokeGo.transform.position =
+                    worldTarget + worldOffset * (i / 10f) + forward * depthMeters;
+                yield return null;
+            }
+
+            for (var d = depthMeters; d >= StartDepthMeters; d -= 0.002f)
+            {
+                _pokeGo.transform.position = worldTarget + worldOffset + forward * d;
+                yield return null;
+            }
+
+            for (var i = 0; i < 5; i++)
+            {
+                yield return null;
+            }
+        }
+
         // ---------------------------------------------------------------- 本題
 
         [UnityTest]
@@ -211,6 +256,107 @@ namespace KitchenXR.Tests.PlayMode
             var rows = Root.Query<VisualElement>(className: "video-row").ToList();
             Assert.AreEqual(5, rows.Count, "題名の行が一覧の件数と合いません。");
             Assert.AreEqual("動画 0", rows[0].Q<Label>().text);
+        }
+
+        /// <summary>
+        /// 一覧の行が「左にサムネイル・右に題名」になっていること
+        /// （2026-09-13 主人「YouTube を Web で見るときの画面みたいにサムネ＋タイトル」）。
+        /// 絵そのものは取りに行かないので、**枠が在って左に置かれている**ことだけを見る。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 一覧の行にサムネイルの枠が左にある()
+        {
+            yield return BuildAll(3);
+
+            var rows = Root.Query<VisualElement>(className: "video-row").ToList();
+            Assert.IsNotEmpty(rows);
+
+            foreach (var row in rows)
+            {
+                var thumb = row.Q<VisualElement>(className: "video-row__thumb");
+                var title = row.Q<Label>(className: "video-row__title");
+                Assert.IsNotNull(thumb, "行にサムネイルの枠がありません。");
+                Assert.IsNotNull(title, "行に題名がありません。");
+
+                Assert.Greater(thumb.worldBound.width, 0f, "サムネイルの枠の幅が 0 です。");
+                Assert.Less(thumb.worldBound.xMin, title.worldBound.xMin,
+                    "サムネイルが題名より右にあります（左がサムネイル、右が題名）。");
+
+                // 16:9 の枠（YouTube の絵の比）。
+                Assert.AreEqual(16f / 9f, thumb.worldBound.width / thumb.worldBound.height, 0.1f,
+                    "サムネイルの枠が 16:9 ではありません。");
+            }
+        }
+
+        /// <summary>
+        /// 一覧が**窓の右横**にあり、窓の幅が設計どおり 50cm 取れていること
+        /// （主人「レイアウト的に右横に置いて縦スクロールできた方がいいかも」・設計 P4）。
+        /// 定数の足し算は EditMode 試験が縛っているので、ここは**実測**で見る。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 一覧が窓の右横にあり窓が16対9で50cm取れる()
+        {
+            yield return BuildAll(4);
+
+            var area = Root.Q<VisualElement>("videoArea");
+            var list = Root.Q<VisualElement>("listBlock");
+            Assert.IsNotNull(area);
+            Assert.IsNotNull(list);
+
+            Assert.Greater(list.worldBound.xMin, area.worldBound.xMax - 0.01f,
+                "一覧が窓の右横にありません。");
+
+            // worldBound は板のローカル単位（UI px ÷ 100）。板の縮尺 0.2 を掛けて m になる。
+            var widthCm = area.worldBound.width * WorldSpacePanelFactory.PanelLocalScale * 100f;
+            var heightCm = area.worldBound.height * WorldSpacePanelFactory.PanelLocalScale * 100f;
+
+            Assert.AreEqual(50f, widthCm, 0.6f, $"窓の幅が 50cm ではありません（実測 {widthCm:0.0}cm）。");
+            Assert.GreaterOrEqual(heightCm, 50f / (16f / 9f) - 0.2f,
+                $"窓が低すぎて 50cm の 16:9 が入りません（実測 {heightCm:0.0}cm）。"
+                + "VideoPanel.LandscapeHeightUnits を増やすこと。");
+
+            // 逆に、要るより高すぎると板が無駄に大きくなる（台所の壁は有限）。
+            // 余りは **札の折り返しぶんの取り置き**——札は3行あり、それぞれ最大2行に折り返す
+            // （`.video-status-line` の max-height 12px）。空いているときは 32.8cm、
+            // 全部が2行になっても 28.2cm で 50cm の 16:9 がちょうど収まる。
+            // ここを詰めると、実機で札が伸びた瞬間に絵が 50cm を割る。
+            Assert.LessOrEqual(heightCm, 50f / (16f / 9f) + 5.5f,
+                $"窓が必要より高く、板が無駄に大きくなっています（実測 {heightCm:0.0}cm、"
+                + $"要るのは {50f / (16f / 9f):0.0}cm）。VideoPanel.LandscapeHeightUnits を削ること。");
+
+            var listCm = list.worldBound.width * WorldSpacePanelFactory.PanelLocalScale * 100f;
+            Assert.AreEqual(VideoPanel.ListWidthUnits * 0.2f, listCm, 0.6f,
+                $"一覧の幅が定数と合いません（実測 {listCm:0.0}cm）。");
+        }
+
+        /// <summary>9:16 でも窓の高さ 36cm が取れること（ショーツ。設計 §6）。</summary>
+        [UnityTest]
+        public IEnumerator 縦向きでも窓の高さが36cm取れる()
+        {
+            yield return BuildAll(4);
+
+            _panel.ToggleAspect();
+            for (var i = 0; i < 5; i++)
+            {
+                yield return null;
+            }
+
+            var area = Root.Q<VisualElement>("videoArea");
+            var heightCm = area.worldBound.height * WorldSpacePanelFactory.PanelLocalScale * 100f;
+            var widthCm = area.worldBound.width * WorldSpacePanelFactory.PanelLocalScale * 100f;
+
+            Assert.GreaterOrEqual(heightCm, 36f - 0.6f,
+                $"9:16 の窓の高さが 36cm に足りません（実測 {heightCm:0.0}cm）。"
+                + "VideoPanel.PortraitHeightUnits を増やすこと。");
+            Assert.GreaterOrEqual(widthCm, 36f * 9f / 16f - 0.6f,
+                $"9:16 の窓の幅が足りません（実測 {widthCm:0.0}cm）。");
+
+            // 9:16 の絵は**幅で決まる**（窓の幅 × 16/9 が絵の高さ）。窓がそれより高いぶんは
+            // 札の折り返しの取り置き——余り過ぎていたら板を削る。
+            Assert.LessOrEqual(heightCm, widthCm * 16f / 9f + 5.5f,
+                $"9:16 の窓が必要より高く、板が無駄に大きくなっています"
+                + $"（実測 {heightCm:0.0}cm、絵は {widthCm * 16f / 9f:0.0}cm）。"
+                + "VideoPanel.PortraitHeightUnits を削ること。");
         }
 
         [UnityTest]
@@ -353,6 +499,144 @@ namespace KitchenXR.Tests.PlayMode
             var last = _player.Touches[_player.Touches.Count - 1];
             Assert.AreEqual(VideoTouchPhase.Up, last.Phase,
                 "離したのに押し上げが届いていません（WebView の中で指が押されたままになります）。");
+        }
+
+        /// <summary>
+        /// 窓を突いて（横へ動かさずに）離すと **タップ1回**として渡り、DRAG は1つも混ざらない。
+        ///
+        /// 2026-09-13 主人の実機確認（v1.0.9）「関連動画をタップしても反応しない」の直しの検算。
+        /// v1.0.9 は押し下げをそのまま DOWN で流していたので、指の揺れが DRAG になって
+        /// WebView がスクロールと解釈し、クリックを出さなかった。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 窓を突いて離すとタップとして渡りドラッグが混ざらない()
+        {
+            yield return BuildAll(2);
+
+            var area = Root.Q<VisualElement>("videoArea");
+            yield return PokeAt(WorldPositionOf(area), 0.05f);
+
+            Assert.AreEqual(1, _player.Taps.Count,
+                $"タップが1回ではありません（{_player.Taps.Count} 回。札: {_panel.LastAction}）。");
+            Assert.AreEqual(0.5f, _player.Taps[0].U, 0.06f);
+            Assert.AreEqual(0.5f, _player.Taps[0].V, 0.06f);
+
+            CollectionAssert.DoesNotContain(
+                _player.Touches.Select(t => t.Phase).ToList(), VideoTouchPhase.Drag,
+                "タップに DRAG が混ざりました（WebView がスクロールと見なしてクリックを出しません）。");
+
+            StringAssert.Contains("タップ", _panel.LastAction, "札に「タップ」と出ていません。");
+        }
+
+        /// <summary>
+        /// 窓を突いたまま**横へ引く**とドラッグになり、タップは送られない
+        /// （主人「関連動画を開いて横にスクロールはできるようになった」を殺さないこと）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 窓を横へ引くとドラッグになりタップは送らない()
+        {
+            yield return BuildAll(2);
+
+            var area = Root.Q<VisualElement>("videoArea");
+
+            // 絵の幅は 50cm なので、6cm 引けば閾値（3% = 1.5cm）を確実に越える。
+            var offset = _panelGo.transform.right * 0.06f;
+            yield return PokeAndDrag(WorldPositionOf(area), 0.05f, offset);
+
+            Assert.IsEmpty(_player.Taps,
+                $"横へ引いたのにタップを送りました（札: {_panel.LastAction}）。");
+
+            var phases = _player.Touches.Select(t => t.Phase).ToList();
+            CollectionAssert.Contains(phases, VideoTouchPhase.Down, "ドラッグの押し下げが届いていません。");
+            CollectionAssert.Contains(phases, VideoTouchPhase.Drag, "ドラッグが届いていません。");
+            Assert.AreEqual(VideoTouchPhase.Down, phases[0], "最初の触りが押し下げではありません。");
+            Assert.AreEqual(VideoTouchPhase.Up, phases[phases.Count - 1],
+                "離したのに押し上げが届いていません（WebView の中で指が押されたままになります）。");
+
+            StringAssert.Contains("ドラッグ", _panel.LastAction, "札に「ドラッグ」と出ていません。");
+        }
+
+        // ---------------------------------------------------------------- 窓の見張り（v1.0.9 の 2 と 3）
+
+        /// <summary>
+        /// 窓が <c>youtube.com/watch</c> へ出たら、id を抜いて埋め込みプレイヤーへ連れ戻す
+        /// （主人「関連動画の video_id だけ抜いて、ロードできるようにとかできないか」）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 関連動画へ遷移したら連れ戻して読み込む()
+        {
+            yield return BuildAll(2);
+
+            _player.CurrentUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ&feature=emb_rel_end";
+
+            // 見張りは 0.5 秒ごと。読み直してから Load までさらに RelatedReloadDelayMs 待つ。
+            var deadline = Time.unscaledTime + 1f + VideoPanel.RelatedReloadDelayMs / 1000f + 1f;
+            while (Time.unscaledTime < deadline && _player.LoadedVideoIds.Count == 0)
+            {
+                yield return null;
+            }
+
+            Assert.AreEqual(1, _player.ReloadHtmlCount,
+                "html を読み直していません（youtube.com の上では埋め込みの JS が無いので何も送れません）。");
+            CollectionAssert.Contains(_player.LoadedVideoIds.ToList(), "dQw4w9WgXcQ",
+                $"関連動画の id を読み込んでいません（札: {_panel.LastAction}）。");
+            StringAssert.Contains("dQw4w9WgXcQ", _panel.LastAction, "札に関連動画の id が出ていません。");
+        }
+
+        /// <summary>
+        /// 主人の html の上に居る間は何もしない（毎 0.5 秒 読み直したら動画が止まってしまう）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 埋め込みの上に居る間は連れ戻さない()
+        {
+            yield return BuildAll(2);
+
+            _player.CurrentUrl = "http://localhost/";
+
+            var deadline = Time.unscaledTime + 1.2f;
+            while (Time.unscaledTime < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.AreEqual(0, _player.ReloadHtmlCount, "埋め込みの上なのに読み直しました。");
+            Assert.IsEmpty(_player.LoadedVideoIds, "埋め込みの上なのに読み込み直しました。");
+        }
+
+        /// <summary>
+        /// html の読み込みが済んだら、ページ全体の縦スクロールを塞ぐ JS を送る
+        /// （主人「縦にスクロールできちゃう（16:9 のとき）」）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator html読込後に縦スクロールを止める()
+        {
+            yield return BuildAll(2);
+
+            var before = _player.SuppressPageScrollCount;
+            _player.IsHtmlLoaded = true;
+
+            var deadline = Time.unscaledTime + 1.2f;
+            while (Time.unscaledTime < deadline && _player.SuppressPageScrollCount == before)
+            {
+                yield return null;
+            }
+
+            Assert.Greater(_player.SuppressPageScrollCount, before,
+                "html を読み込んだのに縦スクロールを止めていません。");
+        }
+
+        /// <summary>向きを変えたら縦スクロールの止めを送り直す（WebView の resize で style が入れ替わる）。</summary>
+        [UnityTest]
+        public IEnumerator 向きを変えると縦スクロールの止めを送り直す()
+        {
+            yield return BuildAll(2);
+
+            var before = _player.SuppressPageScrollCount;
+            _panel.ToggleAspect();
+            yield return null;
+
+            Assert.Greater(_player.SuppressPageScrollCount, before,
+                "向きを変えたのに縦スクロールの止めを送り直していません。");
         }
 
         /// <summary>

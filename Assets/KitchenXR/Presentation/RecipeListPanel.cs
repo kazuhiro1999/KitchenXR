@@ -61,6 +61,9 @@ namespace KitchenXR.Presentation
         private const string PrimaryClass = "kitchen-button--primary";
         private const string SecondaryClass = "kitchen-button--secondary";
 
+        /// <summary>番号の下に添える手順（manor の ADR-017 D2-3。主人がどこへ入れるかを迷わないように）。</summary>
+        public const string DefaultPairingHint = "manor の 設定 → 端末 に入れて許可してください";
+
         /// <summary>「配置」の2度押しの猶予（秒）。レシピの板の「一覧へ」と同じ長さ。</summary>
         public const float PlacementConfirmSeconds = 4f;
 
@@ -68,6 +71,11 @@ namespace KitchenXR.Presentation
         private ScrollView _scroll;
         private VisualElement _busySection;
         private Label _busyLabel;
+
+        /// <summary>ペアリングの6桁と手順（manor の ADR-017 D2。覆いの中に出す）。</summary>
+        private Label _pairCodeLabel;
+        private Label _pairHintLabel;
+
         private VisualElement _settingsSection;
         private TwoPressButton _placementPress;
 
@@ -94,6 +102,8 @@ namespace KitchenXR.Presentation
             _scroll = root.Q<ScrollView>("recipeScroll");
             _busySection = root.Q<VisualElement>("busySection");
             _busyLabel = root.Q<Label>("busyLabel");
+            _pairCodeLabel = root.Q<Label>("pairCodeLabel");
+            _pairHintLabel = root.Q<Label>("pairHintLabel");
             _settingsSection = root.Q<VisualElement>("settingsSection");
 
             var placementButton = root.Q<Button>("placementButton");
@@ -377,13 +387,14 @@ namespace KitchenXR.Presentation
             }
 
             _busySection.RemoveFromClassList("is-hidden");
+            HidePairing();
             if (_busyLabel != null)
             {
                 _busyLabel.text = total > 0 ? $"準備中 {done}/{total}" : "準備中";
             }
         }
 
-        /// <summary>覆いに好きな文字を出す（「manor に繋いでいます」など）。</summary>
+        /// <summary>覆いに好きな文字を出す（「manor を探しています」など）。</summary>
         public void ShowBusy(string text)
         {
             if (_busySection == null)
@@ -392,15 +403,63 @@ namespace KitchenXR.Presentation
             }
 
             _busySection.RemoveFromClassList("is-hidden");
+            HidePairing();
             if (_busyLabel != null)
             {
                 _busyLabel.text = text ?? "準備中";
             }
         }
 
+        /// <summary>
+        /// ペアリングの番号を覆いに出す（manor の ADR-017 D2）。
+        ///
+        /// 板に文字入力は置かない（設計 §6）ので、**番号は端末に出して主人が Web に入れる**。
+        /// 覆いの仕組みをそのまま使うのは、この間レシピを選ばせてはいけないから
+        /// （鍵が無いうちは manor のレシピを開けない）。
+        /// </summary>
+        public void ShowPairing(string code, string hint = DefaultPairingHint)
+        {
+            if (_busySection == null)
+            {
+                return;
+            }
+
+            _busySection.RemoveFromClassList("is-hidden");
+
+            if (_busyLabel != null)
+            {
+                _busyLabel.text = "manor と繋ぎます";
+            }
+
+            if (_pairCodeLabel != null)
+            {
+                _pairCodeLabel.text = code ?? string.Empty;
+                _pairCodeLabel.EnableInClassList("is-hidden", string.IsNullOrEmpty(code));
+            }
+
+            if (_pairHintLabel != null)
+            {
+                _pairHintLabel.text = hint ?? string.Empty;
+                _pairHintLabel.EnableInClassList("is-hidden", string.IsNullOrEmpty(hint));
+            }
+        }
+
+        /// <summary>覆いに出ているペアリングの番号（試験用。出ていなければ空）。</summary>
+        public string PairingCode =>
+            _pairCodeLabel != null && !_pairCodeLabel.ClassListContains("is-hidden")
+                ? _pairCodeLabel.text ?? string.Empty
+                : string.Empty;
+
         public void HideBusy()
         {
             _busySection?.AddToClassList("is-hidden");
+            HidePairing();
+        }
+
+        private void HidePairing()
+        {
+            _pairCodeLabel?.AddToClassList("is-hidden");
+            _pairHintLabel?.AddToClassList("is-hidden");
         }
 
         /// <summary>札だけを書き換える（一覧はそのまま）。</summary>

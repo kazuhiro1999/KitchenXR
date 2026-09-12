@@ -20,6 +20,13 @@ manor には置かない。形は下のとおりで、`title`（板に出す題�
 ]
 ```
 
+**サムネイル（2026-09-13・v1.0.9）。** 一覧は「左に絵・右に題名」の縦並びになった
+（板の右横。設計 §6）。絵の URL は `thumbnail_url` で渡せるが、**書かなくてよい**——
+無ければ動画 id から `https://i.ytimg.com/vi/<video_id>/hqdefault.jpg` を組み立てる。
+manor の「動画リスト」は登録時にこの列を埋める（ADR-016）。
+取ってきた絵は `persistentDataPath/media-thumbs/<video_id>.jpg` に置き、以後は通信しない
+（一覧を変えても古い絵は消えないが、id ごとのファイルなので混ざらない。消したければこのフォルダごと消す）。
+
 **置き場と書き換え方。** アプリに同梱している見本は `Assets/StreamingAssets/media.json`。
 起動時、端末に一覧がまだ無ければこの見本を
 `Application.persistentDataPath/media.json`
@@ -37,9 +44,15 @@ adb push media.json /sdcard/Android/data/com.kazuhiro.kitchenxr/files/media.json
 （Widevine L1 が無い。設計 §6）。YouTube・ショーツ・一般の Web 動画は出る。
 
 **動かないときの見方（2026-09-13）。** 板の下、ボタンの上に**札が3行**出る。
-1 行目は中の様子（`WebView INITIALIZED / HTML 読込済 / 動画 待機（cue） <id> / 窓 …→ 絵 …mm`）、
+1 行目は中の様子（`WebView INITIALIZED / HTML 読込済 / 動画 待機（cue） <id> / 絵 …×…mm`）、
 2 行目は板が最後にしたこと（「一覧: 「…」→ 読み込み」「再生を頼みました」等）と、主人の
 `YoutubePlayer` が Unity のログに出した最後の一言、3 行目（赤）は最後の失敗。
+
+**窓を触ったときの 2 行目（v1.0.9）。** 窓（絵）を触ると、板がタップかドラッグかを見分けて
+そのまま 2 行目に出す——「窓: タップ（u, v）」なら WebView にクリックを送った、
+「窓: ドラッグ開始／終了」ならスクロールと見なした、「窓: 長押し n.n秒（何も送りません）」なら
+手を置いたままだった、と読める。関連動画を押して `youtube.com` へ出てしまったときは
+「関連動画 &lt;id&gt; を開きました／読み込みました」と出て、板が埋め込みプレイヤーへ連れ戻す。
 「再生」は選ぶ前でも押せる（`youtube.html` が cue している既定の動画が始まる）。
 再生を頼んで約 1 秒しても YouTube が「再生中」と返さないときは、板が WebView の中央を一度
 タップする（Android の WebView は人の操作を伴わない再生を拒むことがあるため。1 行目の末尾に

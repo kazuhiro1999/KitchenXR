@@ -85,6 +85,9 @@ namespace KitchenXR.App.Editor
         public const string WristToggleObjectName = "WristToggle";
         public const string PlacementMenuObjectName = "PlacementMenu";
 
+        /// <summary>指先の光る点を載せる子の名前（左右の Poke Interactor の下に1つずつ）。</summary>
+        public const string FingertipCursorObjectName = "Fingertip Cursor";
+
         // XRI の World Space UI サンプル（WorldSpacePanel.asset）と同じ値。
         // 「既存のコライダーを使う」＝ UI Document は自前でコライダーを作らない。
         private const int ColliderUpdateModeKeepExisting = 1;
@@ -436,6 +439,56 @@ namespace KitchenXR.App.Editor
 
             AttachRayLineVisibility(rayLike);
             RelaxFarCastStabilization(rayLike);
+            AttachFingertipCursors(xrOrigin);
+        }
+
+        /// <summary>
+        /// 指先の光る点（設計 §11 追補 2026-09-13 v1.0.9 の⑤。
+        /// 主人「指が UI に近づいたときだけ、人差し指の先端に小さな『光るドット（カーソル）』…
+        /// これがあるだけで、奥行きの距離感が一気につかみやすくなります」）。
+        ///
+        /// rig の <c>Poke Interactor</c>（<see cref="XRPokeInteractor"/>）**全部**——
+        /// つまり左右の手に1つずつ——へ子を1つ足して <see cref="FingertipCursor"/> を載せる。
+        /// 点そのもの（球と材質）は実行時に作るので、プレハブも資産も増えない。
+        /// 何個付けたかをログに出すのは、rig を差し替えたときに黙って 0 個になるのを防ぐため
+        /// （レイの線の出し入れと同じ流儀）。
+        /// </summary>
+        private static void AttachFingertipCursors(Transform xrOrigin)
+        {
+            var pokes = xrOrigin.GetComponentsInChildren<XRPokeInteractor>(true);
+            if (pokes.Length == 0)
+            {
+                Debug.LogWarning(
+                    "[KitchenXR] rig に Poke Interactor が1つもありません（指先カーソルを出せません）。");
+                return;
+            }
+
+            foreach (var poke in pokes)
+            {
+                var existing = poke.GetComponentInChildren<FingertipCursor>(true);
+                var cursorGo = existing != null
+                    ? existing.gameObject
+                    : new GameObject(FingertipCursorObjectName);
+
+                if (existing == null)
+                {
+                    cursorGo.transform.SetParent(poke.transform, false);
+                    cursorGo.transform.localPosition = Vector3.zero;
+                    cursorGo.transform.localRotation = Quaternion.identity;
+                }
+
+                var cursor = cursorGo.GetComponent<FingertipCursor>()
+                             ?? cursorGo.AddComponent<FingertipCursor>();
+
+                var so = new SerializedObject(cursor);
+                so.FindProperty("_interactor").objectReferenceValue = poke;
+                so.ApplyModifiedPropertiesWithoutUndo();
+                EditorUtility.SetDirty(cursor);
+            }
+
+            Debug.Log(
+                $"[KitchenXR] 指先カーソルを {pokes.Length} 個の Poke Interactor に付けました: "
+                + string.Join(", ", pokes.Select(p => HierarchyPath(p.transform))));
         }
 
         /// <summary>

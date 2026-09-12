@@ -1,24 +1,29 @@
 using System.IO;
 using System.Text;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace KitchenXR.Net
 {
     /// <summary>
-    /// manor への繋ぎ方（<c>Application.persistentDataPath/manor.json</c>）。
+    /// manor の繋ぎ先（<c>base_url</c>）。決まり方は3つで、優先はこの順（manor の ADR-017 D3）:
     ///
-    /// <code>{"base_url": "https://…", "passcode": "…"}</code>
+    ///   1. <c>Application.persistentDataPath/manor.json</c> の <c>base_url</c>（主人が明示した口。
+    ///      tailnet 越しなど**探索が届かない置き方**のために残してある上書き）
+    ///   2. 端末の控え（<see cref="ManorDeviceFile"/>）に覚えている口
+    ///   3. 探索（<see cref="ManorDiscovery"/>。UDP 8791 に manor が答える）
     ///
-    /// **文字入力は板に置かない**（設計 §6・主人の指示）。Quest の空中キーボードで URL と
-    /// 合言葉を打つのは調理の前にやりたいことではないし、打ち間違いが「繋がらない」に化ける。
-    /// 主人は PC から <c>adb push</c> で置く（書き方は <c>Docs/manor-connection.md</c>）。
-    /// 置かれていなければ <see cref="IsConfigured"/> が false になり、
-    /// 一覧の板は「manor 未設定（見本だけ）」の札を出して見本の炒飯だけを並べる。
+    /// <code>{"base_url": "https://…"}</code>
     ///
-    /// 合言葉をここに平文で置くことになるが、これは manor 側の設計（ADR-005 §2 D4。
-    /// 家庭内の1台を守るための合言葉）と同じ強さで、アプリ専用領域
-    /// （<c>/sdcard/Android/data/com.kazuhiro.kitchenxr/files/</c>）に置く。
+    /// **合言葉（<c>passcode</c>）はもう読まない**（v1.0.10・ADR-017 D6）。平文の合言葉を
+    /// ファイルに置く代わりに、起動時に番号を出して主人が manor の Web で許可し、
+    /// 端末ごとの鍵を受け取る（<see cref="ManorDeviceFile"/>）。古い <c>manor.json</c> に
+    /// <c>passcode</c> が残っていたら、黙って無視せず警告を1行出す——主人が
+    /// 「置いたのに使われない」で悩まないように。
+    ///
+    /// <c>manor.json</c> も控えも無く、探索も空振りなら <see cref="IsConfigured"/> が false になり、
+    /// 一覧の板は「manor が見つかりません（見本だけ）」の札を出して見本の炒飯だけを並べる。
     /// </summary>
     public sealed class ManorSettings
     {
@@ -27,30 +32,28 @@ namespace KitchenXR.Net
         /// <summary>末尾の <c>/</c> は落としてある（<see cref="Url"/> が組み立てる）。</summary>
         public string BaseUrl { get; }
 
-        public string Passcode { get; }
-
-        /// <summary>読めた設定の出どころ（札に出す。主人が場所を間違えたときに分かるように）。</summary>
+        /// <summary>繋ぎ先の出どころ（札とログに出す。主人が場所を間違えたときに分かるように）。</summary>
         public string SourcePath { get; }
 
-        private ManorSettings(string baseUrl, string passcode, string sourcePath)
+        private ManorSettings(string baseUrl, string sourcePath)
         {
             BaseUrl = (baseUrl ?? string.Empty).TrimEnd('/');
-            Passcode = passcode ?? string.Empty;
             SourcePath = sourcePath ?? string.Empty;
         }
 
-        /// <summary>manor.json が在り、少なくとも base_url が読めた。</summary>
+        /// <summary>繋ぎ先が決まっているか（manor.json・控え・探索のどれかで）。</summary>
         public bool IsConfigured => !string.IsNullOrEmpty(BaseUrl);
 
-        /// <summary>
-        /// 合言葉が空＝manor が loopback（`auth_mode = "loopback"`）で動いている前提。
-        /// その場合 <c>/auth/login</c> は cookie を返さず <c>{"ok":true,"mode":"loopback"}</c> だけを返す。
-        /// </summary>
-        public bool HasPasscode => !string.IsNullOrEmpty(Passcode);
-
-        /// <summary>設定が無いときの値（<see cref="IsConfigured"/> は false）。</summary>
+        /// <summary>繋ぎ先が無いときの値（<see cref="IsConfigured"/> は false）。</summary>
         public static ManorSettings NotConfigured(string expectedPath = null) =>
-            new ManorSettings(string.Empty, string.Empty, expectedPath);
+            new ManorSettings(string.Empty, expectedPath);
+
+        /// <summary>
+        /// 控え・探索で決まった口から作る（<c>manor.json</c> を経由しない道）。
+        /// <paramref name="source"/> は「控え」「探索」のような出どころの一言。
+        /// </summary>
+        public static ManorSettings ForBaseUrl(string baseUrl, string source = null) =>
+            new ManorSettings(baseUrl, source);
 
         /// <summary>実機・Editor の既定の置き場（persistentDataPath）。</summary>
         public static string DefaultPath => Path.Combine(Application.persistentDataPath, FileName);
@@ -59,8 +62,8 @@ namespace KitchenXR.Net
         public static ManorSettings LoadDefault() => Load(DefaultPath);
 
         /// <summary>
-        /// 読む。ファイルが無い・壊れている・鍵が足りないときは
-        /// <see cref="NotConfigured"/>（＝見本だけで動く）。ここで落ちてはいけない。
+        /// 読む。ファイルが無い・壊れている・<c>base_url</c> が無いときは
+        /// <see cref="NotConfigured"/>（＝控えか探索に任せる）。ここで落ちてはいけない。
         /// </summary>
         public static ManorSettings Load(string path)
         {
@@ -91,10 +94,10 @@ namespace KitchenXR.Net
                 return NotConfigured(sourcePath);
             }
 
-            Dto dto;
+            JObject obj;
             try
             {
-                dto = JsonConvert.DeserializeObject<Dto>(json);
+                obj = JToken.Parse(json) as JObject;
             }
             catch (JsonException e)
             {
@@ -102,12 +105,40 @@ namespace KitchenXR.Net
                 return NotConfigured(sourcePath);
             }
 
-            if (dto == null || string.IsNullOrWhiteSpace(dto.BaseUrl))
+            if (obj == null)
             {
                 return NotConfigured(sourcePath);
             }
 
-            return new ManorSettings(dto.BaseUrl.Trim(), dto.Passcode?.Trim(), sourcePath);
+            WarnIfPasscode(obj);
+
+            var baseUrl = obj["base_url"];
+            if (baseUrl == null || baseUrl.Type == JTokenType.Null ||
+                string.IsNullOrWhiteSpace(baseUrl.ToString()))
+            {
+                return NotConfigured(sourcePath);
+            }
+
+            return new ManorSettings(baseUrl.ToString().Trim(), sourcePath);
+        }
+
+        /// <summary>
+        /// 古い使い方（v1.0.9 まで）の合言葉が残っていたら教える。
+        /// **読まない**が、黙って捨てると「置いたのに繋がらない」の理由が分からなくなる。
+        /// </summary>
+        private static void WarnIfPasscode(JObject obj)
+        {
+            var passcode = obj["passcode"];
+            if (passcode == null || passcode.Type == JTokenType.Null ||
+                string.IsNullOrWhiteSpace(passcode.ToString()))
+            {
+                return;
+            }
+
+            Debug.LogWarning(
+                $"[KitchenXR] {FileName} の passcode は v1.0.10 で廃止しました（読みません）。"
+                + "起動時に出る6桁の番号を manor の 設定 → 端末 で許可してください"
+                + "（Docs/manor-connection.md）。行は消して構いません。");
         }
 
         /// <summary>
@@ -121,15 +152,6 @@ namespace KitchenXR.Net
             }
 
             return path.StartsWith("/") ? BaseUrl + path : BaseUrl + "/" + path;
-        }
-
-        private sealed class Dto
-        {
-            [JsonProperty("base_url")]
-            public string BaseUrl;
-
-            [JsonProperty("passcode")]
-            public string Passcode;
         }
     }
 }

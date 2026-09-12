@@ -2,11 +2,14 @@
     <ui:Style src="theme.uss" />
     <ui:Style src="VideoPanel.uss" />
     <ui:VisualElement name="root" class="root-panel video-panel">
-        <ui:VisualElement name="listBlock" class="video-block">
-            <ui:ScrollView name="mediaList" mode="Vertical" horizontal-scroller-visibility="Hidden" vertical-scroller-visibility="Auto" class="video-list" />
-        </ui:VisualElement>
-        <ui:VisualElement name="videoArea" class="video-area">
-            <ui:Label name="editorNotice" text="動画は実機で（Quest 3）" picking-mode="Ignore" class="caption video-notice" />
+        <ui:VisualElement name="mainRow" class="video-main-row">
+            <ui:VisualElement name="videoArea" class="video-area">
+                <ui:Label name="editorNotice" text="動画は実機で（Quest 3）" picking-mode="Ignore" class="caption video-notice" />
+            </ui:VisualElement>
+            <ui:VisualElement name="listBlock" class="video-block video-list-block">
+                <ui:Label name="listTitle" text="再生リスト" picking-mode="Ignore" class="caption video-list-title" />
+                <ui:ScrollView name="mediaList" mode="Vertical" horizontal-scroller-visibility="Hidden" vertical-scroller-visibility="Auto" class="video-list" />
+            </ui:VisualElement>
         </ui:VisualElement>
         <ui:VisualElement name="controlBlock" class="video-block">
             <ui:VisualElement name="statusRow" class="video-status-row">

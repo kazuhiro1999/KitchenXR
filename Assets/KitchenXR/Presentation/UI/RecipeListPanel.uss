@@ -150,6 +150,31 @@
     border-bottom-right-radius: var(--radius-large);
 }
 
+/*
+ * ペアリングの6桁（manor の ADR-017 D2）。覆いの中に出す。
+ *
+ * 20px は実寸 4cm（theme.uss の換算: 1 UI px ≒ 2mm）——設計 §7 の「最小4cm角」と同じ大きさで、
+ * 調理台から少し離れていても、ヘッドセットを外さずに読み上げられる。字間を空けるのは
+ * 6桁を2つ3つに区切って読み違えないため。文字の大きさの設定（font-scale--*）には従わない
+ * ——ここは「読めること」が用途なので、小さくされると困る。
+ */
+.recipe-pair-code {
+    font-size: 20px;
+    letter-spacing: 4px;
+    color: var(--color-text);
+    -unity-text-align: middle-center;
+    margin-top: 6px;
+    margin-bottom: 4px;
+}
+
+/* 「manor の 設定 → 端末 に入れて許可してください」。折り返して板の幅に収める。 */
+.recipe-pair-hint {
+    width: 90%;
+    color: var(--color-text-muted);
+    white-space: normal;
+    -unity-text-align: middle-center;
+}
+
 /* P2。頭は横1列: [レシピ帳][設定][配置]。「配置」は2度押し（設計 §4.4・§7）。 */
 .recipe-list-header-row {
     flex-direction: row;

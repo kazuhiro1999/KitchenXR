@@ -13,11 +13,14 @@ namespace KitchenXR.Tests.EditMode
     /// manor のレシピ帳と結ぶ口の検算（P3。設計 §8・manor の ADR-015 D3）。
     /// **本物の manor へは繋がない**——通信は <see cref="IHttpTransport"/> ごと差し替える。
     ///
-    /// ここで押さえるのは主人の指示の4点:
+    /// ここで押さえるのは一覧の写しと、**cookie の経路**（v1.0.10 以降は「試験と、
+    /// 将来 tailnet で cookie を使う場合」のために残してある道。ADR-017 D6）:
     ///   1. <c>Set-Cookie</c> から <c>manor_session</c> を取り出して持つ
     ///   2. 以後の頼みに <c>Cookie:</c> 見出しとして自分で付ける（Android の自動 cookie に頼らない）
     ///   3. **401 が返ったら1度だけ**入り直して同じ頼みを送り直す（2度目の 401 では諦める）
     ///   4. 一覧は取れたら写し、取れないときはその写しを出す
+    ///
+    /// 端末の鍵（Bearer）とペアリングと探索は <see cref="ManorPairingTests"/>。
     /// </summary>
     public class ManorClientTests
     {
@@ -25,8 +28,17 @@ namespace KitchenXR.Tests.EditMode
         private const string Passcode = "あいことば";
         private const string Cookie = "s3ss10n-value";
 
+        /// <summary><c>manor.json</c> は <c>base_url</c> の上書きだけ（合言葉は v1.0.10 で廃止）。</summary>
         private static ManorSettings Settings() =>
-            ManorSettings.Parse($"{{\"base_url\": \"{BaseUrl}\", \"passcode\": \"{Passcode}\"}}");
+            ManorSettings.Parse($"{{\"base_url\": \"{BaseUrl}\"}}");
+
+        /// <summary>cookie の経路を使う客（合言葉はファイルではなくここで渡す）。</summary>
+        private static ManorClient CookieClient(IHttpTransport transport)
+        {
+            var client = new ManorClient(Settings(), transport);
+            client.UseCookieLogin(Passcode);
+            return client;
+        }
 
         /// <summary>差し替えの通信。頼まれたものを全部控え、返す中身は試験が決める。</summary>
         private sealed class FakeTransport : IHttpTransport
@@ -93,7 +105,7 @@ namespace KitchenXR.Tests.EditMode
                     request.Url.EndsWith("/auth/login") ? LoginOk() : Json("{\"items\":[]}"),
             };
 
-            var client = new ManorClient(Settings(), transport);
+            var client = CookieClient(transport);
             var result = client.ListRecipesAsync().GetAwaiter().GetResult();
 
             Assert.IsTrue(result.IsSuccess);
@@ -115,7 +127,7 @@ namespace KitchenXR.Tests.EditMode
                     : Json("{\"items\":[]}"),
             };
 
-            var client = new ManorClient(Settings(), transport);
+            var client = CookieClient(transport);
             var result = client.ListRecipesAsync().GetAwaiter().GetResult();
 
             Assert.IsTrue(result.IsSuccess);
@@ -150,7 +162,7 @@ namespace KitchenXR.Tests.EditMode
                 return cookie.Contains(Cookie) ? Json("{\"items\":[]}") : new HttpResponse(401, "");
             };
 
-            var client = new ManorClient(Settings(), transport);
+            var client = CookieClient(transport);
             var result = client.ListRecipesAsync().GetAwaiter().GetResult();
 
             Assert.IsTrue(result.IsSuccess, "入り直したあとの送り直しが通っていません。");
@@ -175,7 +187,7 @@ namespace KitchenXR.Tests.EditMode
                 return new HttpResponse(401, "");
             };
 
-            var client = new ManorClient(Settings(), transport);
+            var client = CookieClient(transport);
             var result = client.ListRecipesAsync().GetAwaiter().GetResult();
 
             Assert.IsFalse(result.IsSuccess);
@@ -192,7 +204,7 @@ namespace KitchenXR.Tests.EditMode
                 Responder = (request, _) => new HttpResponse(401, "{\"detail\":\"passcode が違います\"}"),
             };
 
-            var client = new ManorClient(Settings(), transport);
+            var client = CookieClient(transport);
             var result = client.LoginAsync().GetAwaiter().GetResult();
 
             Assert.IsFalse(result.IsSuccess);
@@ -204,7 +216,7 @@ namespace KitchenXR.Tests.EditMode
         public void 繋がらないときはオフラインとして返る()
         {
             var transport = new FakeTransport { Responder = (_, __) => HttpResponse.Offline };
-            var client = new ManorClient(Settings(), transport);
+            var client = CookieClient(transport);
 
             var result = client.ListRecipesAsync().GetAwaiter().GetResult();
 
@@ -242,7 +254,7 @@ namespace KitchenXR.Tests.EditMode
                 return new HttpResponse(404, "");
             };
 
-            var client = new ManorClient(Settings(), transport);
+            var client = CookieClient(transport);
 
             var started = client.StartSessionAsync("12").GetAwaiter().GetResult();
             Assert.IsTrue(started.IsSuccess);
@@ -274,7 +286,7 @@ namespace KitchenXR.Tests.EditMode
                     : Json("{\"id\":null,\"recipe_id\":null,\"current\":null}"),
             };
 
-            var client = new ManorClient(Settings(), transport);
+            var client = CookieClient(transport);
             var current = client.CurrentSessionAsync().GetAwaiter().GetResult();
 
             Assert.IsTrue(current.IsSuccess);
@@ -285,7 +297,7 @@ namespace KitchenXR.Tests.EditMode
         public void 見本のレシピはmanorへ送らない()
         {
             var transport = new FakeTransport { Responder = (_, __) => LoginOk() };
-            var client = new ManorClient(Settings(), transport);
+            var client = CookieClient(transport);
 
             // 見本（Resources）の id は "chahan" のような文字列。manor のレシピ id は整数。
             var started = client.StartSessionAsync("chahan").GetAwaiter().GetResult();
@@ -375,10 +387,38 @@ namespace KitchenXR.Tests.EditMode
             Assert.IsFalse(ManorSettings.Parse("{}").IsConfigured, "base_url が無ければ未設定。");
             Assert.IsFalse(ManorSettings.Parse("壊れている").IsConfigured, "壊れていても落ちない。");
 
-            var ok = ManorSettings.Parse("{\"base_url\": \"http://192.168.0.2:8765/\", \"passcode\": \"x\"}");
+            var ok = ManorSettings.Parse("{\"base_url\": \"http://192.168.0.2:8765/\"}");
             Assert.IsTrue(ok.IsConfigured);
             Assert.AreEqual("http://192.168.0.2:8765", ok.BaseUrl, "末尾の / は落とす。");
             Assert.AreEqual("http://192.168.0.2:8765/api/v1/auth/login", ok.Url("/api/v1/auth/login"));
+        }
+
+        /// <summary>
+        /// 古い <c>manor.json</c>（合言葉つき）が残っていても、**合言葉は読まない**
+        /// （v1.0.10・ADR-017 D6）。黙って捨てると「置いたのに繋がらない」の理由が分からないので、
+        /// 警告を1行出す。
+        /// </summary>
+        [Test]
+        public void manorJsonの合言葉は読まずに警告を出す()
+        {
+            UnityEngine.TestTools.LogAssert.Expect(
+                UnityEngine.LogType.Warning, new System.Text.RegularExpressions.Regex("passcode は v1.0.10 で廃止"));
+
+            var settings = ManorSettings.Parse(
+                $"{{\"base_url\": \"{BaseUrl}\", \"passcode\": \"{Passcode}\"}}");
+
+            Assert.IsTrue(settings.IsConfigured, "base_url は今までどおり読みます。");
+
+            // 合言葉を読まないので、cookie の経路は自分から始まらない（＝叩けない）。
+            var transport = new FakeTransport { Responder = (_, __) => Json("{}") };
+            var client = new ManorClient(settings, transport);
+
+            Assert.IsTrue(client.HasBaseUrl, "場所は分かっています。");
+            Assert.IsFalse(client.IsConfigured, "鍵も合言葉も無いのに叩けることになっています。");
+            Assert.IsFalse(client.HasDeviceToken);
+
+            Assert.IsFalse(client.ListRecipesAsync().GetAwaiter().GetResult().IsSuccess);
+            Assert.IsEmpty(transport.Requests, "合言葉で入ろうとしました（ペアリングへ進むべきです）。");
         }
 
         [Test]
@@ -392,7 +432,7 @@ namespace KitchenXR.Tests.EditMode
                         : Json("{\"items\":[{\"title\":\"a\",\"video_id\":\"abcdefghijk\"}]}"),
             };
 
-            var client = new ManorClient(Settings(), transport);
+            var client = CookieClient(transport);
             var result = client.ListMediaAsync().GetAwaiter().GetResult();
 
             Assert.IsTrue(result.IsSuccess);

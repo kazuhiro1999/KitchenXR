@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using KitchenXR.Domain;
 using UnityEngine;
@@ -14,10 +16,10 @@ namespace KitchenXR.Presentation.Video
     ///
     /// 中身は2つに分かれている:
     ///   - **操作部**: UI Toolkit の板（この <see cref="UIDocument"/>）。一覧・再生／一時停止・
-    ///     音量 ±・16:9 ⇄ 9:16。ボタンは他の板と同じ <see cref="PokePress"/>（押し下げで発火）。
+    ///     音量 ±・16:9 ⇄ 9:16・戻る。ボタンは他の板と同じ <see cref="PokePress"/>（押し下げで発火）。
     ///     **文字入力は置かない**（設計 §6）。
     ///   - **絵**: 主人の <c>YoutubePlayer.prefab</c> が持つワールド空間の Canvas ＋ RawImage。
-    ///     板の「動画の窓」の**すぐ手前**（0.6mm）に重ねる。
+    ///     板の「動画の窓」の**1cm 手前**に重ねる。
     ///
     /// なぜ UI Toolkit の <c>backgroundImage</c> に貼らず、主人の RawImage をそのまま使うか:
     ///   1. <c>TLabWebView</c> は毎フレーム <c>m_rawImage.texture</c> を自分で差し替える
@@ -29,45 +31,82 @@ namespace KitchenXR.Presentation.Video
     /// 重ねる代わりに、**ポークの当たり判定は UI 側の板だけ**が持つ
     /// （プレハブ側の <c>GraphicRaycaster</c> と <c>Button</c> は
     /// <see cref="YoutubePlayerBridge.Initialize"/> で止めてある）。
-    /// 絵は板の面より手前にあるので、窓を触っても「入り」の判定には届かない。
     ///
-    /// 2026-09-13 主人の実機確認（v1.0.6）: 「サムネイルは小さく出るが、再生を押しても反応がない。
-    /// 一覧を押しても変化がない。原因が分からないのでエラーや失敗時にどこかに表示してほしい」。
-    /// 直したこと・足したこと:
-    ///   - **札**（3行）: WebView／HTML／プレイヤーの状態、板が最後にしたこと、最後の失敗（赤）。
-    ///     Unity のログのうち動画に関わるもの（主人の <c>YoutubePlayer</c> の Debug.Log と
-    ///     <c>Player Error</c>）も拾って出す。
-    ///   - 「再生」は**選ぶ前でも押せる**（v1.0.4 は選ぶまで無効にしていた。無効の Button は
-    ///     ポークも受けないので「押しても反応がない」に見えた）。主人の <c>youtube.html</c> は
-    ///     既定の動画を cue して立つので、押せばそれが始まる。
-    ///   - 再生を頼んで <see cref="GestureFallbackDelayMs"/> 待っても YouTube が「再生中」と
-    ///     返さないとき、WebView の中央をタップする（<see cref="IVideoPlayer.TapCenter"/>。
-    ///     Android の WebView が人の操作なしの再生を拒む対策）。選んだとき（autoplay）も同じ。
-    ///   - 絵の寸法: 窓の実測（<c>worldBound</c>）は板の**ローカル単位**（UI px ÷ 100）で返る。
-    ///     v1.0.4 はここに板の縮尺 0.2 を余計に掛けていて、絵が本来の 1/5（10cm）だった。
-    ///   - 一覧の行を 1.6cm → 2.8cm に（指先の当たりに対して薄すぎた）。
-    ///
-    /// 2026-09-13 主人の実機確認（v1.0.8）の方針3「次の動画は埋め込みプレイヤー自身の関連動画で
-    /// 選ぶ。動画の窓（WebView）への触りをレイ（とポーク）で通す」:
-    ///   - **窓（<c>videoArea</c>）が触れるようになった**。触った場所を絵の中の比（0〜1）に写して
-    ///     <see cref="IVideoPlayer.Touch"/> へ流す（<see cref="BindVideoAreaTouch"/>）。
-    ///     一時停止・終了で <c>youtube.html</c> が出す関連動画を、そのまま指でもレイでも選べる。
-    ///     窓は釦ではないので <see cref="PokePress"/> は通さない——理由はその場に書いた。
-    ///   - **「戻る」**（<c>TLabWebView.GoBack</c>）を操作部に足した。関連動画を触った先で
-    ///     youtube.com 本体へ飛ぶと埋め込みプレイヤーの JS が効かなくなるため、帰り道を1つ置く。
+    /// 2026-09-13 主人の実機確認（v1.0.9）——動画の板への4件。直したこと:
+    ///   1. **関連動画のタップが効かない**（主人「画面の直接タッチや、関連動画を開いて横に
+    ///      スクロールはできるようになった。ただ関連動画をタップしても反応しない」）。
+    ///      原因は**タップがドラッグになっていた**こと（確度 高）。v1.0.9 は窓の
+    ///      <c>PointerDown</c>／<c>Move</c>／<c>Up</c> をそのまま DOWN／DRAG／UP で流していたが、
+    ///      レイの着地点もポークの指先も揺れるので押し下げと押し上げの間に必ず DRAG が挟まり、
+    ///      WebView が「スクロール」と見なしてクリックを出さない。
+    ///      直し: <see cref="TapMoveThreshold"/> を越えないまま離れたら**タップ**と判定し、
+    ///      そのときだけ <see cref="IVideoPlayer.Tap"/>（DOWN → 80ms → UP を同じ座標で）を送る。
+    ///      閾値を越えて初めて DOWN を送り、以後 DRAG を流す（それまで DOWN を送らない）。
+    ///   2. **遷移の受け止め**: 埋め込みプレイヤーの関連動画は、同じ埋め込みの中で再生されるものと
+    ///      <c>youtube.com/watch</c> へ top frame を運ぶものがある。後者は板が
+    ///      <see cref="IVideoPlayer.CurrentUrl"/> を 0.5 秒ごとに見張り、主人の html
+    ///      （<c>http://localhost</c>）の外へ出ていたら id を抜いて埋め込みへ連れ戻す。
+    ///   3. **16:9 で縦にスクロールできてしまう**（主人の言葉のまま）。html は書き換えず、
+    ///      読み込み完了後と向きを変えるたびに <see cref="IVideoPlayer.SuppressPageScroll"/>。
+    ///      1 の「閾値までは DRAG を送らない」もここに効く。
+    ///   4. **一覧を右横に縦並び**（主人「レイアウト的に右横に置いて縦スクロールできた方がいいかも
+    ///      （YouTube を Web で見るときの画面みたいにサムネ＋タイトル）」）。
+    ///      板は「左に窓・右に一覧・下に操作部」になり、行は左にサムネイル・右に題名（2行）。
+    ///   5. **札**に 1 と 2 の判定結果を出す（実機でどちらに転んだか主人が見分けられるように）。
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class VideoPanel : MonoBehaviour
     {
+        // ------------------------------------------------------------------ 板の寸法
+        //
         // 板の大きさ（UI px。theme.uss の換算で 1px = 2mm）。
-        // 16:9 は設計どおり**動画の窓の幅が 50cm**（= 250px）になるように決めた。
-        // 9:16 は幅 50cm だと高さ 89cm になって台所に置けないので、
-        // 窓の**高さ**を 36cm（180px）に取り、幅はその 9:16（20.25cm）とした。
-        // ——どちらの向きでも板の寸法が変わる（縦は高く細く、横は低く広く）。
-        public const float LandscapeWidthUnits = 266f;  // ≒ 53.2cm（窓 50cm ＋ 余白）
-        public const float LandscapeHeightUnits = 266f; // ≒ 53.2cm
-        public const float PortraitWidthUnits = 156f;   // ≒ 31.2cm
-        public const float PortraitHeightUnits = 296f;  // ≒ 59.2cm
+        // v1.0.9 までは「上に一覧・中に窓・下に操作部」の縦積みだったが、主人の求めで
+        // 「**左に窓・右に一覧**・下に操作部」へ組み替えた。板の幅は窓と一覧の和で決まる。
+
+        /// <summary>16:9 の窓の幅（設計 P4「動画の窓の幅が 50cm」）。250px × 2mm = 50cm。</summary>
+        public const float LandscapeWindowWidthUnits = 250f;
+
+        /// <summary>
+        /// 9:16（ショーツ）の窓の高さ。幅 50cm だと高さ 89cm になって台所に置けないので、
+        /// **高さ**を 36cm に取り、幅はその 9:16 とする（v1.0.6 からの方針をそのまま）。
+        /// </summary>
+        public const float PortraitWindowHeightUnits = 180f;
+
+        /// <summary>9:16 の窓の幅（180 × 9/16 = 101.25 → 端数を切り上げて 102px ≒ 20.4cm）。</summary>
+        public const float PortraitWindowWidthUnits = 102f;
+
+        /// <summary>
+        /// 右の一覧の幅（≒ 20cm）。中身は「サムネイル 8.8cm ＋ 題名 2行」で、
+        /// 主人の言う「YouTube を Web で見るときの画面」の横並びを一番細く収めた値
+        /// ——これより細いと題名が1行 5 文字を切って読めなくなる（USS に内訳を書いた）。
+        /// **向きが変わっても幅は変えない**（並んでいるものの位置が動くと探し直すことになる）。
+        /// </summary>
+        public const float ListWidthUnits = 100f;
+
+        /// <summary>窓と一覧の間（≒ 8mm）。</summary>
+        public const float ListGapUnits = 4f;
+
+        public const float LandscapeWidthUnits = LandscapeWindowWidthUnits + ListGapUnits + ListWidthUnits;
+
+        /// <summary>
+        /// 16:9 の板の高さ（≒ 44.8cm）。
+        ///
+        /// 内訳: 操作部（札3行＋釦の行）が 60px、間が 3px、残り 161px が窓。
+        /// 絵は 250px 幅の 16:9 で 140.6px（28.1cm）なので **20px の取り置き**が残る——
+        /// これは札（`.video-status-line`）が3行とも2行に折り返したときのぶんで、
+        /// 削ると実機で札が伸びた瞬間に絵が 50cm を割る。
+        /// PlayMode 試験（<c>VideoPanelTests</c>）が上下両側から縛っている。
+        /// </summary>
+        public const float LandscapeHeightUnits = 224f;
+
+        public const float PortraitWidthUnits = PortraitWindowWidthUnits + ListGapUnits + ListWidthUnits;
+
+        /// <summary>
+        /// 9:16 の板の高さ（≒ 52.8cm）。操作部 60px ＋ 間 3px ＋ 窓 201px。
+        /// 縦向きの絵は**幅で決まる**（窓 102px × 16/9 = 181px）ので、
+        /// 窓の残り 20px が札の折り返しの取り置き（16:9 と同じ考え）。
+        /// </summary>
+        public const float PortraitHeightUnits = 264f;
 
         /// <summary>
         /// 絵を板の面より手前へ出す量（板のローカル単位。負が手前）。実寸 1cm。
@@ -92,19 +131,56 @@ namespace KitchenXR.Presentation.Video
         /// <summary>再生を頼んでから「返事が無い」と見なして中央をタップするまで（ミリ秒）。</summary>
         public const int GestureFallbackDelayMs = 900;
 
-        /// <summary>札を書き直す間隔（秒）。毎フレーム反射で読むほどの価値は無い。</summary>
+        // ------------------------------------------------------------------ 窓への触りの判定（v1.0.9 の直し）
+
+        /// <summary>
+        /// 「動かなかった」と見なす幅（**絵の幅に対する比**）。3% ＝ 50cm の絵で 1.5cm。
+        ///
+        /// レイの着地点は手の震え（1〜3°）が 1m 先で 2〜5cm に開くので、板の上では必ず揺れる。
+        /// ポークの指先も同じ。この幅までは「同じ場所を押している」と見なし、DOWN を送らない
+        /// ——送ってしまうと続く揺れが DRAG になって、WebView がスクロールと解釈する。
+        /// 縦の揺れは**絵の縦横比を掛けて**同じ物差しで測る（9:16 では縦の 1% が横の 1.8% に当たる）。
+        /// </summary>
+        public const float TapMoveThreshold = 0.03f;
+
+        /// <summary>
+        /// 押し下げから離すまでがこれ以内ならタップ（秒）。
+        ///
+        /// 主人との取り決めは 400ms だったが、**1.2 秒**に広げた。理由が2つある。
+        ///   1. ホログラムを指で突くと指は面を通り抜けてから戻るので、XRI の PointerDown から
+        ///      PointerUp までに数十フレーム掛かる。400ms では実機の普通の突きが「長押し」に
+        ///      落ちて何も起きない＝主人の訴え（関連動画が押せない）がそのまま残る。
+        ///   2. 広げても WebView 側は**常に 80ms のクリック**しか見ない
+        ///      （<see cref="IVideoPlayer.Tap"/> が押し下げと押し上げを自分で作るので、
+        ///      こちらが何秒待っても Android 側の長押し＝文脈メニューにはならない）。
+        ///      つまり広げることの害が無い。
+        /// この時間が守っているのは「板に手を置きっぱなしにして離した」だけを弾くこと。
+        /// </summary>
+        public const float TapMaxSeconds = 1.2f;
+
+        /// <summary>
+        /// 主人の html を読み直してから <c>loadVideo</c> を頼むまで（ミリ秒）。
+        /// html は <c>https://www.youtube.com/iframe_api</c> を取りに行くので、
+        /// 立ち上がるのを待つしかない（主人の <c>Initialized</c> は一度立つと下りないため合図に使えない）。
+        /// </summary>
+        public const int RelatedReloadDelayMs = 1800;
+
+        /// <summary>札を書き直す間隔（秒）。窓の URL を見張る間隔も兼ねる。</summary>
         private const float StatusRefreshSeconds = 0.5f;
+
+        /// <summary>主人の html の置き場（<c>YoutubePlayer.LoadHtml</c> の baseUrl）。ここに居る間は何もしない。</summary>
+        private const string EmbeddedPlayerHost = "localhost";
 
         [SerializeField] private GameObject _playerRoot;
 
         private readonly ClickDebounce _debounce = new ClickDebounce();
         private readonly List<VisualElement> _rows = new List<VisualElement>();
 
-        /// <summary>今 窓を押し下げている指（レイ）。離すまで Drag を送り続ける相手。</summary>
-        private readonly HashSet<int> _touching = new HashSet<int>();
+        /// <summary>行に貼った絵。板が消えるとき（と並べ直すとき）に自分で捨てる。</summary>
+        private readonly List<Texture2D> _thumbnails = new List<Texture2D>();
 
-        /// <summary>最後に窓の中で触った比。離脱で Up を送るときの座標に使う。</summary>
-        private Vector2 _lastTouchUv;
+        /// <summary>今 窓を押している指（レイ）ごとの様子。タップかドラッグかをここで決める。</summary>
+        private readonly Dictionary<int, WindowTouch> _touching = new Dictionary<int, WindowTouch>();
 
         private UIDocument _document;
         private VisualElement _root;
@@ -121,6 +197,8 @@ namespace KitchenXR.Presentation.Video
 
         private IVideoPlayer _player;
         private YoutubePlayerBridge _bridge;
+        private MediaThumbnailCache _thumbnailCache;
+        private CancellationTokenSource _thumbnailCts;
 
         private IReadOnlyList<MediaItem> _items = new List<MediaItem>();
         private int _selected = -1;
@@ -133,8 +211,18 @@ namespace KitchenXR.Presentation.Video
         private float _statusClock;
         private int _fallbackSerial;
 
-        // 向きを変えても動かさない点（板の下辺の中央）。上へ伸ばすと天井に向かうので、
-        // 下辺を固定して**上へ**伸ばす……のではなく、下辺を固定して高さだけ変える。
+        /// <summary>一覧に無い動画（関連動画）を開いたときの見出し。null なら一覧の選択を出す。</summary>
+        private string _offListTitle;
+
+        /// <summary>主人の html が読み込み終わったか（立った瞬間に縦スクロールを塞ぐ）。</summary>
+        private bool _htmlLoaded;
+
+        /// <summary>最後に連れ戻した関連動画の id（同じ URL で何度も反応しないため）。</summary>
+        private string _handledRelatedId;
+
+        private int _relatedSerial;
+
+        // 向きを変えても動かさない点（板の下辺の中央）。
         private Vector3 _bottomCenter;
         private Quaternion _rotation = Quaternion.identity;
         private bool _anchored;
@@ -151,6 +239,9 @@ namespace KitchenXR.Presentation.Video
 
         /// <summary>札の「最後にしたこと」（試験用）。</summary>
         public string LastAction => _lastAction;
+
+        /// <summary>窓（動画の絵が入る枠）。PlayMode 試験が実測する。</summary>
+        public VisualElement VideoArea => _videoArea;
 
         private void Awake()
         {
@@ -196,6 +287,12 @@ namespace KitchenXR.Presentation.Video
 
         private void OnDisable() => Application.logMessageReceived -= HandleLog;
 
+        private void OnDestroy()
+        {
+            CancelThumbnailLoads();
+            ReleaseThumbnails();
+        }
+
         private void Update()
         {
             _statusClock += Time.unscaledDeltaTime;
@@ -217,6 +314,8 @@ namespace KitchenXR.Presentation.Video
                 }
             }
 
+            WatchHtmlLoaded();
+            WatchWindowUrl();
             RefreshStatus();
         }
 
@@ -230,11 +329,20 @@ namespace KitchenXR.Presentation.Video
             _player = player ?? new NullVideoPlayer();
             _player.SetVolume(_volume);
             _player.SetAspect(Aspect);
+            _htmlLoaded = false;
+            _handledRelatedId = null;
             RefreshControls();
             RefreshStatus();
         }
 
-        /// <summary>一覧を貼り替える（<c>media.json</c> から。最大 8 件は <see cref="MediaJson"/> が守る）。</summary>
+        /// <summary>絵の保管庫を差し替える（試験用。既定は <see cref="MediaThumbnailCache.CreateDefault"/>）。</summary>
+        public void BindThumbnailCache(MediaThumbnailCache cache)
+        {
+            _thumbnailCache = cache;
+            RebuildList();
+        }
+
+        /// <summary>一覧を貼り替える（manor が正。ADR-016。上限は <see cref="MediaJson.MaxItems"/>）。</summary>
         public void BindMedia(IReadOnlyList<MediaItem> items)
         {
             _items = items ?? new List<MediaItem>();
@@ -250,16 +358,26 @@ namespace KitchenXR.Presentation.Video
                 return;
             }
 
+            // 前の絵は捨てる（並べ直しのたびに Texture2D が増えていくのを防ぐ）。
+            CancelThumbnailLoads();
+            ReleaseThumbnails();
+
             _list.Clear();
             _rows.Clear();
 
             if (_items.Count == 0)
             {
-                var empty = new Label("一覧がありません（media.json）");
+                var empty = new Label("一覧がありません");
                 empty.AddToClassList("caption");
                 _list.Add(empty);
                 return;
             }
+
+            // 実機では既定の保管庫を作る（Editor の試験は BindThumbnailCache で差し替える）。
+            _thumbnailCache ??= MediaThumbnailCache.CreateDefault();
+
+            _thumbnailCts = new CancellationTokenSource();
+            var token = _thumbnailCts.Token;
 
             for (var i = 0; i < _items.Count; i++)
             {
@@ -267,8 +385,15 @@ namespace KitchenXR.Presentation.Video
                 var row = new VisualElement();
                 row.AddToClassList("video-row");
 
+                // 左にサムネイル（16:9）。取れるまでは下地のまま（主人の指示どおり失敗は黙る）。
+                var thumb = new VisualElement();
+                thumb.AddToClassList("video-row__thumb");
+                thumb.pickingMode = PickingMode.Ignore; // 行が的。絵が指を吸わないように。
+                row.Add(thumb);
+
                 var title = new Label(_items[i].Title);
                 title.AddToClassList("video-row__title");
+                title.pickingMode = PickingMode.Ignore;
                 row.Add(title);
 
                 // 行そのものが的（材料の板と同じ流儀。Toggle は押し上げで反転するので使わない）。
@@ -277,6 +402,80 @@ namespace KitchenXR.Presentation.Video
 
                 _list.Add(row);
                 _rows.Add(row);
+
+                LoadThumbnailAsync(_items[index], thumb, token).Forget();
+            }
+        }
+
+        /// <summary>
+        /// 行の絵を1枚。手元にあれば通信しない（<see cref="MediaThumbnailCache"/> が面倒を見る）ので、
+        /// 一度出た一覧はオフラインでも絵つきで並ぶ。取れなければ黙って下地のまま。
+        /// </summary>
+        private async UniTaskVoid LoadThumbnailAsync(
+            MediaItem item, VisualElement target, CancellationToken token)
+        {
+            if (_thumbnailCache == null || item == null || string.IsNullOrEmpty(item.ThumbnailUrl))
+            {
+                return;
+            }
+
+            Texture2D texture;
+            try
+            {
+                texture = await _thumbnailCache.LoadAsync(item.VideoId, item.ThumbnailUrl, token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            if (texture == null)
+            {
+                return;
+            }
+
+            // 待っている間に並べ直された／板が消えた。作ったものは自分で捨てる。
+            if (token.IsCancellationRequested || this == null || target.panel == null)
+            {
+                DestroyTexture(texture);
+                return;
+            }
+
+            _thumbnails.Add(texture);
+            target.style.backgroundImage = new StyleBackground(texture);
+        }
+
+        private void CancelThumbnailLoads()
+        {
+            _thumbnailCts?.Cancel();
+            _thumbnailCts?.Dispose();
+            _thumbnailCts = null;
+        }
+
+        private void ReleaseThumbnails()
+        {
+            foreach (var texture in _thumbnails)
+            {
+                DestroyTexture(texture);
+            }
+
+            _thumbnails.Clear();
+        }
+
+        private static void DestroyTexture(Texture2D texture)
+        {
+            if (texture == null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                Destroy(texture);
+            }
+            else
+            {
+                DestroyImmediate(texture);
             }
         }
 
@@ -291,6 +490,8 @@ namespace KitchenXR.Presentation.Video
             }
 
             _selected = index;
+            _offListTitle = null;
+            _handledRelatedId = null;
             SetAction($"一覧: 「{_items[index].Title}」→ 読み込み（{_items[index].VideoId}）");
             _player.Load(_items[index].VideoId);
             _player.SetVolume(_volume);
@@ -370,24 +571,153 @@ namespace KitchenXR.Presentation.Video
             _player?.GoBack();
         }
 
-        // ------------------------------------------------------------------ 窓への触り（方針3）
+        // ------------------------------------------------------------------ 窓の見張り（v1.0.9 の 2 と 3）
 
         /// <summary>
-        /// 窓（<c>videoArea</c>）を触った場所を <see cref="IVideoPlayer.Touch"/> へ流す。
+        /// 主人の html が読み込み終わった瞬間に、ページ全体の縦スクロールを塞ぐ
+        /// （主人「縦にスクロールできちゃう（16:9 のとき）」）。
+        /// 読み込みの**前**に JS を送っても消えるので、立ち上がりを待ってから1度だけ送る。
+        /// </summary>
+        private void WatchHtmlLoaded()
+        {
+            var loaded = _player != null && _player.IsHtmlLoaded;
+            if (loaded == _htmlLoaded)
+            {
+                return;
+            }
+
+            _htmlLoaded = loaded;
+            if (!loaded)
+            {
+                return; // 読み直し中。次に立ったらまた送る。
+            }
+
+            _player.SuppressPageScroll();
+            SetAction("窓の縦スクロールを止めました（html 読込後）");
+        }
+
+        /// <summary>
+        /// 窓が主人の html の外（<c>youtube.com/watch</c> など）へ出ていないかを見張る。
         ///
-        /// 主人との相談で決めた方針3——「次の動画は埋め込みプレイヤー自身の関連動画で選ぶ。
-        /// 動画の窓（WebView）への触りをレイ（とポーク）で通す」。
-        /// <c>youtube.html</c> は一時停止・終了時に自分で関連動画を出すので、
-        /// そこを触れるようにすれば板に一覧を持たなくても次が選べる（文字入力は置かない。設計 §6）。
+        /// 主人の提案どおり——「関連動画の video_id だけ抜いて、ロードできるようにとかできないか」。
+        /// 埋め込みプレイヤーの関連動画は、同じ iframe の中で再生されるもの（何もしなくてよい）と、
+        /// top frame を <c>youtube.com/watch</c> へ運ぶものがある。後者は html の JS が丸ごと
+        /// 消えるので板からは何も操作できなくなる。id を抜いて埋め込みへ連れ戻す。
+        /// </summary>
+        private void WatchWindowUrl()
+        {
+            var url = _player?.CurrentUrl;
+            if (string.IsNullOrEmpty(url))
+            {
+                return; // Editor、または初期化前。
+            }
+
+            if (url.IndexOf(EmbeddedPlayerHost, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                // 主人の html の上に居る。次の遷移に備えて覚えを流す。
+                _handledRelatedId = null;
+                return;
+            }
+
+            if (url.IndexOf("watch?v=", StringComparison.OrdinalIgnoreCase) < 0 &&
+                url.IndexOf("youtu.be/", StringComparison.OrdinalIgnoreCase) < 0 &&
+                url.IndexOf("/shorts/", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                SetAction($"窓が別の場所へ出ました（{Shorten(url)}）。「戻る」で帰れます");
+                return;
+            }
+
+            var videoId = MediaJson.NormalizeVideoId(url);
+            if (videoId == null || videoId == _handledRelatedId)
+            {
+                return;
+            }
+
+            _handledRelatedId = videoId;
+            SetAction($"関連動画 {videoId} を開きました（埋め込みへ連れ戻します）");
+            OpenRelatedAsync(videoId).Forget();
+        }
+
+        /// <summary>
+        /// 関連動画を埋め込みプレイヤーで開き直す。
+        /// html を読み直してから（＝舞台を作り直してから）<c>loadVideo</c> を頼む——
+        /// youtube.com の上では html の JS が無いので、先に読み直さないと何も送れない。
+        /// </summary>
+        private async UniTaskVoid OpenRelatedAsync(string videoId)
+        {
+            var serial = ++_relatedSerial;
+            var token = this.GetCancellationTokenOnDestroy();
+
+            _player.ReloadHtml();
+            _htmlLoaded = false;
+
+            await UniTask.Delay(RelatedReloadDelayMs, cancellationToken: token).SuppressCancellationThrow();
+            if (token.IsCancellationRequested || serial != _relatedSerial || _player == null)
+            {
+                return;
+            }
+
+            _selected = IndexOfVideoId(videoId);
+            _offListTitle = _selected >= 0 ? null : $"関連動画 {videoId}";
+
+            _player.Load(videoId);
+            _player.SetVolume(_volume);
+            _player.SetAspect(Aspect);
+            _player.SuppressPageScroll();
+            _playing = true;
+
+            SetAction($"関連動画 {videoId} を読み込みました");
+            RefreshControls();
+            EnsurePlayingLaterAsync().Forget();
+        }
+
+        private int IndexOfVideoId(string videoId)
+        {
+            for (var i = 0; i < _items.Count; i++)
+            {
+                if (_items[i].VideoId == videoId)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static string Shorten(string url) =>
+            url.Length <= 48 ? url : url.Substring(0, 47) + "…";
+
+        // ------------------------------------------------------------------ 窓への触り（方針3 ＋ v1.0.9 の 1）
+
+        /// <summary>押している指1本の様子。タップかドラッグかをここで決める。</summary>
+        private sealed class WindowTouch
+        {
+            public Vector2 DownUv;
+            public Vector2 LastUv;
+            public float DownTime;
+
+            /// <summary>閾値を越えて DOWN を送った＝以後 DRAG を流す。</summary>
+            public bool Dragging;
+        }
+
+        /// <summary>
+        /// 窓（<c>videoArea</c>）を触った場所を <see cref="IVideoPlayer"/> へ流す。
         ///
-        /// ここは**釦ではない**ので <see cref="PokePress"/> を通さない——
-        /// 「押し下げで発火・600ms 間引き・離れるまで次を受けない」は釦のための歯止めで、
-        /// WebView にクリックと見なしてもらうには Down → （Drag）→ Up を素直に流す必要がある。
+        /// v1.0.9 までは <c>PointerDown</c> でそのまま DOWN を送っていた。主人の
+        /// 「関連動画をタップしても反応しない（横スクロールはできる）」はこれが原因（確度 高）——
+        /// レイの着地点もポークの指先も揺れるので、押し下げと押し上げの間に DRAG が挟まり、
+        /// WebView が「スクロール」と解釈してクリックを出さない。
         ///
-        /// <see cref="PointerMoveEvent"/> は毎フレーム飛んでくるので、
-        /// **その指が押し下げ中のときだけ** Drag を送る。
-        /// 離脱（<c>PointerLeave</c>／<c>PointerOut</c>／捕捉の解除）でも必ず Up を送る——
-        /// 送り損ねると WebView の中で指が押されたままになり、次の触りが効かなくなる。
+        /// だから **押し下げでは何も送らない**。
+        ///   - 動きが <see cref="TapMoveThreshold"/> を越えたら、そこで初めて
+        ///     押し下げの座標で DOWN を送り、以後 DRAG を流す（＝スクロール）。
+        ///   - 越えないまま <see cref="TapMaxSeconds"/> 以内に離れたら**タップ**。
+        ///     <see cref="IVideoPlayer.Tap"/> が DOWN → 80ms → UP を**同じ座標で**送る。
+        ///   - 越えないまま長く留まって離れたら**何も送らない**（板に手を置いただけ）。
+        /// どちらに転んだかは札（<c>actionLine</c>）に出す——実機で主人が見分けられるように。
+        ///
+        /// ここは**釦ではない**ので <see cref="PokePress"/> を通さない
+        /// （「押し下げで発火・600ms 間引き・離れるまで次を受けない」は釦のための歯止め）。
         /// </summary>
         private void BindVideoAreaTouch()
         {
@@ -403,28 +733,49 @@ namespace KitchenXR.Presentation.Video
                     return;
                 }
 
-                _touching.Add(evt.pointerId);
-                _lastTouchUv = uv;
-                _player?.Touch(VideoTouchPhase.Down, uv.x, uv.y);
-                SetAction($"窓に触れました（{uv.x:0.00}, {uv.y:0.00}）");
+                // まだ WebView へは何も送らない（送ると揺れが DRAG になる）。
+                _touching[evt.pointerId] = new WindowTouch
+                {
+                    DownUv = uv,
+                    LastUv = uv,
+                    DownTime = Time.unscaledTime,
+                    Dragging = false,
+                };
             });
 
             _videoArea.RegisterCallback<PointerMoveEvent>(evt =>
             {
-                if (!_touching.Contains(evt.pointerId) || !TryVideoUv(evt.position, out var uv))
+                if (!_touching.TryGetValue(evt.pointerId, out var touch) ||
+                    !TryVideoUv(evt.position, out var uv))
                 {
                     return;
                 }
 
-                _lastTouchUv = uv;
-                _player?.Touch(VideoTouchPhase.Drag, uv.x, uv.y);
+                touch.LastUv = uv;
+
+                if (touch.Dragging)
+                {
+                    _player?.Touch(VideoTouchPhase.Drag, uv.x, uv.y);
+                    return;
+                }
+
+                if (MovedFarEnough(touch.DownUv, uv))
+                {
+                    // ここから先はスクロール。押し下げの座標で DOWN を送ってから DRAG を流す
+                    // ——WebView は DOWN の無い DRAG を無視する。
+                    touch.Dragging = true;
+                    _player?.Touch(VideoTouchPhase.Down, touch.DownUv.x, touch.DownUv.y);
+                    _player?.Touch(VideoTouchPhase.Drag, uv.x, uv.y);
+                    SetAction($"窓: ドラッグ開始（{touch.DownUv.x:0.00}, {touch.DownUv.y:0.00}）");
+                }
             });
 
             _videoArea.RegisterCallback<PointerUpEvent>(evt =>
             {
-                if (TryVideoUv(evt.position, out var uv))
+                if (_touching.TryGetValue(evt.pointerId, out var touch) &&
+                    TryVideoUv(evt.position, out var uv))
                 {
-                    _lastTouchUv = uv;
+                    touch.LastUv = uv;
                 }
 
                 ReleaseTouch(evt.pointerId);
@@ -435,14 +786,45 @@ namespace KitchenXR.Presentation.Video
             _videoArea.RegisterCallback<PointerCaptureOutEvent>(evt => ReleaseTouch(evt.pointerId));
         }
 
+        /// <summary>
+        /// 動いた量を**絵の幅**の比で測る。縦は絵の縦横比を掛けて同じ物差しに揃える
+        /// （9:16 では縦 1% が横 1.8% ぶんの距離になる）。
+        /// </summary>
+        private bool MovedFarEnough(Vector2 from, Vector2 to)
+        {
+            var heightOverWidth = Aspect == VideoAspect.Portrait ? 16f / 9f : 9f / 16f;
+            var du = to.x - from.x;
+            var dv = (to.y - from.y) * heightOverWidth;
+            return du * du + dv * dv > TapMoveThreshold * TapMoveThreshold;
+        }
+
         private void ReleaseTouch(int pointerId)
         {
-            if (!_touching.Remove(pointerId))
+            if (!_touching.TryGetValue(pointerId, out var touch))
             {
                 return;
             }
 
-            _player?.Touch(VideoTouchPhase.Up, _lastTouchUv.x, _lastTouchUv.y);
+            _touching.Remove(pointerId);
+
+            if (touch.Dragging)
+            {
+                // 送り損ねると WebView の中で指が押されたままになる。必ず離す。
+                _player?.Touch(VideoTouchPhase.Up, touch.LastUv.x, touch.LastUv.y);
+                SetAction($"窓: ドラッグ終了（{touch.LastUv.x:0.00}, {touch.LastUv.y:0.00}）");
+                return;
+            }
+
+            var held = Time.unscaledTime - touch.DownTime;
+            if (held > TapMaxSeconds)
+            {
+                SetAction($"窓: 長押し {held:0.0}秒（何も送りません）");
+                return;
+            }
+
+            // ここだけが「クリック」。押し下げの座標で DOWN → 80ms → UP。
+            _player?.Tap(touch.DownUv.x, touch.DownUv.y);
+            SetAction($"窓: タップ（{touch.DownUv.x:0.00}, {touch.DownUv.y:0.00}）");
         }
 
         /// <summary>
@@ -513,6 +895,10 @@ namespace KitchenXR.Presentation.Video
             ApplyAnchor();
 
             _player?.SetAspect(aspect);
+
+            // 向きを変えると WebView が resize され、html の style も入れ替わる。
+            // 縦スクロールを塞ぐ JS はそのたびに送り直す（v1.0.9 の 2）。
+            _player?.SuppressPageScroll();
 
             if (_aspectButton != null)
             {
@@ -644,7 +1030,7 @@ namespace KitchenXR.Presentation.Video
             // 札に出す（寸法の計算違いを実機で見分けるため）。実寸は板の縮尺込み。
             var scale = transform.localScale.x;
             _surfaceInfo =
-                $"窓 {rect.width:0.00}×{rect.height:0.00}u → 絵 {width * scale * 1000f:0}×{height * scale * 1000f:0}mm";
+                $"絵 {width * scale * 1000f:0}×{height * scale * 1000f:0}mm";
         }
 
         // ------------------------------------------------------------------ 札
@@ -736,7 +1122,10 @@ namespace KitchenXR.Presentation.Video
 
             if (_nowPlaying != null)
             {
-                _nowPlaying.text = _selected >= 0 ? _items[_selected].Title : "—";
+                _nowPlaying.text = _offListTitle
+                                   ?? (_selected >= 0 && _selected < _items.Count
+                                       ? _items[_selected].Title
+                                       : "—");
             }
 
             if (_notice != null)

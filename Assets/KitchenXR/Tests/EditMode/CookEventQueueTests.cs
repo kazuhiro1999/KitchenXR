@@ -104,8 +104,16 @@ namespace KitchenXR.Tests.EditMode
             }
         }
 
-        private static ManorClient Client(IHttpTransport transport) =>
-            new ManorClient(ManorSettings.Parse($"{{\"base_url\": \"{BaseUrl}\"}}"), transport);
+        /// <summary>
+        /// 端末の鍵で叩く <see cref="ManorClient"/>（v1.0.10。ADR-017 D1）。
+        /// 鍵が無いと <c>IsConfigured</c> が false になり、待ち行列はそもそも送ろうとしない。
+        /// </summary>
+        private static ManorClient Client(IHttpTransport transport)
+        {
+            var client = new ManorClient(ManorSettings.Parse($"{{\"base_url\": \"{BaseUrl}\"}}"), transport);
+            client.UseDeviceToken("device-token");
+            return client;
+        }
 
         // ---------------------------------------------------------------- 本題
 

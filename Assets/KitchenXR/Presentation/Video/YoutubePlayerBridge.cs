@@ -90,6 +90,10 @@ namespace KitchenXR.Presentation.Video
         private readonly PropertyInfo _state;
         private readonly PropertyInfo _videoId;
 
+        /// <summary>主人の <c>LoadHtml(string)</c> と、その材料の <c>TextAsset</c>（private な SerializeField）。</summary>
+        private readonly MethodInfo _loadHtml;
+        private readonly FieldInfo _htmlAsset;
+
         private bool _warned;
         private int _tapCount;
 
@@ -115,6 +119,12 @@ namespace KitchenXR.Presentation.Video
                 _initialized = type.GetProperty("Initialized");
                 _state = type.GetProperty("State");
                 _videoId = type.GetProperty("videoId");
+
+                // 舞台を作り直す道（関連動画が youtube.com へ出てしまったとき）。
+                // html の中身は主人の private な SerializeField にしか無いので、そこから借りる
+                // ——**読むだけ**で、プレハブにも TextAsset にも書き戻さない。
+                _loadHtml = type.GetMethod("LoadHtml", new[] { typeof(string) });
+                _htmlAsset = type.GetField("Html", BindingFlags.Instance | BindingFlags.NonPublic);
             }
         }
 
@@ -152,6 +162,36 @@ namespace KitchenXR.Presentation.Video
             {
                 var state = ReadState();
                 return state == StatePlaying || state == StateBuffering;
+            }
+        }
+
+        /// <summary>主人の <c>youtube.html</c> が読み込み終わったか（<c>YoutubePlayer.Initialized</c>）。</summary>
+        public bool IsHtmlLoaded => ReadBool(_initialized);
+
+        /// <summary>
+        /// 今 WebView が開いている URL。
+        ///
+        /// <c>TLabWebView.GetUrl()</c> は <c>m_state</c> を見ないので、初期化の前に呼ぶと
+        /// ネイティブの口（<c>m_NativePlugin</c>）が無くて例外になる。**必ず状態を確かめてから**呼ぶ。
+        /// </summary>
+        public string CurrentUrl
+        {
+            get
+            {
+                if (_webView == null || _webView.state != TLabWebView.State.INITIALIZED)
+                {
+                    return null;
+                }
+
+                try
+                {
+                    return _webView.GetUrl();
+                }
+                catch (Exception)
+                {
+                    // 取れないだけ。札に出すほどのことではない（0.5 秒ごとに来るので溢れる）。
+                    return null;
+                }
             }
         }
 
@@ -374,19 +414,23 @@ namespace KitchenXR.Presentation.Video
                 return;
             }
 
-            // 端（0 や 1）ちょうどだと WebView の外の座標になり得るので、内側へ丸める。
-            var x = Mathf.Clamp(Mathf.RoundToInt(u * _webView.webWidth), 0, Mathf.Max(0, _webView.webWidth - 1));
-            var y = Mathf.Clamp(Mathf.RoundToInt(v * _webView.webHeight), 0, Mathf.Max(0, _webView.webHeight - 1));
-
             try
             {
-                _webView.TouchEvent(x, y, (int)phase);
+                _webView.TouchEvent(ToWebX(u), ToWebY(v), (int)phase);
             }
             catch (Exception e)
             {
                 Warn($"窓への触りを送れませんでした: {e.Message}");
             }
         }
+
+        // 絵の中の比 → WebView の論理ピクセル。端（0 や 1）ちょうどだと WebView の外の座標に
+        // なり得るので内側へ丸める。解像度は向きで変わるので**そのつど読む**。
+        private int ToWebX(float u) =>
+            Mathf.Clamp(Mathf.RoundToInt(u * _webView.webWidth), 0, Mathf.Max(0, _webView.webWidth - 1));
+
+        private int ToWebY(float v) =>
+            Mathf.Clamp(Mathf.RoundToInt(v * _webView.webHeight), 0, Mathf.Max(0, _webView.webHeight - 1));
 
         /// <summary>
         /// WebView の履歴を1つ戻る。関連動画を触った先が youtube.com 本体へ飛ぶことがあるので、
@@ -410,19 +454,121 @@ namespace KitchenXR.Presentation.Video
         }
 
         /// <summary>
-        /// ページの中央を一度タップする。押し下げと押し上げの間を <see cref="TapHoldMs"/> 空ける
-        /// （同じフレームで送ると WebView がクリックと見なさない）。
+        /// 主人の <c>youtube.html</c> を読み直して埋め込みプレイヤーの舞台を作り直す。
+        ///
+        /// 反射で <c>YoutubePlayer.LoadHtml(Html.text)</c> を呼ぶ（<c>Init()</c> が起動時にするのと同じ）。
+        /// あわせて <c>videoId</c> を空にする——主人の <c>LoadVideo</c> は
+        /// 「同じ id なら何もしない」で早々に帰るので、読み直した直後に同じ動画を頼めなくなる。
+        /// 反射が効かなければ <see cref="GoBack"/> で代える（履歴が1つならそれで戻れる）。
         /// </summary>
-        public void TapCenter()
+        public void ReloadHtml()
+        {
+            var html = _htmlAsset != null && _player != null
+                ? (_htmlAsset.GetValue(_player) as TextAsset)?.text
+                : null;
+
+            if (_loadHtml == null || string.IsNullOrEmpty(html))
+            {
+                Warn("html を読み直せないので「戻る」で代えます（主人の YoutubePlayer の作りが変わった？）。");
+                GoBack();
+                return;
+            }
+
+            try
+            {
+                _loadHtml.Invoke(_player, new object[] { html });
+                ForgetLoadedVideoId();
+            }
+            catch (Exception e)
+            {
+                Warn($"html を読み直せませんでした: {e.Message}");
+                GoBack();
+            }
+        }
+
+        /// <summary>
+        /// 主人が覚えている「今の動画 id」を忘れさせる（private な setter を反射で叩く）。
+        /// 効かなくても致命ではない——同じ動画をもう一度選んだときだけ空振りする。
+        /// </summary>
+        private void ForgetLoadedVideoId()
+        {
+            if (_player == null || _videoId == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _videoId.SetValue(_player, null);
+            }
+            catch (Exception)
+            {
+                // 主人の作りが変わった。札に出すほどのことではない。
+            }
+        }
+
+        /// <summary>
+        /// ページ全体の縦スクロールを塞ぐ（2026-09-13 主人「縦にスクロールできちゃう（16:9 のとき）」）。
+        ///
+        /// **html は書き換えない**（主人の資産）。だから読み込みが済んだあとに JS で被せる:
+        ///   - <c>overflow: hidden</c> を html と body の両方へ（body だけでは足りない）
+        ///   - <c>overscroll-behavior: none</c>——Android の WebView の「端で引っ張れる」を止める
+        ///   - <c>touch-action: none</c>——ページ自身のパン／ズームを渡さない
+        ///   - <c>touchmove</c> を **body と html の上でだけ** <c>preventDefault</c>。
+        ///     iframe（＝関連動画の帯）の中は素通しにする——主人「関連動画を開いて横にスクロールは
+        ///     できるようになった」を殺してはいけない。
+        /// 何度送っても害は無い（同じ style を上書きするだけ）ので、読み込み完了と向きの切替のたびに送る。
+        /// </summary>
+        public void SuppressPageScroll()
         {
             if (_webView == null)
             {
                 return;
             }
 
-            var x = Mathf.Max(1, _webView.webWidth / 2);
-            var y = Mathf.Max(1, _webView.webHeight / 2);
+            try
+            {
+                _webView.EvaluateJS(
+                    "(function(){" +
+                    "var h=document.documentElement,b=document.body;" +
+                    "if(h){h.style.overflow='hidden';h.style.overscrollBehavior='none';}" +
+                    "if(b){b.style.overflow='hidden';b.style.overscrollBehavior='none';b.style.touchAction='none';}" +
+                    "if(!window.__kxNoScroll){window.__kxNoScroll=true;" +
+                    "document.addEventListener('touchmove',function(e){" +
+                    "if(e.target===document.body||e.target===document.documentElement){e.preventDefault();}" +
+                    "},{passive:false});}" +
+                    "})();");
+            }
+            catch (Exception e)
+            {
+                Warn($"縦スクロールを止められませんでした: {e.Message}");
+            }
+        }
+
+        /// <summary>
+        /// ページの中央を一度タップする。動画が cue されているときの中央は YouTube の大きな
+        /// 再生ボタンなので、これで再生が始まり、以後この WebView は「操作済み」になる。
+        /// </summary>
+        public void TapCenter()
+        {
             _tapCount++;
+            Tap(0.5f, 0.5f);
+        }
+
+        /// <summary>
+        /// 窓の1点を叩く。押し下げと押し上げの間を <see cref="TapHoldMs"/> 空け、
+        /// **座標は動かさない**（同じフレームで送ると WebView がクリックと見なさず、
+        /// 座標が動くとスクロールと見なされる。v1.0.9 で関連動画が押せなかったのはそれ）。
+        /// </summary>
+        public void Tap(float u, float v)
+        {
+            if (_webView == null)
+            {
+                return;
+            }
+
+            var x = ToWebX(u);
+            var y = ToWebY(v);
 
             try
             {
