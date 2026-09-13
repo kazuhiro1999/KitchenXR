@@ -22,7 +22,7 @@ namespace KitchenXR.App.Editor
     /// </summary>
     public static class AndroidPlayerSetup
     {
-        public const string TargetBundleVersion = "1.0.12";
+        public const string TargetBundleVersion = "1.1.0";
 
         /// <summary>`TLabWebView` の README が求める最小 API（Android 8.0）。</summary>
         public const int WebViewMinimumSdk = 26;
