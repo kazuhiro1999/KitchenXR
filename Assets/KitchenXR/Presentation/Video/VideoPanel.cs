@@ -162,14 +162,6 @@ namespace KitchenXR.Presentation.Video
         private Button _playPauseButton;
         private Button _aspectButton;
 
-        // カメラの下見（v1-d）。一覧の上の小さな窓と、その下の釦2つ。
-        private VisualElement _cameraWindow;
-        private VisualElement _cameraRow;
-        private Label _cameraStatus;
-        private Button _cameraButton;
-        private Button _cameraBurstButton;
-        private CameraProbe _cameraProbe;
-
         private IVideoPlayer _player;
         private YoutubePlayerBridge _bridge;
         private MediaThumbnailCache _thumbnailCache;
@@ -234,12 +226,6 @@ namespace KitchenXR.Presentation.Video
             _playPauseButton = _root.Q<Button>("playPauseButton");
             _aspectButton = _root.Q<Button>("aspectButton");
 
-            _cameraWindow = _root.Q<VisualElement>("cameraWindow");
-            _cameraRow = _root.Q<VisualElement>("cameraRow");
-            _cameraStatus = _root.Q<Label>("cameraStatus");
-            _cameraButton = _root.Q<Button>("cameraButton");
-            _cameraBurstButton = _root.Q<Button>("cameraBurstButton");
-
             PokePress.BindButton(_playPauseButton, _debounce, "video-playpause", TogglePlayPause);
             PokePress.BindButton(_root.Q<Button>("volumeDownButton"), _debounce, "video-volume-down",
                 () => ChangeVolume(-VolumeStep));
@@ -247,10 +233,6 @@ namespace KitchenXR.Presentation.Video
                 () => ChangeVolume(+VolumeStep));
             PokePress.BindButton(_aspectButton, _debounce, "video-aspect", ToggleAspect);
             PokePress.BindButton(_root.Q<Button>("backButton"), _debounce, "video-back", GoBack);
-
-            // カメラの下見。調理中も押せる（この板だけはレイも指も通る層に居る）。
-            PokePress.BindButton(_cameraButton, _debounce, "video-camera", ToggleCamera);
-            PokePress.BindButton(_cameraBurstButton, _debounce, "video-camera-burst", ToggleCameraBurst);
 
             // 窓そのものを触れるようにする。釦ではないので PokePress は通さない。
             BindVideoAreaTouch();
@@ -276,13 +258,6 @@ namespace KitchenXR.Presentation.Video
         {
             CancelThumbnailLoads();
             ReleaseThumbnails();
-
-            if (_cameraProbe != null)
-            {
-                _cameraProbe.Changed -= RefreshCamera;
-                _cameraProbe.Dispose();
-                _cameraProbe = null;
-            }
         }
 
         private void Update()
@@ -325,114 +300,6 @@ namespace KitchenXR.Presentation.Video
             _handledRelatedId = null;
             RefreshControls();
             RefreshStatus();
-        }
-
-        /// <summary>
-        /// カメラの下見を挿す（<c>Bootstrap</c> から。挿さっていなければ釦は何もしない）。
-        /// 板が壊れても調理は止まらないので、口は1つだけにしてある。
-        /// </summary>
-        public void BindCamera(CameraProbe probe)
-        {
-            if (_cameraProbe != null)
-            {
-                _cameraProbe.Changed -= RefreshCamera;
-            }
-
-            _cameraProbe = probe;
-            if (_cameraProbe != null)
-            {
-                _cameraProbe.Changed += RefreshCamera;
-            }
-
-            RefreshCamera();
-        }
-
-        /// <summary>「カメラ」——1枚取って小さな窓に出す。もう一度押すと消える。</summary>
-        public void ToggleCamera()
-        {
-            if (_cameraProbe == null)
-            {
-                SetCameraStatus("カメラ: 口が挿さっていません");
-                return;
-            }
-
-            _cameraProbe.Toggle();
-        }
-
-        /// <summary>「連写2fps」——2枚/秒で JPEG にして、大きさと所要を札に流す（段 (c) の下見）。</summary>
-        public void ToggleCameraBurst()
-        {
-            if (_cameraProbe == null)
-            {
-                SetCameraStatus("カメラ: 口が挿さっていません");
-                return;
-            }
-
-            _cameraProbe.ToggleBurst();
-        }
-
-        /// <summary>札の文言（試験用）。</summary>
-        public string CameraStatus => _cameraStatus?.text ?? string.Empty;
-
-        /// <summary>カメラの釦が出ているか（試験用）。</summary>
-        public bool IsCameraAvailable => _cameraAvailable;
-
-        private bool _cameraAvailable = true;
-
-        /// <summary>
-        /// カメラの釦と窓を出すか（<c>Bootstrap</c> が設定と権限から決める）。
-        /// 出さないときでも <paramref name="reason"/> があれば札にだけ理由を残す
-        /// ——「有効にしたのに権限が無い」を黙って消すと、直しようが分からない。
-        /// </summary>
-        public void SetCameraAvailable(bool available, string reason = null)
-        {
-            _cameraAvailable = available;
-
-            _cameraRow?.EnableInClassList("is-hidden", !available);
-
-            if (!available)
-            {
-                _cameraWindow?.AddToClassList("is-hidden");
-                SetCameraStatus(reason);
-                return;
-            }
-
-            RefreshCamera();
-        }
-
-        private void RefreshCamera()
-        {
-            if (!_cameraAvailable)
-            {
-                return;
-            }
-
-            if (_cameraWindow != null)
-            {
-                var texture = _cameraProbe?.Texture;
-                _cameraWindow.style.backgroundImage = texture != null
-                    ? new StyleBackground(texture)
-                    : new StyleBackground(StyleKeyword.None);
-                _cameraWindow.EnableInClassList("is-hidden", texture == null);
-            }
-
-            if (_cameraBurstButton != null)
-            {
-                _cameraBurstButton.text = _cameraProbe != null && _cameraProbe.IsBursting ? "連写停止" : "連写2fps";
-            }
-
-            SetCameraStatus(_cameraProbe?.StatusText ?? string.Empty);
-        }
-
-        private void SetCameraStatus(string text)
-        {
-            if (_cameraStatus == null)
-            {
-                return;
-            }
-
-            _cameraStatus.text = text ?? string.Empty;
-            _cameraStatus.EnableInClassList("is-hidden", string.IsNullOrEmpty(text));
         }
 
         /// <summary>絵の保管庫を差し替える（試験用。既定は <see cref="MediaThumbnailCache.CreateDefault"/>）。</summary>

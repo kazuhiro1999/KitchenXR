@@ -197,10 +197,9 @@ namespace KitchenXR.App
 
             SetUpPlacement();
 
-            // カメラの下見（v1-d）。実機は Meta の口、Editor は受け皿（札に理由が出る）。
-            // 板が無くても作る——manor への1枚の投げもここが持っているので、口は1つにしておく。
+            // カメラの口（v1-d (a)）。実機は Meta の口、Editor は受け皿。
+            // 釦は無い——次の段（認識）が呼ぶまで眠っている。
             _cameraProbe = new CameraProbe(PassthroughCameraFactory.Create(), _manor);
-            _videoPanel?.BindCamera(_cameraProbe);
 
             // 起動の見た目は「レシピを選ぶ板」。調理の3枚は選んでから出す。
             ShowListMode();
@@ -215,7 +214,7 @@ namespace KitchenXR.App
             // 起動のたびにここで当て直す。文字のクラスも板の root が出来てからでないと付かない。
             ApplyDisplaySettings();
 
-            // カメラの釦は板（VideoPanel）の Awake が済んでから隠す。
+            // 設定の入／切を下見と設定の板に当てる。
             ApplyCameraSetting();
 
             PlaceInitialPanels();
@@ -904,26 +903,13 @@ namespace KitchenXR.App
 
         // ---------------------------------------------------------------- カメラの入／切
 
-        /// <summary>
-        /// 設定の入／切を板と下見に当てる。有効でも権限が無ければ釦は出さない——
-        /// 後から「設定 → アプリ → 権限」で拒否へ戻されている場合で、押しても取れないから。
-        /// </summary>
+        /// <summary>設定の入／切を下見と設定の板に当てる。</summary>
         private void ApplyCameraSetting()
         {
             var enabled = _displaySettings != null && _displaySettings.CameraEnabled;
 
             _cameraProbe?.SetEnabled(enabled);
             _recipeListPanel?.SetCameraEnabled(enabled);
-
-            if (!enabled)
-            {
-                _videoPanel?.SetCameraAvailable(false);
-                return;
-            }
-
-            var hasPermission = _cameraProbe != null && _cameraProbe.HasPermission;
-            _videoPanel?.SetCameraAvailable(hasPermission,
-                hasPermission ? null : CameraProbe.PermissionDeniedText);
         }
 
         /// <summary>

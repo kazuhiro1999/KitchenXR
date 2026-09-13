@@ -492,37 +492,6 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// カメラの下見（v1-d）の釦と窓が、動画の板の一覧側に在ること。
-        /// 小さな窓は 10cm 角（50px × 2mm）——実機で「写っている範囲」を見るための寸法なので、
-        /// 縮めると確かめられなくなる。
-        /// </summary>
-        [Test]
-        public void カメラの釦と窓が動画の板にある()
-        {
-            var uxml = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(),
-                "Assets/KitchenXR/Presentation/UI/VideoPanel.uxml"));
-
-            foreach (var name in new[] { "cameraButton", "cameraBurstButton", "cameraWindow", "cameraStatus" })
-            {
-                StringAssert.Contains($"name=\"{name}\"", uxml,
-                    $"VideoPanel.uxml に {name} がありません（カメラの検証ができません）。");
-            }
-
-            // 釦は一覧側（listBlock の中）に置く——動画の窓の中に置くと、
-            // 板の 1cm 手前に浮いた WebView の絵の裏に隠れる。
-            var listBlock = uxml.IndexOf("name=\"listBlock\"", System.StringComparison.Ordinal);
-            var controlBlock = uxml.IndexOf("name=\"controlBlock\"", System.StringComparison.Ordinal);
-            var cameraButton = uxml.IndexOf("name=\"cameraButton\"", System.StringComparison.Ordinal);
-            Assert.Greater(cameraButton, listBlock, "「カメラ」の釦が一覧側にありません。");
-            Assert.Less(cameraButton, controlBlock, "「カメラ」の釦が一覧側にありません。");
-
-            var uss = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(),
-                "Assets/KitchenXR/Presentation/UI/VideoPanel.uss"));
-            StringAssert.Contains("width: 50px", uss,
-                "VideoPanel.uss の .video-camera-window が 10cm 角（50px）ではありません。");
-        }
-
-        /// <summary>
         /// 指先の光る点が左右の Poke Interactor に付いていること。
         /// rig を差し替えたときに黙って 0 個になるのを防ぐ。
         /// </summary>

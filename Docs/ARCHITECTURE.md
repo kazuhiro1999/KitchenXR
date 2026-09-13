@@ -155,10 +155,13 @@ Pixels Per Unit 100、板の `localScale` は 0.2 なので **1 UI px = 2mm** �
   混ぜません。手首メニューと配置の操作も、出ている間だけの板なので対象外です。
 </content>
 
-## 8. カメラの下見（`Platform/MetaCamera`）
+## 8. カメラの口（`Platform/MetaCamera`）
 
-ロードマップ v1-d の段 (a)——**Quest 3 のカメラから1枚もらって板に出せるか**だけを確かめる
-仕掛けです。認識も判定もしません（段 (b)(d) の仕事）。根拠は
+ロードマップ v1-d の段 (a)——**Quest 3 のカメラから1枚もらえるか**は実機で確かめ済みです。
+**検証用の釦（「カメラ」「連写2fps」）と 10cm の窓は 1.1.0 で撤去しました**——台所に
+「押しても調理が進まない釦」を残さないためです。**口（`IPassthroughCamera` と Meta の実装）と
+`CameraProbe` の取得・JPEG・送信のロジックは残してあります**。釦が無いので普段は眠っていて、
+次の段（認識）が呼びます。認識も判定もここではしません（段 (b)(d) の仕事）。根拠は
 [`research/2026-09-13_quest3-camera-and-recognition.md`](research/2026-09-13_quest3-camera-and-recognition.md)
 の §1・§5。
 
@@ -179,8 +182,8 @@ Pixels Per Unit 100、板の `localScale` は 0.2 なので **1 UI px = 2mm** �
   左右が合っているかは実機でしか見えないので、札に「反転: X」を出しています。
   **`Dispose` は必ず通す**——取りこぼすと AR プラットフォーム側がメモリ切れになります。
 - **カメラは設定で入／切します**（一覧の板の「設定」。`settings.json` の `camera_enabled`。
-  **既定は無効**）。無効のうちは権限を求めず、動画の板の「カメラ」「連写2fps」の釦も窓も
-  出さず、`CameraProbe` は作られても眠ります。
+  **既定は無効**）。無効のうちは権限を求めず、`CameraProbe` は作られても眠ります
+  （呼ばれても口に触りません）。
 - **権限は起動時に求めます**（`Bootstrap.RequestHeadsetCameraPermissionAtStartup`。
   `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]` なので**場面が読まれる前＝AR セッションが
   立つ前**）。権限が無いまま始まった subsystem はそのセッションの間ずっと 1 枚も返さないので、
@@ -190,7 +193,6 @@ Pixels Per Unit 100、板の `localScale` は 0.2 なので **1 UI px = 2mm** �
 - **初めて有効にしたときだけ**その場で権限を求め、下りたら一覧の板の覆いに
   「カメラを使うには一度アプリを立ち上げ直してください」＋「閉じる」を出します
   （効くのは次の起動から）。拒否されたら理由を出して設定は無効へ戻します。
-  有効のまま起動して権限が無い（後から拒否へ戻された）ときは、釦を隠して札に理由だけ残します。
 - **口は起こし直しません。`ARCameraManager` にも subsystem にも触りません。**
   Unity OpenXR: Meta ではパススルーの描画が `ARCameraManager` に結び付いているので、
   権限の直後に disable→enable したら **MR の視界が真っ暗になって戻りませんでした**
@@ -216,24 +218,22 @@ Pixels Per Unit 100、板の `localScale` は 0.2 なので **1 UI px = 2mm** �
 `Platform/MetaCamera/` の外へ出さないためです（§1 の4つ目の規則）。
 検算は `KitchenSceneIntegrityTests`。
 
-### 8.3 出す（動画の板の一覧側）
+### 8.3 出さない（釦は 1.1.0 で撤去）
 
-- 「カメラ」の釦を押すと1枚取り、**10cm 角（50 UI px）の小さな窓**に `Texture2D` を
-  `backgroundImage` で貼って、札に
-  `取得 640×640 / 取得〜表示 22ms / 内部パラメータ: あり / 反転: X` を実測で出します
-  （数字は 2026-09-13 の実測。調査 §7）。もう一度押すと消えます。
-  失敗（非対応・権限拒否・null）は理由をそのまま札へ。
-- **釦も窓も一覧側に置きます。** 動画の絵は板の 1cm 手前に浮いた uGUI の `RawImage`（§6）
-  なので、窓の中へ重ねると必ずその裏に隠れます。窓は絵を出している間だけ開き、
-  畳んでいる間は再生リストの行を食いません。
-- 動画の板を選んだのは、**調理中も押せる唯一の板**だから（`CookingModeInputGate` の
-  `Video` 層。§3）。手首メニューの「配置」の隣に置くと、配置モードに入らないと押せません。
-- 実測は札と **`FileLog`** の両方へ出ます。USB で繋がずに確かめる段なので、後から読む場所が要ります。
+- 検証用の UI——動画の板の一覧側にあった「カメラ」「連写2fps」の釦・10cm 角の窓・実測の札
+  ——は **1.1.0 で撤去しました**。段 (a) で確かめたいこと（1枚取れるか・寸法・所要・反転）は
+  実機で確かめ終わったので、台所に押しても調理が進まない釦を残しません。
+  `VideoPanel` はカメラを知りません（`BindCamera`・`SetCameraAvailable` とも無くなりました）。
+- 実測の道は `CameraProbe.Report` が **`FileLog`** へ残します。札はもう無いので、
+  次の段（認識）で何が起きたかは Editor のログとこのファイルだけが持ちます。
+- 残した実測値（2026-09-13。調査 §7）:
+  `取得 640×640 / 取得〜表示 22ms / 内部パラメータ: あり / 反転: X`。
 
 ### 8.4 (c) の下見（JPEG 化と送信の負荷）
 
-- 「連写2fps」で 2枚/秒。取得 → `EncodeToJPG` 相当（`ImageConversion.EncodeArrayToJPG`・品質 70）
-  までの **KB と ms** を札に流します。JPEG 化は別スレッドで回し、Unity に弾かれたら
+- `CameraProbe.ToggleBurst` は残してあります（釦からは呼ばれません）。2枚/秒で
+  取得 → `EncodeToJPG` 相当（`ImageConversion.EncodeArrayToJPG`・品質 70）までの
+  **KB と ms** を測ります。JPEG 化は別スレッドで回し、Unity に弾かれたら
   主スレッドでやり直します（黙って落とさない）。
 - manor の繋ぎ先と鍵があれば、**1枚だけ** `POST /api/v1/kitchen/vision/frame`
   （`image/jpeg`・Bearer は既存の `ManorClient` の経路）へ投げて、往復 ms と HTTP 状態を出します。
