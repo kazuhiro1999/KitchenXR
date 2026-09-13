@@ -1,7 +1,9 @@
 using KitchenXR.Platform;
+using KitchenXR.Platform.MetaCamera;
 using KitchenXR.Platform.Null;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.XR.ARSubsystems;
 
 namespace KitchenXR.Tests.EditMode
 {
@@ -84,6 +86,27 @@ namespace KitchenXR.Tests.EditMode
             Assert.IsFalse(camera.TryAcquire(out var frame));
             Assert.IsNull(frame);
             Assert.IsNotEmpty(camera.LastFailure, "非対応の理由が空です（札に何も出せません）。");
+            Assert.IsFalse(camera.PermissionJustGranted);
+            Assert.IsFalse(camera.Restart(), "受け皿には起こし直す口がありません。");
+        }
+
+        /// <summary>
+        /// 実機の絵が 180 度回っていた（実測 2026-09-13）。180 度 ＝ 上下＋左右の反転なので、
+        /// <c>MirrorY</c> を掛けた結果が 180 度回転だったということは、真っ直ぐ出すのは
+        /// <c>MirrorX</c>（<c>MirrorY(元) = Rot180(真)</c> ⇒ <c>真 = MirrorX(元)</c>）。
+        /// 実機でしか絵は出ないので、掛ける反転そのものをここで縛る。
+        /// </summary>
+        [Test]
+        public void 反転はMirrorXで札にも出る()
+        {
+            Assert.AreEqual(
+                XRCpuImage.Transformation.MirrorX,
+                MetaOpenXRPassthroughCamera.OutputTransformation,
+                "180 度回転を戻すのは MirrorX（MirrorY ではない）。");
+
+            using var camera = new MetaOpenXRPassthroughCamera();
+            Assert.AreEqual("反転: X", camera.TransformationText,
+                "実機で上下左右を目で確かめられるよう、札に反転を出すこと。");
         }
     }
 }

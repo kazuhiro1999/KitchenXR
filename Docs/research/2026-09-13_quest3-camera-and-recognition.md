@@ -229,3 +229,35 @@ manor への送信は既存の `ManorClient` の隣の `Net/`。
 18. Semantic Classification for Scene — https://developers.meta.com/horizon/documentation/unreal/unreal-scene-supported-semantic-labels/
 19. Bounding box / Plane detection platform support（AR Foundation） — https://docs.unity3d.com/Packages/com.unity.xr.arfoundation@6.0/manual/features/bounding-box-detection/platform-support.html ／ https://docs.unity3d.com/Packages/com.unity.xr.arfoundation@6.0/manual/features/plane-detection/platform-support.html
 20. Planes（Unity OpenXR Meta 2.2） — https://docs.unity3d.com/Packages/com.unity.xr.meta-openxr@2.2/manual/features/planes.html
+
+## 7. 実機の実測（2026-09-13）
+
+Quest 3・`KitchenXR_v1.0.12-camera.apk`（段 a のビルド）を主人が実機で回した結果。
+上の §1.4 の公表値と §3.1 の見積りに対する、初めての実数。
+
+| 事項 | 実測 | 見積り（§1.4・§3.1） |
+|---|---|---|
+| 画像の寸法 | **640×640** | 1280×960 を 640 幅へ縮める前提だった |
+| 取得〜表示 | **22ms** | — |
+| JPEG（q70）の大きさ | **20〜24KB** | 20〜40KB（当たり） |
+| 連写 2fps の内訳 | **取得 20ms ＋ 変換 15ms** | 1枚 35ms なら 2fps に十分な余裕 |
+| 絵の向き | **180 度回転していた** | `MirrorY` だけを掛けていた |
+| 権限を許した直後 | **そのセッションでは 1 枚も取れない。立ち上げ直すと取れる** | 想定していなかった |
+
+分かったこと3つ:
+
+1. **寸法は 640×640。** 1280×960 の 4:3 ではなく正方形で来る。`MaxOutputWidth = 640` は
+   結果として効いていない（元から 640 幅）。認識に渡す量としては §3.1 の想定どおり。
+2. **反転は `MirrorX` が正しい。** 180 度回転 ＝ 上下＋左右の反転。`MirrorY(元)` が
+   180 度回って見えたということは `MirrorY(元) = Rot180(真)` で、両辺に `MirrorY` を掛けると
+   `元 = MirrorY(Rot180(真)) = MirrorX(真)`、すなわち **`真 = MirrorX(元)`**。
+   `Platform/MetaCamera/MetaOpenXRPassthroughCamera.OutputTransformation` を `MirrorX` にした。
+   左右が合っているかは実機でしか見えないので、札に「反転: X」を出している。
+3. **権限の直後はカメラの口を起こし直す。** 権限が無いまま始まった `XRCameraSubsystem` は
+   そのセッションの間ずっと 1 枚も返さない。許可が下りたら `ARCameraManager` を
+   disable→enable（無ければ subsystem を Stop／Start）して 0.6 秒待ち、それでも来なければ
+   0.4 秒おきに 4 回まで取り直す。そこまでして駄目なら札に
+   「許可されました。もう一度「カメラ」を押してください」と出す（2 度目は必ず取れる）。
+
+速さは十分——取得 20ms ＋ 変換 15ms なら 2fps（500ms 間隔）に対して 7% しか使っていない。
+段 (b) の端末内認識（§2.1）に回せる時間が 400ms 以上あるということ。

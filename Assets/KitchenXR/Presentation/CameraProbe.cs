@@ -26,6 +26,15 @@ namespace KitchenXR.Presentation
         /// <summary>JPEG の品質（調査 §3.1 の 640×480・q70）。</summary>
         public const int JpegQuality = 70;
 
+        /// <summary>権限が下りた直後に取り直す回数（口を起こし直しても少し流れ始めが遅い）。</summary>
+        public const int RetriesAfterGrant = 4;
+
+        /// <summary>その取り直しの間隔（ミリ秒）。</summary>
+        public const int RetryIntervalMs = 400;
+
+        /// <summary>権限の直後に取れなかったときの札。次の1回で必ず取れる。</summary>
+        public const string PressAgainText = "許可されました。もう一度「カメラ」を押してください";
+
         private readonly IPassthroughCamera _camera;
         private readonly ManorClient _manor;
         private readonly CancellationTokenSource _life = new CancellationTokenSource();
@@ -93,8 +102,9 @@ namespace KitchenXR.Presentation
                 clock.Stop();
 
                 // 「取得〜表示」は取りに行ってから絵に貼り終わるまで（下の AcquireAsync が測った分を足す）。
+                // 反転も出すのは、上下左右が合っているかを実機で目で確かめるため。
                 Report($"取得 {frame.SizeText} / 取得〜表示 {_lastAcquireMs + clock.Elapsed.TotalMilliseconds:0}ms"
-                       + $" / 内部パラメータ: {(frame.HasIntrinsics ? "あり" : "なし")}");
+                       + $" / 内部パラメータ: {(frame.HasIntrinsics ? "あり" : "なし")}{FlipText}");
 
                 Debug.Log($"[KitchenXR] カメラ: 撮影時刻 {frame.TimestampSeconds:0.000}s"
                           + $" 画素 {frame.Pixels.Length} バイト（{frame.Format}）");
@@ -166,7 +176,7 @@ namespace KitchenXR.Presentation
                 else
                 {
                     Report($"連写 2fps: {frame.SizeText} JPEG {jpeg.Length / 1024f:0.0}KB"
-                           + $" / 取得 {_lastAcquireMs:0}ms + 変換 {clock.Elapsed.TotalMilliseconds:0}ms");
+                           + $" / 取得 {_lastAcquireMs:0}ms + 変換 {clock.Elapsed.TotalMilliseconds:0}ms{FlipText}");
 
                     await TryPostOnceAsync(jpeg, token);
                 }
@@ -232,27 +242,52 @@ namespace KitchenXR.Presentation
                 return null;
             }
 
-            var clock = Stopwatch.StartNew();
-            var frame = await _camera.AcquireAsync(token);
-            clock.Stop();
-            _lastAcquireMs = clock.Elapsed.TotalMilliseconds;
+            // 権限が下りた**そのセッション**では 1 枚も来ないことがある（実測 2026-09-13）。
+            // 口は既に起こし直してあるので、流れ始めるまで数回だけ取り直す。
+            var attempts = _camera.PermissionJustGranted ? 1 + RetriesAfterGrant : 1;
 
-            if (token.IsCancellationRequested)
+            for (var i = 0; i < attempts; i++)
             {
-                return null;
+                if (i > 0)
+                {
+                    await UniTask.Delay(RetryIntervalMs, ignoreTimeScale: true, cancellationToken: token)
+                        .SuppressCancellationThrow();
+                }
+
+                if (token.IsCancellationRequested)
+                {
+                    return null;
+                }
+
+                var clock = Stopwatch.StartNew();
+                var frame = await _camera.AcquireAsync(token);
+                clock.Stop();
+                _lastAcquireMs = clock.Elapsed.TotalMilliseconds;
+
+                if (token.IsCancellationRequested)
+                {
+                    return null;
+                }
+
+                if (frame != null && frame.IsValid)
+                {
+                    return frame;
+                }
             }
 
-            if (frame == null || !frame.IsValid)
-            {
-                Report($"カメラ: {Reason("1枚も取れませんでした")}");
-                return null;
-            }
-
-            return frame;
+            // 取り直しても駄目なら、次の1回では必ず取れる（subsystem は起き直っている）。
+            Report(_camera.PermissionJustGranted
+                ? PressAgainText
+                : $"カメラ: {Reason("1枚も取れませんでした")}");
+            return null;
         }
 
         private string Reason(string fallback) =>
             string.IsNullOrEmpty(_camera?.LastFailure) ? fallback : _camera.LastFailure;
+
+        /// <summary>札の末尾に足す反転の一言（「 / 反転: X」）。無ければ空。</summary>
+        private string FlipText =>
+            string.IsNullOrEmpty(_camera?.TransformationText) ? string.Empty : $" / {_camera.TransformationText}";
 
         /// <summary>
         /// JPEG 化は主スレッドを止めない。<c>EncodeArrayToJPG</c> は

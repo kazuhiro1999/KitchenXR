@@ -24,11 +24,29 @@ namespace KitchenXR.Platform
         string LastFailure { get; }
 
         /// <summary>
+        /// **この呼び出しで**権限が下りたか（起動時から許されていたなら false）。
+        /// 実機では許可の直後の 1 回は取れないことがあるので、札の文言を変えるのに使う。
+        /// </summary>
+        bool PermissionJustGranted { get; }
+
+        /// <summary>絵に掛けた反転（札に出す一言。例「反転: X」）。無ければ空。</summary>
+        string TransformationText { get; }
+
+        /// <summary>
         /// 実行時の権限（<c>horizonos.permission.HEADSET_CAMERA</c>）を求める。
         /// manifest に入っているだけでは足りず、自分で呼ぶ必要がある（調査 §1.3）。
         /// 既に許されていれば即 true。
+        ///
+        /// **下りた直後はカメラの口を起こし直す**（実装の責任）——権限が無いまま始まった
+        /// subsystem はそのセッションの間ずっと 1 枚も返さない。
         /// </summary>
         UniTask<bool> RequestPermissionAsync(CancellationToken token = default);
+
+        /// <summary>
+        /// カメラの口を起こし直す（<c>ARCameraManager</c> の disable→enable、
+        /// または subsystem の Stop／Start）。起こせたら true。
+        /// </summary>
+        bool Restart();
 
         /// <summary>
         /// 今ある最新の1枚を取る。取れなければ false（理由は <see cref="LastFailure"/>）。

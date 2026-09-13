@@ -5,6 +5,7 @@ using Cysharp.Threading.Tasks;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Android;
+using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
 using UnityEngine.XR.OpenXR.Features.Meta;
 
@@ -38,11 +39,25 @@ namespace KitchenXR.Platform.MetaCamera
         /// <summary>権限のダイアログの返事を待つ上限（ミリ秒）。</summary>
         public const int PermissionTimeoutMs = 60_000;
 
+        /// <summary>起こし直したあと、最初の1枚が流れてくるまでの待ち（ミリ秒）。</summary>
+        public const int RestartSettleMs = 600;
+
+        /// <summary>
+        /// 実機の実測（2026-09-13）で絵が 180 度回っていた。<c>MirrorY</c> を掛けた結果が
+        /// 180 度回転だったので、真っ直ぐ出すのは <c>MirrorX</c>
+        /// （<c>MirrorY(元) = Rot180(真)</c> ⇒ <c>真 = MirrorX(元)</c>）。
+        /// </summary>
+        public const XRCpuImage.Transformation OutputTransformation = XRCpuImage.Transformation.MirrorX;
+
         private static readonly List<XRCameraSubsystem> Subsystems = new List<XRCameraSubsystem>();
 
         private bool _disposed;
 
         public string LastFailure { get; private set; } = string.Empty;
+
+        public bool PermissionJustGranted { get; private set; }
+
+        public string TransformationText => "反転: X";
 
         public bool IsSupported => FindSubsystem() != null;
 
@@ -52,6 +67,8 @@ namespace KitchenXR.Platform.MetaCamera
         /// </summary>
         public async UniTask<bool> RequestPermissionAsync(CancellationToken token = default)
         {
+            PermissionJustGranted = false;
+
             if (_disposed)
             {
                 return false;
@@ -88,9 +105,58 @@ namespace KitchenXR.Platform.MetaCamera
             if (!granted)
             {
                 LastFailure = "カメラの権限が下りていません（設定 → アプリ → 権限）";
+                return false;
             }
 
-            return granted;
+            // ここに来たのは「今 許可が下りた」ときだけ（既に許されていれば上で返っている）。
+            // 権限が無いまま始まった subsystem はそのセッションの間ずっと 1 枚も返さないので、
+            // 口を起こし直してから最初の1枚が流れてくるのを待つ。
+            PermissionJustGranted = true;
+            Restart();
+            await UniTask.Delay(RestartSettleMs, ignoreTimeScale: true, cancellationToken: token)
+                .SuppressCancellationThrow();
+
+            return true;
+        }
+
+        /// <summary>
+        /// カメラの口を起こし直す。持ち主は <c>ARCameraManager</c>（MR テンプレートの rig に居る）
+        /// なので、まずその <c>enabled</c> を落として立て直す——<c>OnDisable</c>／<c>OnEnable</c> は
+        /// setter の中で同期に走るので、その場で subsystem の Stop／Start まで通る。
+        /// 見つからないときだけ subsystem を直に Stop／Start する。
+        /// </summary>
+        public bool Restart()
+        {
+            if (_disposed)
+            {
+                return false;
+            }
+
+            var manager = UnityEngine.Object.FindFirstObjectByType<ARCameraManager>(
+                FindObjectsInactive.Include);
+
+            if (manager != null && manager.enabled)
+            {
+                manager.enabled = false;
+                manager.enabled = true;
+                Debug.Log("[KitchenXR] カメラ: ARCameraManager を起こし直しました。");
+                return true;
+            }
+
+            var subsystem = FindSubsystem();
+            if (subsystem == null)
+            {
+                return false;
+            }
+
+            if (subsystem.running)
+            {
+                subsystem.Stop();
+            }
+
+            subsystem.Start();
+            Debug.Log("[KitchenXR] カメラ: subsystem を Stop／Start しました。");
+            return true;
         }
 
         public bool TryAcquire(out CameraFrame frame)
@@ -244,13 +310,12 @@ namespace KitchenXR.Platform.MetaCamera
 
         /// <summary>
         /// 変換の指定。<c>RGBA32</c> へ落とし、長辺を <see cref="MaxOutputWidth"/> までに縮める。
-        /// <c>MirrorY</c> を入れるのは、CPU 画像が上から下へ並ぶのに対し
-        /// <c>Texture2D</c> は下から上に読むため（入れないと上下が逆さに出る）。
+        /// 反転は <see cref="OutputTransformation"/>（＝<c>MirrorX</c>）。
         /// </summary>
         private static XRCpuImage.ConversionParams BuildConversion(XRCpuImage image)
         {
             var conversion = new XRCpuImage.ConversionParams(
-                image, TextureFormat.RGBA32, XRCpuImage.Transformation.MirrorY);
+                image, TextureFormat.RGBA32, OutputTransformation);
 
             if (image.width > MaxOutputWidth && image.width > 0)
             {

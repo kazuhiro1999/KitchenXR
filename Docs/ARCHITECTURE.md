@@ -164,17 +164,25 @@ Pixels Per Unit 100、板の `localScale` は 0.2 なので **1 UI px = 2mm** �
 
 ### 8.1 取る
 
-- 口は `Platform/IPassthroughCamera`（`IsSupported`・`RequestPermissionAsync`・`TryAcquire`・
-  `AcquireAsync`・`Dispose`）で、返すのは `CameraFrame`（画素・寸法・撮影時刻・内部パラメータ）
-  だけ。板も `CameraProbe` も SDK の型を見ません。
+- 口は `Platform/IPassthroughCamera`（`IsSupported`・`RequestPermissionAsync`・`Restart`・
+  `TryAcquire`・`AcquireAsync`・`PermissionJustGranted`・`TransformationText`・`Dispose`）で、
+  返すのは `CameraFrame`（画素・寸法・撮影時刻・内部パラメータ）だけ。
+  板も `CameraProbe` も SDK の型を見ません。
 - 実装は `Platform/MetaCamera/MetaOpenXRPassthroughCamera`。**AR Foundation の汎用 API
   （`ARCameraManager.TryAcquireLatestCpuImage`）では取れません**——対応表で Meta の
   "Camera image" は非対応なので、provider 固有の `MetaOpenXRCameraSubsystem` を
   `SubsystemManager` から引いて直に叩きます。Start／Stop は rig の `ARCameraManager` が持つので、
   ここでは**見つけるだけ**（持ち主を2つにしない）。
 - 変換は `XRCpuImage` の中で終わらせます。YUV420 → `RGBA32`、長辺を **640** まで縮小、
-  `MirrorY`（CPU 画像は上から下、`Texture2D` は下から上）。**`Dispose` は必ず通す**
-  ——取りこぼすと AR プラットフォーム側がメモリ切れになります。
+  反転は **`MirrorX`**。実機では `MirrorY` だと絵が 180 度回っていました
+  （実測 2026-09-13。`MirrorY(元) = Rot180(真)` ⇒ `真 = MirrorX(元)`。調査 §7）。
+  左右が合っているかは実機でしか見えないので、札に「反転: X」を出しています。
+  **`Dispose` は必ず通す**——取りこぼすと AR プラットフォーム側がメモリ切れになります。
+- **権限が下りた直後は口を起こし直します**（`Restart`）。権限が無いまま始まった subsystem は
+  そのセッションの間ずっと 1 枚も返しません（実測 2026-09-13。立ち上げ直すと取れた）。
+  許可の返事を受けたら `ARCameraManager` を disable→enable（無ければ subsystem を Stop／Start）
+  して 0.6 秒待ち、`CameraProbe` がさらに 0.4 秒おきに 4 回まで取り直します。
+  それでも駄目なら札に「許可されました。もう一度「カメラ」を押してください」と出します。
 - 連写は `ConvertAsync` の道（`AcquireAsync`）を通り、変換で主スレッドを止めません。
 - Editor は必ず `Platform/Null/NullPassthroughCamera` に落ちます（XR Simulator はカメラ非対応）。
   差し替えは `PassthroughCameraFactory`（`AnchorStoreFactory` と同じ役回り）。
@@ -194,8 +202,10 @@ Pixels Per Unit 100、板の `localScale` は 0.2 なので **1 UI px = 2mm** �
 ### 8.3 出す（動画の板の一覧側）
 
 - 「カメラ」の釦を押すと1枚取り、**10cm 角（50 UI px）の小さな窓**に `Texture2D` を
-  `backgroundImage` で貼って、札に `取得 640×480 / 取得〜表示 32ms / 内部パラメータ: あり` を
-  実測で出します。もう一度押すと消えます。失敗（非対応・権限拒否・null）は理由をそのまま札へ。
+  `backgroundImage` で貼って、札に
+  `取得 640×640 / 取得〜表示 22ms / 内部パラメータ: あり / 反転: X` を実測で出します
+  （数字は 2026-09-13 の実測。調査 §7）。もう一度押すと消えます。
+  失敗（非対応・権限拒否・null）は理由をそのまま札へ。
 - **釦も窓も一覧側に置きます。** 動画の絵は板の 1cm 手前に浮いた uGUI の `RawImage`（§6）
   なので、窓の中へ重ねると必ずその裏に隠れます。窓は絵を出している間だけ開き、
   畳んでいる間は再生リストの行を食いません。

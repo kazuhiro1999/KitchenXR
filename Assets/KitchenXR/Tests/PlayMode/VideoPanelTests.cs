@@ -744,6 +744,108 @@ namespace KitchenXR.Tests.PlayMode
             Assert.Less(Vector3.Distance(bottomCenter, BottomCenterOf()), 0.001f,
                 "向きを変えたら板の下辺が動きました（下のタイマーへ食い込みます）。");
         }
+
+        // ---------------------------------------------------------------- 権限の直後
+
+        /// <summary>
+        /// 実機では「許可した**そのセッション**では 1 枚も取れない」（実測 2026-09-13）。
+        /// 権限が下りたら口を起こし直し、流れ始めるまで取り直すこと。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 権限の直後に取れなくても起こし直して取り直す()
+        {
+            var camera = new GrantingCamera(framesUntilReady: 2);
+            var probe = new CameraProbe(camera);
+
+            probe.Toggle();
+
+            var deadline = Time.unscaledTime + 8f;
+            while (Time.unscaledTime < deadline && probe.Texture == null)
+            {
+                yield return null;
+            }
+
+            Assert.IsNotNull(probe.Texture, $"取り直しても絵が出ませんでした（札: {probe.StatusText}）。");
+            Assert.AreEqual(1, camera.Restarts, "権限の直後にカメラの口を起こし直していません。");
+            Assert.AreEqual(3, camera.Attempts, "取り直しの回数が合いません。");
+            StringAssert.Contains("反転: X", probe.StatusText, "札に反転が出ていません。");
+
+            probe.Dispose();
+        }
+
+        /// <summary>それでも取れなければ、2 度目で必ず取れることを札で伝える。</summary>
+        [UnityTest]
+        public IEnumerator 権限の直後にどうしても取れなければもう一度押すよう札に出す()
+        {
+            var camera = new GrantingCamera(framesUntilReady: int.MaxValue);
+            var probe = new CameraProbe(camera);
+
+            probe.Toggle();
+
+            var deadline = Time.unscaledTime + 12f;
+            while (Time.unscaledTime < deadline && probe.StatusText != CameraProbe.PressAgainText)
+            {
+                yield return null;
+            }
+
+            Assert.AreEqual(CameraProbe.PressAgainText, probe.StatusText,
+                "もう一度押すよう札に出ていません。");
+            Assert.AreEqual(1 + CameraProbe.RetriesAfterGrant, camera.Attempts);
+            Assert.IsNull(probe.Texture);
+
+            probe.Dispose();
+        }
+
+        /// <summary>権限は下りるが最初の何回かは 1 枚も返さないカメラ（権限直後の実機の再現）。</summary>
+        private sealed class GrantingCamera : KitchenXR.Platform.IPassthroughCamera
+        {
+            private readonly int _framesUntilReady;
+
+            public GrantingCamera(int framesUntilReady) => _framesUntilReady = framesUntilReady;
+
+            public int Restarts { get; private set; }
+            public int Attempts { get; private set; }
+
+            public bool IsSupported => true;
+            public string LastFailure => "1枚も取れませんでした";
+            public bool PermissionJustGranted { get; private set; }
+            public string TransformationText => "反転: X";
+
+            public Cysharp.Threading.Tasks.UniTask<bool> RequestPermissionAsync(
+                System.Threading.CancellationToken token = default)
+            {
+                PermissionJustGranted = true;
+                Restart();
+                return Cysharp.Threading.Tasks.UniTask.FromResult(true);
+            }
+
+            public bool Restart()
+            {
+                Restarts++;
+                return true;
+            }
+
+            public bool TryAcquire(out KitchenXR.Platform.CameraFrame frame)
+            {
+                frame = null;
+                return false;
+            }
+
+            public Cysharp.Threading.Tasks.UniTask<KitchenXR.Platform.CameraFrame> AcquireAsync(
+                System.Threading.CancellationToken token = default)
+            {
+                Attempts++;
+                var frame = Attempts <= _framesUntilReady
+                    ? null
+                    : new KitchenXR.Platform.CameraFrame(
+                        new byte[4 * 4 * 4], 4, 4, TextureFormat.RGBA32, 1d);
+                return Cysharp.Threading.Tasks.UniTask.FromResult(frame);
+            }
+
+            public void Dispose()
+            {
+            }
+        }
     }
 }
 #endif

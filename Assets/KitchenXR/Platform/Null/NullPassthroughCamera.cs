@@ -20,8 +20,14 @@ namespace KitchenXR.Platform.Null
 
         public string LastFailure { get; }
 
+        public bool PermissionJustGranted => false;
+
+        public string TransformationText => string.Empty;
+
         public UniTask<bool> RequestPermissionAsync(CancellationToken token = default) =>
             UniTask.FromResult(false);
+
+        public bool Restart() => false;
 
         public bool TryAcquire(out CameraFrame frame)
         {
