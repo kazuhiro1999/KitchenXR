@@ -1,0 +1,11 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="theme.uss" />
+    <ui:Style src="HazardPanel.uss" />
+    <ui:VisualElement name="root" class="root-panel hazard-root">
+        <ui:VisualElement name="hazardBand" class="hazard-band">
+            <ui:Label name="markLabel" text="▲" class="hazard-mark" />
+            <ui:Label name="titleLabel" text="火気注意" class="hazard-title" />
+        </ui:VisualElement>
+        <ui:Label name="bodyLabel" text="" class="body-text hazard-body" />
+    </ui:VisualElement>
+</ui:UXML>

@@ -2,9 +2,11 @@
  * 手のひらメニュー（手に追従させる板）。配置の操作を全部ここに載せる——空間に出した板は
  * レシピ／一覧の板と重なるとレイでも指でも押せなくなるが、手のひらなら重なる相手が居ない。
  *
- * 板は 130×92（≒26cm×18.4cm。1 UI px ≒ 2mm）。「配置」だけの調理中は上下中央に1つ、
- * 配置モードでは 2×2 の釦とヒント1行。手のひらに乗せて目で見て押す板なので、
- * 調理の板より一回り小さい字でも読める距離に来る。
+ * 板の幅は 130（≒26cm。1 UI px ≒ 2mm）で、**高さは出している頁で変える**
+ * （PlacementMenuPanel が WorldSpacePanelFactory.Resize を呼ぶ）——プリセットの一覧は縦に
+ * 5行あるので、配置の操作と同じ高さには入らない。「配置」だけの調理中は上下中央に1つ。
+ *
+ * 頁は4つ: 調理中（配置）／配置の操作（3行×2）／注意の板のプリセット／コンロの領域。
  */
 
 .placement-menu-root {
@@ -36,4 +38,22 @@
 .placement-menu-button {
     min-width: 44px;
     min-height: var(--button-min);
+}
+
+/*
+ * プリセットの一覧（縦に並ぶ釦。実行時に PlacementMenuPanel が中身を作る）。
+ * 上下の余白だけ 2px（4mm）に詰めてある——「押す釦の間隔は 2cm」の例外で、
+ * 5種類を手のひらに乗る高さへ収めるため。押し間違えても板の「消す」で戻せる、が根拠。
+ */
+.placement-menu-list {
+    flex-shrink: 0;
+}
+
+.placement-menu-preset {
+    min-width: 0px;
+    min-height: var(--button-min);
+    margin-left: 0px;
+    margin-right: 0px;
+    margin-top: 2px;
+    margin-bottom: 2px;
 }

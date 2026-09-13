@@ -7,6 +7,7 @@ using KitchenXR.Platform;
 using KitchenXR.Platform.ArFoundation;
 using KitchenXR.Platform.Null;
 using KitchenXR.Presentation;
+using KitchenXR.Presentation.Hazard;
 using KitchenXR.Presentation.Video;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -43,6 +44,11 @@ namespace KitchenXR.App
         /// </summary>
         [SerializeField] private WristMenu _wristMenu;
 
+        [Header("火気の注意（注意の板とコンロの領域）")]
+        [SerializeField] private HazardBoards _hazardBoards;
+        [SerializeField] private HazardZones _hazardZones;
+        [SerializeField] private HazardProximity _hazardProximity;
+
         [Header("初期配置（頭の前0.8m・目線より少し下に3枚）")]
         [SerializeField] private Transform _headTransform; // 未指定なら Camera.main を使う
         [SerializeField] private float _forwardDistanceMeters = 0.8f;
@@ -59,6 +65,12 @@ namespace KitchenXR.App
 
         /// <summary>見え方の設定（文字と板の大きさ）。</summary>
         private DisplaySettings _displaySettings;
+
+        /// <summary>注意の板の控え（`hazards.json`。種類だけ。場所は板と同じ仕組み）。</summary>
+        private HazardPanelFile _hazardPanelFile;
+
+        /// <summary>領域の控え（`zones.json`）。</summary>
+        private HazardZoneFile _hazardZoneFile;
 
         private RecipeStore _recipeStore;
         private MediaStore _mediaStore;
@@ -147,6 +159,12 @@ namespace KitchenXR.App
                 _placementMenuPanel.UndoRequested += HandlePlacementUndo;
                 _placementMenuPanel.CancelRequested += HandlePlacementCancel;
                 _placementMenuPanel.RecallRequested += HandlePlacementRecall;
+                _placementMenuPanel.HazardPresetSelected += HandleHazardPresetSelected;
+                _placementMenuPanel.ZoneDrawRequested += HandleZoneDrawRequested;
+                _placementMenuPanel.ZoneRedoRequested += HandleZoneRedoRequested;
+                _placementMenuPanel.ZoneRemoveRequested += HandleZoneRemoveRequested;
+                _placementMenuPanel.ZoneHeightRequested += HandleZoneHeightRequested;
+                _placementMenuPanel.PageChanged += HandleMenuPageChanged;
             }
 
             if (_cookingModeInputGate != null)
@@ -155,6 +173,7 @@ namespace KitchenXR.App
             }
 
             SetUpPlacement();
+            SetUpHazards();
 
             // 起動の見た目は「レシピを選ぶ板」。調理の3枚は選んでから出す。
             ShowListMode();
@@ -176,6 +195,9 @@ namespace KitchenXR.App
             // 覚えている場所へ戻す（アンカー → 控え → 既定）。
             // 起動の道筋（一覧・復帰）とは独立に走らせる——板の位置は中身より先に決まってよい。
             RestorePlacementAsync(_cts.Token).Forget();
+
+            // 領域（zones.json）も同じく独立に。注意の板は板と同じ経路で戻るので、ここには無い。
+            RestoreHazardZonesAsync(_cts.Token).Forget();
 
             // 動画の一覧は manor に繋ぎ終えてから（StartupAsync の中で）始める——
             // 鍵が決まる前に走らせると、繋がっているのに手元の写しのままになる。
@@ -212,7 +234,15 @@ namespace KitchenXR.App
                 _placementMenuPanel.UndoRequested -= HandlePlacementUndo;
                 _placementMenuPanel.CancelRequested -= HandlePlacementCancel;
                 _placementMenuPanel.RecallRequested -= HandlePlacementRecall;
+                _placementMenuPanel.HazardPresetSelected -= HandleHazardPresetSelected;
+                _placementMenuPanel.ZoneDrawRequested -= HandleZoneDrawRequested;
+                _placementMenuPanel.ZoneRedoRequested -= HandleZoneRedoRequested;
+                _placementMenuPanel.ZoneRemoveRequested -= HandleZoneRemoveRequested;
+                _placementMenuPanel.ZoneHeightRequested -= HandleZoneHeightRequested;
+                _placementMenuPanel.PageChanged -= HandleMenuPageChanged;
             }
+
+            UnsubscribeHazardZones();
 
             if (_panelPlacement != null)
             {
@@ -914,6 +944,137 @@ namespace KitchenXR.App
             await _panelPlacement.RestoreAsync(token);
         }
 
+        // ---------------------------------------------------------------- 火気の注意
+
+        /// <summary>
+        /// 注意の板と領域を組む。板は <see cref="PanelPlacement"/> に鍵で登録するので、
+        /// <see cref="RestorePlacementAsync"/> より**先**に立て直しておく必要がある
+        /// （登録されていない鍵は復元の対象にならない）。だから Awake でここまで済ませる。
+        /// </summary>
+        private void SetUpHazards()
+        {
+            _hazardPanelFile = HazardPanelFile.CreateDefault();
+            _hazardZoneFile = HazardZoneFile.CreateDefault();
+
+            var catalog = HazardPresetCatalog.LoadFromResources();
+            _placementMenuPanel?.SetPresets(catalog.Presets);
+
+            if (_hazardBoards != null)
+            {
+                _hazardBoards.Bind(_panelPlacement, _hazardPanelFile, catalog, _headTransform);
+                _hazardBoards.Restore();
+            }
+
+            _hazardZones?.Bind(_hazardZoneFile, _anchorStore);
+            _hazardProximity?.Bind(_hazardZones, null, null, _headTransform, _handInputPolicy);
+
+            if (_hazardZones != null)
+            {
+                UnsubscribeHazardZones();
+                _hazardZones.DrawTimedOut += HandleZoneDrawTimedOut;
+                _hazardZones.EdgeFixed += HandleZoneEdgeFixed;
+                _hazardZones.DrawTooSmall += HandleZoneTooSmall;
+            }
+        }
+
+        private void UnsubscribeHazardZones()
+        {
+            if (_hazardZones == null)
+            {
+                return;
+            }
+
+            _hazardZones.DrawTimedOut -= HandleZoneDrawTimedOut;
+            _hazardZones.EdgeFixed -= HandleZoneEdgeFixed;
+            _hazardZones.DrawTooSmall -= HandleZoneTooSmall;
+        }
+
+        private async UniTaskVoid RestoreHazardZonesAsync(CancellationToken token)
+        {
+            if (_hazardZones == null)
+            {
+                return;
+            }
+
+            await _hazardZones.RestoreAsync(token);
+        }
+
+        /// <summary>プリセットが選ばれた——1枚作って頭の前へ出す（そのまま掴んで置ける）。</summary>
+        private void HandleHazardPresetSelected(string presetId)
+        {
+            if (_hazardBoards == null)
+            {
+                return;
+            }
+
+            var panel = _hazardBoards.Add(presetId);
+            _placementMenuPanel?.SetHint(panel != null
+                ? "頭の前に出しました。掴んで置いてください"
+                : "その注意の板は作れませんでした");
+        }
+
+        private void HandleZoneDrawRequested()
+        {
+            _hazardZones?.BeginDraw();
+            _placementMenuPanel?.SetHint(ZoneEdgeHint);
+        }
+
+        /// <summary>1段目（手前の辺）の札。20 秒で取り消すことも添える。</summary>
+        private const string ZoneEdgeHint = "手前の辺の端で つまんで、反対の端まで引いて離す（20 秒で取り消し）";
+
+        /// <summary>2段目（奥行き）の札。</summary>
+        private const string ZoneDepthHint = "奥へ つまんで引いて離す";
+
+        /// <summary>手前の辺が決まった——奥行きの段の札へ。</summary>
+        private void HandleZoneEdgeFixed() => _placementMenuPanel?.SetHint(ZoneDepthHint);
+
+        /// <summary>辺か奥行きが 5cm 未満。確定させず、同じ段をもう一度待つ。</summary>
+        private void HandleZoneTooSmall() =>
+            _placementMenuPanel?.SetHint(_hazardZones != null && _hazardZones.HasEdge
+                ? "小さすぎます。" + ZoneDepthHint
+                : "小さすぎます。" + ZoneEdgeHint);
+
+        /// <summary>ピンチが無いまま時間切れ。押したことを忘れていても分かるように札へ。</summary>
+        private void HandleZoneDrawTimedOut() => _placementMenuPanel?.SetHint("囲むのをやめました");
+
+        private void HandleZoneRedoRequested()
+        {
+            _hazardZones?.Redo();
+            _placementMenuPanel?.SetHint("最後の領域を捨てました。" + ZoneEdgeHint);
+        }
+
+        private void HandleZoneRemoveRequested()
+        {
+            var removed = _hazardZones != null && _hazardZones.RemoveLast();
+            _placementMenuPanel?.SetHint(removed ? "領域を消しました" : "消せる領域がありません");
+        }
+
+        private void HandleZoneHeightRequested(int steps)
+        {
+            if (_hazardZones == null || !_hazardZones.AdjustHeight(steps))
+            {
+                _placementMenuPanel?.SetHint("高さを変える領域がありません");
+                return;
+            }
+
+            var last = _hazardZones.Last;
+            _placementMenuPanel?.SetHint(last == null
+                ? "高さを変えました"
+                : $"上面の高さ {last.Height * 100f:0} cm");
+        }
+
+        /// <summary>
+        /// メニューの頁が変わった。領域の頁から離れたら描くのをやめる——
+        /// 「囲む」を押したまま別の頁へ行くと、次のピンチで意図せず矩形が始まる。
+        /// </summary>
+        private void HandleMenuPageChanged(PlacementMenuPanel.Page page)
+        {
+            if (page != PlacementMenuPanel.Page.Zone)
+            {
+                _hazardZones?.CancelDraw();
+            }
+        }
+
         /// <summary>
         /// 配置モードへ入る（手のひらメニュー、またはレシピ／一覧の板の「配置」2度押し）。
         /// 操作の板は空間に出さない——頭の前に出すとレシピ／一覧の板と重なって当たり判定を
@@ -947,6 +1108,9 @@ namespace KitchenXR.App
             }
 
             _placementMenuPanel.SetPlacing(true);
+
+            // 注意の板のコライダーを戻すのは Enter より先（掴む仕掛けはコライダーに付く）。
+            _hazardBoards?.SetPlacing(true);
             _panelPlacement.Enter();
         }
 
@@ -971,6 +1135,14 @@ namespace KitchenXR.App
 
         private async UniTaskVoid SavePlacementAsync(CancellationToken token)
         {
+            // 領域を先に。板の保存は最後に配置モードを抜けるので、抜けた後に await を挟まない。
+            if (_hazardZones != null)
+            {
+                await _hazardZones.SaveAsync(token);
+            }
+
+            _hazardBoards?.Save();
+
             await _panelPlacement.SaveAsync(token);
         }
 
@@ -998,6 +1170,10 @@ namespace KitchenXR.App
         {
             _placementMenuPanel?.SetPlacing(false);
             _wristMenu?.Close();
+
+            // 注意の板は調理中は触れない板へ戻す（コライダーと「消す」を降ろす）。
+            _hazardBoards?.SetPlacing(false);
+            _hazardZones?.CancelDraw();
         }
 
         // ---------------------------------------------------------------- 板の出し入れ
@@ -1178,6 +1354,9 @@ namespace KitchenXR.App
                 basePosition + right * _lateralSpacingMeters, rotation);
 
             PlaceVideoPanel(basePosition, right, rotation);
+
+            // 注意の板は頭の前 50cm（他の板より手前）。覚えている位置があれば後から上書きされる。
+            _hazardBoards?.PlaceAllAtHand();
         }
 
         /// <summary>

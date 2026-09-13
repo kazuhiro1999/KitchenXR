@@ -38,8 +38,8 @@ Unity Editor で `Assets/KitchenXR/Scenes/Kitchen.unity` を開きます。シ�
 & "C:\Program Files\Unity\Hub\Editor\6000.3.24f1\Editor\Unity.exe" -batchmode -nographics -quit -projectPath . -executeMethod KitchenXR.App.Editor.KitchenSceneBuilder.Build -logFile Build/scene-build.log
 
 # 試験
-unity test --mode EditMode      # 149 件
-unity test --mode PlayMode      #  71 件
+unity test --mode EditMode      # 189 件
+unity test --mode PlayMode      #  83 件
 
 # Android（Quest 3）の APK。出力は Build/KitchenXR_v<bundleVersion>.apk
 unity build --target Android --execute-method KitchenXR.App.Editor.AndroidBuilder.PerformBuild
@@ -80,6 +80,7 @@ Assets/KitchenXR/
   Net/           manor の口（ManorClient・探索・ペアリング）と端末内の保管庫
   Presentation/  板（UI Toolkit）・ポーク・配置モード・手首メニュー・指先カーソル
     Video/       WebView を包む動画の板（WebView に触るのはここだけ）
+    Hazard/      注意の板（火気・刃物…）とコンロの領域・近づいたときの注意
   App/           Bootstrap（どのアダプタを挿すか）／Editor（シーン生成・ビルド）
   Tests/         EditMode・PlayMode
 Assets/TLab/     WebView と YouTube プレイヤー（第三者資産）

@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "presets": [
+    {
+      "id": "fire",
+      "mark": "▲",
+      "title": "火気注意",
+      "body": "コンロを使っています。袖と髪に気をつけて",
+      "accent": "red"
+    },
+    {
+      "id": "hot",
+      "mark": "▲",
+      "title": "熱い",
+      "body": "鍋・天板が熱いです。素手で触らない",
+      "accent": "red"
+    },
+    {
+      "id": "blade",
+      "mark": "▲",
+      "title": "刃物",
+      "body": "包丁が出ています",
+      "accent": "red"
+    },
+    {
+      "id": "slippery",
+      "mark": "△",
+      "title": "滑りやすい",
+      "body": "床が濡れています",
+      "accent": "amber"
+    },
+    {
+      "id": "microwave",
+      "mark": "△",
+      "title": "電子レンジ稼働中",
+      "body": "止まるまで開けない",
+      "accent": "amber"
+    }
+  ]
+}

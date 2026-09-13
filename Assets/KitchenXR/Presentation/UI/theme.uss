@@ -188,6 +188,12 @@
     opacity: 0.35;
 }
 
+/* 2度押しの1度目（TwoPressButton が付け外しする。取り消せない操作だけ）。 */
+.kitchen-button--armed {
+    background-color: var(--color-alarm-bg);
+    color: var(--color-alarm);
+}
+
 /* --- 工程の点列（phase の数ではなく「工程の数だけ」出す） --- */
 
 .step-dots {

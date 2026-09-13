@@ -115,6 +115,53 @@ namespace KitchenXR.Presentation
             {
                 _gate?.AddUiPanel(follower.gameObject);
             }
+
+            // 配置モードの最中に足された板（注意の板）は、その場で掴めるようにする——
+            // さもないと作った板を1度「保存」して入り直さないと置けない。
+            if (IsPlacing)
+            {
+                EnterEntry(entry);
+            }
+        }
+
+        /// <summary>
+        /// 鍵を1つ外す（注意の板を消したとき）。控え（<c>panels.json</c>）からも落とす。
+        /// アンカーは鍵ごとに消す口が無い（<see cref="IAnchorStore"/> は <c>ClearAsync</c> だけ）が、
+        /// 誰も引かない鍵は害にならないので残す。
+        /// </summary>
+        public bool Unregister(string key)
+        {
+            if (string.IsNullOrEmpty(key))
+            {
+                return false;
+            }
+
+            var index = _entries.FindIndex(e => e.Key == key);
+            if (index < 0)
+            {
+                return false;
+            }
+
+            var entry = _entries[index];
+
+            if (IsPlacing)
+            {
+                SetFrameVisible(entry.Grip.gameObject, false);
+                SetGrabbable(entry, false);
+            }
+
+            foreach (var panel in entry.All)
+            {
+                _gate?.RemoveUiPanel(panel.gameObject);
+            }
+
+            _entries.RemoveAt(index);
+            _poseBeforePlacement.Remove(key);
+
+            _poseFile?.Remove(key);
+            _poseFile?.Save();
+
+            return true;
         }
 
         // ---------------------------------------------------------------- 起動時の復元
@@ -193,24 +240,31 @@ namespace KitchenXR.Presentation
             _poseBeforePlacement.Clear();
             foreach (var entry in _entries)
             {
-                // 動かす対象は1枚だけ出す。見えている板を取っ手役に選び、同じ鍵の残りは
-                // 引っ込める——重ねて置いた2枚のコライダーは完全に一致するので、
-                // 両方出したままだとどちらが掴まれるか運任せになる。
-                entry.RememberVisibility();
-                entry.Handle = entry.PickVisible();
-
-                _poseBeforePlacement[entry.Key] = WorldPoseOf(entry.Grip);
-
-                foreach (var panel in entry.All)
-                {
-                    PanelVisibility.SetVisible(panel.gameObject, panel == entry.Handle);
-                }
-
-                SetGrabbable(entry, true);
-                SetFrameVisible(entry.Grip.gameObject, true);
+                EnterEntry(entry);
             }
 
             _policy?.SetMode(HandInputMode.PlacementMode);
+        }
+
+        /// <summary>
+        /// 鍵1つを「掴める」状態にする。動かす対象は1枚だけ出す——見えている板を取っ手役に選び、
+        /// 同じ鍵の残りは引っ込める。重ねて置いた2枚のコライダーは完全に一致するので、
+        /// 両方出したままだとどちらが掴まれるか運任せになる。
+        /// </summary>
+        private void EnterEntry(Entry entry)
+        {
+            entry.RememberVisibility();
+            entry.Handle = entry.PickVisible();
+
+            _poseBeforePlacement[entry.Key] = WorldPoseOf(entry.Grip);
+
+            foreach (var panel in entry.All)
+            {
+                PanelVisibility.SetVisible(panel.gameObject, panel == entry.Handle);
+            }
+
+            SetGrabbable(entry, true);
+            SetFrameVisible(entry.Grip.gameObject, true);
         }
 
         /// <summary>「元に戻す」——入る前の位置へ戻す（配置モードからは出ない）。</summary>

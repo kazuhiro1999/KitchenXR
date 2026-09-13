@@ -12,8 +12,32 @@
                 <ui:Button name="undoButton" text="元に戻す" class="kitchen-button kitchen-button--secondary placement-menu-button" />
             </ui:VisualElement>
             <ui:VisualElement class="placement-menu-row">
+                <ui:Button name="hazardMenuButton" text="注意の板" class="kitchen-button kitchen-button--secondary placement-menu-button" />
+                <ui:Button name="zoneMenuButton" text="コンロの領域" class="kitchen-button kitchen-button--secondary placement-menu-button" />
+            </ui:VisualElement>
+            <ui:VisualElement class="placement-menu-row">
                 <ui:Button name="recallButton" text="板を手元に" class="kitchen-button kitchen-button--secondary placement-menu-button" />
                 <ui:Button name="cancelButton" text="やめる" class="kitchen-button kitchen-button--secondary placement-menu-button" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="hazardGroup" class="placement-menu-group">
+            <ui:VisualElement name="hazardList" class="placement-menu-list" />
+            <ui:VisualElement class="placement-menu-row">
+                <ui:Button name="hazardBackButton" text="戻る" class="kitchen-button kitchen-button--secondary placement-menu-button" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="zoneGroup" class="placement-menu-group">
+            <ui:VisualElement class="placement-menu-row">
+                <ui:Button name="zoneDrawButton" text="囲む" class="kitchen-button kitchen-button--primary placement-menu-button" />
+                <ui:Button name="zoneRedoButton" text="やり直す" class="kitchen-button kitchen-button--secondary placement-menu-button" />
+            </ui:VisualElement>
+            <ui:VisualElement class="placement-menu-row">
+                <ui:Button name="zoneLowerButton" text="上面 −5cm" class="kitchen-button kitchen-button--secondary placement-menu-button" />
+                <ui:Button name="zoneRaiseButton" text="上面 +5cm" class="kitchen-button kitchen-button--secondary placement-menu-button" />
+            </ui:VisualElement>
+            <ui:VisualElement class="placement-menu-row">
+                <ui:Button name="zoneRemoveButton" text="消す" class="kitchen-button kitchen-button--secondary placement-menu-button" />
+                <ui:Button name="zoneBackButton" text="戻る" class="kitchen-button kitchen-button--secondary placement-menu-button" />
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>
