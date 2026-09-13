@@ -118,6 +118,66 @@ namespace KitchenXR.Tests.EditMode
             Assert.AreEqual(DisplayScale.Small, again.FontScale);
         }
 
+        // ---------------------------------------------------------------- カメラの入／切
+
+        [Test]
+        public void カメラは既定で無効()
+        {
+            Assert.IsFalse(NewSettings().CameraEnabled,
+                "既定が有効だと、カメラを使わない人にも起動時に権限を訊いてしまいます。");
+        }
+
+        [Test]
+        public void カメラの入切は保存して読み直すと戻る()
+        {
+            var saved = NewSettings();
+            saved.CameraEnabled = true;
+            saved.Save();
+
+            var loaded = NewSettings();
+            Assert.IsTrue(loaded.Load());
+            Assert.IsTrue(loaded.CameraEnabled);
+
+            loaded.CameraEnabled = false;
+            loaded.Save();
+
+            var again = NewSettings();
+            again.Load();
+            Assert.IsFalse(again.CameraEnabled);
+        }
+
+        [Test]
+        public void カメラの欄が無い設定は無効のまま()
+        {
+            WriteRaw("{\"font_scale\":\"large\"}");
+
+            var settings = NewSettings();
+            settings.Load();
+            Assert.AreEqual(DisplayScale.Large, settings.FontScale);
+            Assert.IsFalse(settings.CameraEnabled, "書かれていない欄が有効になっています。");
+        }
+
+        [Test]
+        public void カメラの欄が真偽でなければ無効に落ちる()
+        {
+            WriteRaw("{\"camera_enabled\":\"yes\"}");
+
+            var settings = NewSettings();
+            settings.Load();
+            Assert.IsFalse(settings.CameraEnabled, "文字列が有効として読まれています。");
+        }
+
+        [Test]
+        public void 壊れたJSONならカメラも無効に戻る()
+        {
+            var settings = NewSettings();
+            settings.CameraEnabled = true;
+
+            WriteRaw("{\"camera_enabled\": true");
+            Assert.IsFalse(settings.Load());
+            Assert.IsFalse(settings.CameraEnabled);
+        }
+
         // ---------------------------------------------------------------- 当て方（純粋な変換だけ）
 
         [Test]

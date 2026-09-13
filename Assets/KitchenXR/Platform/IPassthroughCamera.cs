@@ -24,6 +24,13 @@ namespace KitchenXR.Platform
         string LastFailure { get; }
 
         /// <summary>
+        /// 権限が今あるか（**訊かない**）。設定で有効のまま起動したときに
+        /// 「後から拒否へ戻された」を見分けるのに使う——ここで訊いてしまうと、
+        /// 拒否した人に起動のたびダイアログが出る。
+        /// </summary>
+        bool HasPermission { get; }
+
+        /// <summary>
         /// **この呼び出しで**権限が下りたか（起動時から許されていたなら false）。
         /// 実機では許可の直後の 1 回は取れないことがあるので、札の文言を変えるのに使う。
         /// </summary>

@@ -20,6 +20,8 @@ namespace KitchenXR.Platform.Null
 
         public string LastFailure { get; }
 
+        public bool HasPermission => false;
+
         public bool PermissionJustGranted => false;
 
         public string TransformationText => string.Empty;

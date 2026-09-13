@@ -25,6 +25,11 @@
                 <ui:Button name="panelMediumButton" text="中" class="kitchen-button kitchen-button--secondary recipe-settings-option" />
                 <ui:Button name="panelLargeButton" text="大" class="kitchen-button kitchen-button--secondary recipe-settings-option" />
             </ui:VisualElement>
+            <ui:Label text="カメラ" class="caption recipe-settings-caption" />
+            <ui:VisualElement class="recipe-settings-row">
+                <ui:Button name="cameraOffButton" text="無効" class="kitchen-button kitchen-button--secondary recipe-settings-option" />
+                <ui:Button name="cameraOnButton" text="有効" class="kitchen-button kitchen-button--secondary recipe-settings-option" />
+            </ui:VisualElement>
             <ui:VisualElement class="recipe-settings-spacer" />
             <ui:Button name="settingsCloseButton" text="閉じる" class="kitchen-button kitchen-button--secondary recipe-settings-close" />
         </ui:VisualElement>
@@ -34,6 +39,9 @@
                  manor の Web 側に入れてもらう。6桁は離れた所からでも読めるよう大きく出す。 -->
             <ui:Label name="pairCodeLabel" text="" class="recipe-pair-code is-hidden" />
             <ui:Label name="pairHintLabel" text="" class="caption recipe-pair-hint is-hidden" />
+            <!-- 覆いを自分で閉じられるのは案内（ShowNotice）のときだけ。
+                 準備中・ペアリングは終わるまで閉じさせない。 -->
+            <ui:Button name="busyCloseButton" text="閉じる" class="kitchen-button kitchen-button--secondary recipe-busy-close is-hidden" />
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

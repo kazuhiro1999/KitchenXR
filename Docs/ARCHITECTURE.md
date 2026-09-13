@@ -178,11 +178,19 @@ Pixels Per Unit 100、板の `localScale` は 0.2 なので **1 UI px = 2mm** �
   （実測 2026-09-13。`MirrorY(元) = Rot180(真)` ⇒ `真 = MirrorX(元)`。調査 §7）。
   左右が合っているかは実機でしか見えないので、札に「反転: X」を出しています。
   **`Dispose` は必ず通す**——取りこぼすと AR プラットフォーム側がメモリ切れになります。
+- **カメラは設定で入／切します**（一覧の板の「設定」。`settings.json` の `camera_enabled`。
+  **既定は無効**）。無効のうちは権限を求めず、動画の板の「カメラ」「連写2fps」の釦も窓も
+  出さず、`CameraProbe` は作られても眠ります。
 - **権限は起動時に求めます**（`Bootstrap.RequestHeadsetCameraPermissionAtStartup`。
   `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]` なので**場面が読まれる前＝AR セッションが
   立つ前**）。権限が無いまま始まった subsystem はそのセッションの間ずっと 1 枚も返さないので、
   許可済みで起動するのが唯一カメラが動く道です。呼ぶのは manifest に権限が入っているビルド
-  ——Camera Image Support を立てたビルド——だけ（`IsHeadsetCameraDeclared`）。
+  ——Camera Image Support を立てたビルド——で、かつ `camera_enabled` が真のときだけ
+  （`IsHeadsetCameraDeclared`）。
+- **初めて有効にしたときだけ**その場で権限を求め、下りたら一覧の板の覆いに
+  「カメラを使うには一度アプリを立ち上げ直してください」＋「閉じる」を出します
+  （効くのは次の起動から）。拒否されたら理由を出して設定は無効へ戻します。
+  有効のまま起動して権限が無い（後から拒否へ戻された）ときは、釦を隠して札に理由だけ残します。
 - **口は起こし直しません。`ARCameraManager` にも subsystem にも触りません。**
   Unity OpenXR: Meta ではパススルーの描画が `ARCameraManager` に結び付いているので、
   権限の直後に disable→enable したら **MR の視界が真っ暗になって戻りませんでした**

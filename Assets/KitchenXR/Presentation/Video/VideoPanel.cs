@@ -164,6 +164,7 @@ namespace KitchenXR.Presentation.Video
 
         // カメラの下見（v1-d）。一覧の上の小さな窓と、その下の釦2つ。
         private VisualElement _cameraWindow;
+        private VisualElement _cameraRow;
         private Label _cameraStatus;
         private Button _cameraButton;
         private Button _cameraBurstButton;
@@ -234,6 +235,7 @@ namespace KitchenXR.Presentation.Video
             _aspectButton = _root.Q<Button>("aspectButton");
 
             _cameraWindow = _root.Q<VisualElement>("cameraWindow");
+            _cameraRow = _root.Q<VisualElement>("cameraRow");
             _cameraStatus = _root.Q<Label>("cameraStatus");
             _cameraButton = _root.Q<Button>("cameraButton");
             _cameraBurstButton = _root.Q<Button>("cameraBurstButton");
@@ -372,8 +374,39 @@ namespace KitchenXR.Presentation.Video
         /// <summary>札の文言（試験用）。</summary>
         public string CameraStatus => _cameraStatus?.text ?? string.Empty;
 
+        /// <summary>カメラの釦が出ているか（試験用）。</summary>
+        public bool IsCameraAvailable => _cameraAvailable;
+
+        private bool _cameraAvailable = true;
+
+        /// <summary>
+        /// カメラの釦と窓を出すか（<c>Bootstrap</c> が設定と権限から決める）。
+        /// 出さないときでも <paramref name="reason"/> があれば札にだけ理由を残す
+        /// ——「有効にしたのに権限が無い」を黙って消すと、直しようが分からない。
+        /// </summary>
+        public void SetCameraAvailable(bool available, string reason = null)
+        {
+            _cameraAvailable = available;
+
+            _cameraRow?.EnableInClassList("is-hidden", !available);
+
+            if (!available)
+            {
+                _cameraWindow?.AddToClassList("is-hidden");
+                SetCameraStatus(reason);
+                return;
+            }
+
+            RefreshCamera();
+        }
+
         private void RefreshCamera()
         {
+            if (!_cameraAvailable)
+            {
+                return;
+            }
+
             if (_cameraWindow != null)
             {
                 var texture = _cameraProbe?.Texture;

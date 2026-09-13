@@ -146,6 +146,20 @@
     border-bottom-right-radius: var(--radius-large);
 }
 
+/* 覆いの見出し。案内（ShowNotice）は一文が長いので折り返して板の幅に収める。 */
+.recipe-list-busy > .heading {
+    width: 90%;
+    white-space: normal;
+    -unity-text-align: middle-center;
+}
+
+/* 案内のときだけ出る「閉じる」。準備中・ペアリングでは畳まれている。 */
+.recipe-busy-close {
+    flex-shrink: 0;
+    min-width: 40px;
+    margin-top: 6px;
+}
+
 /*
  * ペアリングの6桁。覆いの中に出す。
  *

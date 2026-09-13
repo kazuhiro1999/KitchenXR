@@ -102,9 +102,10 @@ namespace KitchenXR.App
         /// パススルーの映像そのものがそこにぶら下がっているので、**MR の背景が真っ暗に
         /// なって戻りませんでした**（実測 2026-09-13。調査 §7）。
         ///
-        /// ここで許してもらえれば、次の起動——多くは初回に許した時点の起動——から
-        /// 最初のセッションでカメラが動きます。Camera Image Support を立てていないビルド
-        /// （manifest に権限が無い）では何もしない。
+        /// ただし**設定でカメラを有効にしている人にだけ**訊く（既定は無効）。カメラを使わない
+        /// 人に起動のたびダイアログを出さないため。初めて有効にしたときの要求は
+        /// <see cref="HandleCameraEnabledSelected"/> が受け持つ。
+        /// Camera Image Support を立てていないビルド（manifest に権限が無い）では何もしない。
         /// </summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void RequestHeadsetCameraPermissionAtStartup()
@@ -113,6 +114,13 @@ namespace KitchenXR.App
 
             if (!MetaOpenXRPassthroughCamera.IsHeadsetCameraDeclared() ||
                 Permission.HasUserAuthorizedPermission(permission))
+            {
+                return;
+            }
+
+            var settings = DisplaySettings.CreateDefault();
+            settings.Load();
+            if (!settings.CameraEnabled)
             {
                 return;
             }
@@ -162,6 +170,7 @@ namespace KitchenXR.App
                 _recipeListPanel.PlacementRequested += HandlePlacementRequested;
                 _recipeListPanel.FontScaleSelected += HandleFontScaleSelected;
                 _recipeListPanel.PanelScaleSelected += HandlePanelScaleSelected;
+                _recipeListPanel.CameraEnabledSelected += HandleCameraEnabledSelected;
 
                 // 一覧の写真（hero）も工程の画像と同じ経路でローカルから出す。
                 _recipeListPanel.Bind(_recipeStore);
@@ -206,6 +215,9 @@ namespace KitchenXR.App
             // 起動のたびにここで当て直す。文字のクラスも板の root が出来てからでないと付かない。
             ApplyDisplaySettings();
 
+            // カメラの釦は板（VideoPanel）の Awake が済んでから隠す。
+            ApplyCameraSetting();
+
             PlaceInitialPanels();
 
             _cts = new CancellationTokenSource();
@@ -235,6 +247,7 @@ namespace KitchenXR.App
                 _recipeListPanel.PlacementRequested -= HandlePlacementRequested;
                 _recipeListPanel.FontScaleSelected -= HandleFontScaleSelected;
                 _recipeListPanel.PanelScaleSelected -= HandlePanelScaleSelected;
+                _recipeListPanel.CameraEnabledSelected -= HandleCameraEnabledSelected;
             }
 
             if (_recipePanel != null)
@@ -887,6 +900,86 @@ namespace KitchenXR.App
                 _displaySettings, _recipeListPanel, _recipePanel, _ingredientsPanel, _timerPanel);
 
             _recipeListPanel?.SetDisplaySettings(_displaySettings.FontScale, _displaySettings.PanelScale);
+        }
+
+        // ---------------------------------------------------------------- カメラの入／切
+
+        /// <summary>
+        /// 設定の入／切を板と下見に当てる。有効でも権限が無ければ釦は出さない——
+        /// 後から「設定 → アプリ → 権限」で拒否へ戻されている場合で、押しても取れないから。
+        /// </summary>
+        private void ApplyCameraSetting()
+        {
+            var enabled = _displaySettings != null && _displaySettings.CameraEnabled;
+
+            _cameraProbe?.SetEnabled(enabled);
+            _recipeListPanel?.SetCameraEnabled(enabled);
+
+            if (!enabled)
+            {
+                _videoPanel?.SetCameraAvailable(false);
+                return;
+            }
+
+            var hasPermission = _cameraProbe != null && _cameraProbe.HasPermission;
+            _videoPanel?.SetCameraAvailable(hasPermission,
+                hasPermission ? null : CameraProbe.PermissionDeniedText);
+        }
+
+        /// <summary>
+        /// 設定の「無効／有効」。初めて有効にしたときだけ権限を求め、下りたらその場で
+        /// 覆いに案内を出す——権限が無いまま始まった AR セッションは 1 枚も返さないので、
+        /// 効くのは次の起動から（調査 §7）。拒否されたら設定は無効へ戻す。
+        /// </summary>
+        private void HandleCameraEnabledSelected(bool enabled)
+        {
+            if (_displaySettings == null || _displaySettings.CameraEnabled == enabled)
+            {
+                return;
+            }
+
+            if (!enabled)
+            {
+                _displaySettings.CameraEnabled = false;
+                _displaySettings.Save();
+                ApplyCameraSetting();
+                return;
+            }
+
+            EnableCameraAsync(_cts?.Token ?? CancellationToken.None).Forget();
+        }
+
+        private async UniTaskVoid EnableCameraAsync(CancellationToken token)
+        {
+            if (_cameraProbe == null)
+            {
+                return;
+            }
+
+            var result = await _cameraProbe.RequestPermissionAsync(token);
+
+            if (token.IsCancellationRequested || _displaySettings == null)
+            {
+                return;
+            }
+
+            if (result == CameraEnableResult.Denied)
+            {
+                _displaySettings.CameraEnabled = false;
+                _displaySettings.Save();
+                ApplyCameraSetting();
+                _recipeListPanel?.ShowNotice(CameraProbe.PermissionDeniedText);
+                return;
+            }
+
+            _displaySettings.CameraEnabled = true;
+            _displaySettings.Save();
+            ApplyCameraSetting();
+
+            if (result == CameraEnableResult.NeedsRestart)
+            {
+                _recipeListPanel?.ShowNotice(CameraProbe.RestartNoticeText);
+            }
         }
 
         /// <summary>押した瞬間に反映して控える（設定の板に「決定」を置かない）。</summary>

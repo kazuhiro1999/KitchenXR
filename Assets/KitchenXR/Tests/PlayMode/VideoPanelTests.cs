@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using Cysharp.Threading.Tasks;
 using KitchenXR.Domain;
 using KitchenXR.Platform.Null;
 using KitchenXR.Presentation;
@@ -797,23 +798,179 @@ namespace KitchenXR.Tests.PlayMode
             probe.Dispose();
         }
 
-        /// <summary>権限は下りるが最初の何回かは 1 枚も返さないカメラ（権限直後の実機の再現）。</summary>
+        // ---------------------------------------------------------------- 設定でカメラを切る
+
+        /// <summary>
+        /// 設定でカメラが無効なら、釦も窓も出ない——「押しても何も起きない釦」を
+        /// 台所に残さない。有効にすればそのまま出る。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator カメラが無効なら釦も窓も出ない()
+        {
+            yield return BuildAll(2);
+
+            var probe = new CameraProbe(new NullPassthroughCamera());
+            _panel.BindCamera(probe);
+
+            var row = Root.Q<VisualElement>("cameraRow");
+            Assert.IsNotNull(row, "カメラの釦の行（cameraRow）が UXML にありません。");
+
+            _panel.SetCameraAvailable(false);
+            yield return WaitFrames(10);
+
+            Assert.IsFalse(_panel.IsCameraAvailable);
+            Assert.AreEqual(DisplayStyle.None, row.resolvedStyle.display,
+                "無効なのにカメラの釦が出ています。");
+            Assert.IsTrue(Root.Q<VisualElement>("cameraWindow").ClassListContains("is-hidden"));
+            Assert.AreEqual(string.Empty, _panel.CameraStatus, "無効なのに札が残っています。");
+
+            _panel.SetCameraAvailable(true);
+            yield return WaitFrames(10);
+
+            Assert.AreEqual(DisplayStyle.Flex, row.resolvedStyle.display,
+                "有効にしても釦が戻りません。");
+
+            probe.Dispose();
+        }
+
+        /// <summary>
+        /// 有効なのに権限が無い（後から拒否へ戻された）ときは、釦は隠したまま理由だけ札に残す。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 権限が無ければ釦は隠して理由だけ札に出す()
+        {
+            yield return BuildAll(2);
+
+            _panel.SetCameraAvailable(false, CameraProbe.PermissionDeniedText);
+            yield return WaitFrames(10);
+
+            Assert.AreEqual(DisplayStyle.None, Root.Q<VisualElement>("cameraRow").resolvedStyle.display);
+            StringAssert.Contains("権限", _panel.CameraStatus, "札に理由が出ていません。");
+        }
+
+        /// <summary>眠っている下見は押されても何もしない（口にも触らない＝権限も求めない）。</summary>
+        [UnityTest]
+        public IEnumerator 無効にした下見は押されても何もしない()
+        {
+            var camera = new GrantingCamera(framesUntilReady: 0);
+            var probe = new CameraProbe(camera);
+            probe.SetEnabled(false);
+
+            probe.Toggle();
+            probe.ToggleBurst();
+
+            yield return WaitFrames(20);
+
+            Assert.AreEqual(0, camera.Attempts, "無効なのにカメラを叩いています。");
+            Assert.IsNull(probe.Texture);
+            Assert.IsFalse(probe.IsBursting);
+            Assert.AreEqual(string.Empty, probe.StatusText);
+
+            probe.Dispose();
+        }
+
+        // ---------------------------------------------------------------- 初めて有効にしたとき
+
+        /// <summary>
+        /// 初めて有効にして許可が下りたら「立ち上げ直してください」——
+        /// 権限が無いまま始まった AR セッションは 1 枚も返さない（調査 §7）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 初めて有効にして許可されたら立ち上げ直しを求める()
+        {
+            var probe = new CameraProbe(new GrantingCamera(framesUntilReady: 0));
+
+            var result = CameraEnableResult.Denied;
+            yield return probe.RequestPermissionAsync().ToCoroutine(r => result = r);
+
+            Assert.AreEqual(CameraEnableResult.NeedsRestart, result);
+            StringAssert.Contains("立ち上げ直して", CameraProbe.RestartNoticeText);
+
+            probe.Dispose();
+        }
+
+        /// <summary>前の起動で許してあれば、案内は要らずそのまま使える。</summary>
+        [UnityTest]
+        public IEnumerator 既に許されていれば立ち上げ直さずに使える()
+        {
+            var probe = new CameraProbe(new GrantingCamera(framesUntilReady: 0, alreadyHasPermission: true));
+
+            Assert.IsTrue(probe.HasPermission);
+
+            var result = CameraEnableResult.Denied;
+            yield return probe.RequestPermissionAsync().ToCoroutine(r => result = r);
+
+            Assert.AreEqual(CameraEnableResult.Ready, result);
+
+            probe.Dispose();
+        }
+
+        /// <summary>拒否されたら Denied（呼んだ側が設定を無効へ戻す）。</summary>
+        [UnityTest]
+        public IEnumerator 拒否されたら断りが返る()
+        {
+            var probe = new CameraProbe(new GrantingCamera(framesUntilReady: 0, grants: false));
+
+            var result = CameraEnableResult.Ready;
+            yield return probe.RequestPermissionAsync().ToCoroutine(r => result = r);
+
+            Assert.AreEqual(CameraEnableResult.Denied, result);
+            Assert.IsFalse(probe.HasPermission);
+            StringAssert.Contains("権限", CameraProbe.PermissionDeniedText);
+
+            probe.Dispose();
+        }
+
+        private static IEnumerator WaitFrames(int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                yield return null;
+            }
+        }
+
+        /// <summary>
+        /// 権限は下りるが最初の何回かは 1 枚も返さないカメラ（権限直後の実機の再現）。
+        /// <paramref name="alreadyHasPermission"/> は「前の起動で許してある」、
+        /// <paramref name="grants"/> は「ダイアログで許すか」。
+        /// </summary>
         private sealed class GrantingCamera : KitchenXR.Platform.IPassthroughCamera
         {
             private readonly int _framesUntilReady;
+            private readonly bool _grants;
+            private bool _has;
 
-            public GrantingCamera(int framesUntilReady) => _framesUntilReady = framesUntilReady;
+            public GrantingCamera(int framesUntilReady, bool alreadyHasPermission = false, bool grants = true)
+            {
+                _framesUntilReady = framesUntilReady;
+                _has = alreadyHasPermission;
+                _grants = grants;
+            }
 
             public int Attempts { get; private set; }
 
             public bool IsSupported => true;
             public string LastFailure => "1枚も取れませんでした";
+            public bool HasPermission => _has;
             public bool PermissionJustGranted { get; private set; }
             public string TransformationText => "反転: X";
 
             public Cysharp.Threading.Tasks.UniTask<bool> RequestPermissionAsync(
                 System.Threading.CancellationToken token = default)
             {
+                PermissionJustGranted = false;
+
+                if (_has)
+                {
+                    return Cysharp.Threading.Tasks.UniTask.FromResult(true);
+                }
+
+                if (!_grants)
+                {
+                    return Cysharp.Threading.Tasks.UniTask.FromResult(false);
+                }
+
+                _has = true;
                 PermissionJustGranted = true;
                 return Cysharp.Threading.Tasks.UniTask.FromResult(true);
             }

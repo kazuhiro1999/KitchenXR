@@ -9,6 +9,19 @@ using Debug = UnityEngine.Debug;
 
 namespace KitchenXR.Presentation
 {
+    /// <summary>設定でカメラを「有効」にしたときの結末。</summary>
+    public enum CameraEnableResult
+    {
+        /// <summary>権限は元からあった。この起動のまま使える。</summary>
+        Ready,
+
+        /// <summary>今 許可が下りた。この起動では 1 枚も取れないので立ち上げ直してもらう。</summary>
+        NeedsRestart,
+
+        /// <summary>拒否された（設定は無効へ戻す）。</summary>
+        Denied,
+    }
+
     /// <summary>
     /// カメラの下見（ロードマップ v1-d）。板の側から見ると仕事は3つしかない——
     /// 1枚取って絵にする・2枚/秒で JPEG にして大きさと時間を測る・1枚だけ manor へ投げて往復を測る。
@@ -38,6 +51,12 @@ namespace KitchenXR.Presentation
         /// 消えるので（調査 §7）、立ち上げ直してもらうしかない。
         /// </summary>
         public const string PressAgainText = "許可されました。アプリを立ち上げ直してください";
+
+        /// <summary>初めて有効にして許可が下りたときの案内（一覧の板の覆いに出す）。</summary>
+        public const string RestartNoticeText = "カメラを使うには一度アプリを立ち上げ直してください";
+
+        /// <summary>拒否されたときの案内（設定は無効に戻す）。</summary>
+        public const string PermissionDeniedText = "カメラの権限が許可されていません（設定 → アプリ → 権限）";
 
         private readonly IPassthroughCamera _camera;
         private readonly ManorClient _manor;
@@ -70,11 +89,69 @@ namespace KitchenXR.Presentation
         /// <summary>札の文言（実測か、失敗の理由）。</summary>
         public string StatusText { get; private set; } = string.Empty;
 
+        // ---------------------------------------------------------------- 入／切（設定）
+
+        /// <summary>
+        /// 設定で「有効」になっているか。無効のうちは眠っている——釦も窓も板が出さないが、
+        /// 万一押されても何もしない（口にも触らない＝権限も求めない）。
+        /// </summary>
+        public bool IsEnabled { get; private set; } = true;
+
+        /// <summary>権限が今あるか（訊かない）。</summary>
+        public bool HasPermission => _camera != null && _camera.HasPermission;
+
+        /// <summary>設定の入／切を当てる。切ったら連写も絵もその場で畳む。</summary>
+        public void SetEnabled(bool enabled)
+        {
+            if (IsEnabled == enabled)
+            {
+                return;
+            }
+
+            IsEnabled = enabled;
+
+            if (!enabled)
+            {
+                StopBurst();
+                ReleaseTexture();
+                SetStatus(string.Empty);
+            }
+        }
+
+        /// <summary>
+        /// 初めて有効にしたときの権限要求。権限が元からあれば <see cref="CameraEnableResult.Ready"/>
+        /// ——この起動のまま使える。今 下りたのなら、そのセッションの subsystem は 1 枚も
+        /// 返さないので（調査 §7）立ち上げ直してもらうしかない。
+        /// </summary>
+        public async UniTask<CameraEnableResult> RequestPermissionAsync(CancellationToken token = default)
+        {
+            if (_camera == null)
+            {
+                return CameraEnableResult.Denied;
+            }
+
+            var alreadyHad = _camera.HasPermission;
+
+            if (!await _camera.RequestPermissionAsync(token))
+            {
+                return CameraEnableResult.Denied;
+            }
+
+            return alreadyHad && !_camera.PermissionJustGranted
+                ? CameraEnableResult.Ready
+                : CameraEnableResult.NeedsRestart;
+        }
+
         // ---------------------------------------------------------------- 1枚
 
         /// <summary>「カメラ」の釦。出していれば消し、出していなければ1枚取る。</summary>
         public void Toggle()
         {
+            if (!IsEnabled)
+            {
+                return;
+            }
+
             if (IsShowing)
             {
                 ReleaseTexture();
@@ -124,6 +201,11 @@ namespace KitchenXR.Presentation
         /// <summary>「連写 2fps」のトグル。</summary>
         public void ToggleBurst()
         {
+            if (!IsEnabled)
+            {
+                return;
+            }
+
             if (IsBursting)
             {
                 StopBurst();

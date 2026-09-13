@@ -51,6 +51,8 @@ namespace KitchenXR.Platform.MetaCamera
 
         public string LastFailure { get; private set; } = string.Empty;
 
+        public bool HasPermission => Permission.HasUserAuthorizedPermission(HeadsetCameraPermission);
+
         public bool PermissionJustGranted { get; private set; }
 
         public string TransformationText => "反転: X";
