@@ -640,11 +640,39 @@ namespace KitchenXR.Tests.EditMode
         }
 
         [Test]
-        public void 最小APIレベルが26以上でInternetPermissionが立っている()
+        public void 最小APIレベルが足りていてInternetPermissionが立っている()
         {
-            Assert.GreaterOrEqual((int)PlayerSettings.Android.minSdkVersion, AndroidPlayerSetup.MinimumSupportedSdk);
+            Assert.GreaterOrEqual((int)PlayerSettings.Android.minSdkVersion, AndroidPlayerSetup.MinimumSupportedSdk,
+                $"WebView は {AndroidPlayerSetup.WebViewMinimumSdk} 以上、"
+                + $"パススルーカメラの CPU 画像は {AndroidPlayerSetup.CameraMinimumSdk} 以上を要ります。");
             Assert.IsTrue(PlayerSettings.Android.forceInternetPermission,
                 "YouTube を開くので Internet permission が要ります。");
+        }
+
+        // ---------------------------------------------------------------- Android（カメラの要件）
+
+        /// <summary>
+        /// パススルーカメラ（v1-d 段 (a)）の設定。落ちたときは
+        /// <see cref="AndroidPlayerSetup.ApplyCameraImageSupport"/> を回せば直る。
+        ///
+        /// Camera Image Support は「絵が取れるか」だけでなく
+        /// <c>horizonos.permission.HEADSET_CAMERA</c> が manifest に入るかも決める
+        /// （Unity OpenXR: Meta 2.5.0 以降は opt-in したときだけ入れる）。
+        /// 立て忘れると実機で権限のダイアログすら出ない。
+        /// </summary>
+        [Test]
+        public void パススルーカメラのAndroid設定が揃っている()
+        {
+            var issues = AndroidPlayerSetup.CameraRequirementIssues();
+            Assert.IsEmpty(issues, string.Join("\n", issues));
+        }
+
+        [Test]
+        public void CameraImageSupportが立っている()
+        {
+            Assert.IsTrue(AndroidPlayerSetup.CameraImageSupportEnabled(),
+                "OpenXR の「Meta Quest: Camera (Passthrough)」の Camera Image Support が立っていません"
+                + "（HEADSET_CAMERA が manifest に入らず、実機で権限のダイアログが出ません）。");
         }
 
         /// <summary>

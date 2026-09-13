@@ -41,6 +41,9 @@ namespace KitchenXR.Presentation
         /// <summary>板の大きさが選ばれた。</summary>
         public event Action<DisplayScale> PanelScaleSelected;
 
+        /// <summary>カメラの入／切が選ばれた（受け側が権限を求め、保存する）。</summary>
+        public event Action<bool> CameraEnabledSelected;
+
         private const string PlacementLabel = "配置";
         private const string PlacementArmedLabel = "もう一度";
         private const string PlacementArmedClass = "recipe-place-button--armed";
@@ -58,6 +61,7 @@ namespace KitchenXR.Presentation
         private ScrollView _scroll;
         private VisualElement _busySection;
         private Label _busyLabel;
+        private Button _busyCloseButton;
 
         /// <summary>ペアリングの6桁と手順（覆いの中に出す）。</summary>
         private Label _pairCodeLabel;
@@ -71,6 +75,10 @@ namespace KitchenXR.Presentation
         /// <summary>段ごとの釦（今の値を琥珀にするために持っておく）。</summary>
         private readonly Dictionary<DisplayScale, Button> _fontButtons = new Dictionary<DisplayScale, Button>();
         private readonly Dictionary<DisplayScale, Button> _panelButtons = new Dictionary<DisplayScale, Button>();
+
+        /// <summary>カメラの 無効／有効 の2釦（今の値を琥珀にする）。</summary>
+        private Button _cameraOffButton;
+        private Button _cameraOnButton;
 
         /// <summary>写真の出どころ（Bootstrap から挿す）。無ければ写真は出ない（一覧は出る）。</summary>
         private RecipeStore _store;
@@ -89,6 +97,8 @@ namespace KitchenXR.Presentation
             _scroll = root.Q<ScrollView>("recipeScroll");
             _busySection = root.Q<VisualElement>("busySection");
             _busyLabel = root.Q<Label>("busyLabel");
+            _busyCloseButton = root.Q<Button>("busyCloseButton");
+            PokePress.BindButton(_busyCloseButton, _debounce, "busyClose", HideBusy);
             _pairCodeLabel = root.Q<Label>("pairCodeLabel");
             _pairHintLabel = root.Q<Label>("pairHintLabel");
             _settingsSection = root.Q<VisualElement>("settingsSection");
@@ -123,6 +133,13 @@ namespace KitchenXR.Presentation
                 scale => PanelScaleSelected?.Invoke(scale));
             BindScaleButton(root, "panelLargeButton", _panelButtons, DisplayScale.Large,
                 scale => PanelScaleSelected?.Invoke(scale));
+
+            _cameraOffButton = root.Q<Button>("cameraOffButton");
+            _cameraOnButton = root.Q<Button>("cameraOnButton");
+            PokePress.BindButton(_cameraOffButton, _debounce, "cameraOff",
+                () => CameraEnabledSelected?.Invoke(false));
+            PokePress.BindButton(_cameraOnButton, _debounce, "cameraOn",
+                () => CameraEnabledSelected?.Invoke(true));
         }
 
         private void BindScaleButton(
@@ -341,6 +358,24 @@ namespace KitchenXR.Presentation
             MarkSelected(_panelButtons, panelScale);
         }
 
+        /// <summary>カメラの今の値を映す（無効／有効のどちらかが琥珀になる）。</summary>
+        public void SetCameraEnabled(bool enabled)
+        {
+            MarkButton(_cameraOnButton, enabled);
+            MarkButton(_cameraOffButton, !enabled);
+        }
+
+        private static void MarkButton(Button button, bool isSelected)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            button.EnableInClassList(PrimaryClass, isSelected);
+            button.EnableInClassList(SecondaryClass, !isSelected);
+        }
+
         private static void MarkSelected(Dictionary<DisplayScale, Button> buttons, DisplayScale selected)
         {
             foreach (var pair in buttons)
@@ -375,11 +410,41 @@ namespace KitchenXR.Presentation
 
             _busySection.RemoveFromClassList("is-hidden");
             HidePairing();
+            HideBusyClose();
             if (_busyLabel != null)
             {
                 _busyLabel.text = total > 0 ? $"準備中 {done}/{total}" : "準備中";
             }
         }
+
+        /// <summary>
+        /// 覆いに案内を出す（カメラを初めて有効にしたときの「立ち上げ直してください」など）。
+        /// 準備中と違って自分で閉じられる——閉じれば一覧がそのまま使える。
+        /// </summary>
+        public void ShowNotice(string text)
+        {
+            if (_busySection == null)
+            {
+                return;
+            }
+
+            _busySection.RemoveFromClassList("is-hidden");
+            HidePairing();
+
+            if (_busyLabel != null)
+            {
+                _busyLabel.text = text ?? string.Empty;
+            }
+
+            _busyCloseButton?.RemoveFromClassList("is-hidden");
+        }
+
+        /// <summary>覆いに出ている文（試験用。出ていなければ空）。</summary>
+        public string BusyText => IsBusy ? _busyLabel?.text ?? string.Empty : string.Empty;
+
+        /// <summary>案内の「閉じる」が出ているか（試験用）。</summary>
+        public bool IsNoticeClosable =>
+            IsBusy && _busyCloseButton != null && !_busyCloseButton.ClassListContains("is-hidden");
 
         /// <summary>覆いに好きな文字を出す（「manor を探しています」など）。</summary>
         public void ShowBusy(string text)
@@ -391,6 +456,7 @@ namespace KitchenXR.Presentation
 
             _busySection.RemoveFromClassList("is-hidden");
             HidePairing();
+            HideBusyClose();
             if (_busyLabel != null)
             {
                 _busyLabel.text = text ?? "準備中";
@@ -410,6 +476,7 @@ namespace KitchenXR.Presentation
             }
 
             _busySection.RemoveFromClassList("is-hidden");
+            HideBusyClose();
 
             if (_busyLabel != null)
             {
@@ -439,7 +506,10 @@ namespace KitchenXR.Presentation
         {
             _busySection?.AddToClassList("is-hidden");
             HidePairing();
+            HideBusyClose();
         }
+
+        private void HideBusyClose() => _busyCloseButton?.AddToClassList("is-hidden");
 
         private void HidePairing()
         {

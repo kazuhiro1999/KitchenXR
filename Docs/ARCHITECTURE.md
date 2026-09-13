@@ -15,17 +15,18 @@ graph LR
   Plat --> Dom
   Pres -.->|Presentation/Video だけ| Web[TLabWebView]
   Plat -.->|Platform/ArFoundation だけ| AR[AR Foundation]
+  Plat -.->|Platform/MetaCamera だけ| Cam[Unity OpenXR: Meta<br/>パススルーカメラ]
 ```
 
 | 層 | 置き場 | 持つもの |
 |---|---|---|
 | Domain | `Assets/KitchenXR/Domain/` | `Recipe`・`Step`・`Phase`・`Ingredient`・`CookSession`（工程の状態機械）・`CookTimer`・`StepText`（説明の `(A)` を材料名に開く）・`RecipeJson`／`RecipeListJson`／`MediaJson`（読み取り） |
-| Platform | `Assets/KitchenXR/Platform/` | `IAnchorStore`・`IPassthroughControl`・`IHandInputPolicy` の口と、`ArFoundation/`・`Null/` の実装、`PanelPoseFile` |
+| Platform | `Assets/KitchenXR/Platform/` | `IAnchorStore`・`IPassthroughControl`・`IHandInputPolicy`・`IPassthroughCamera` の口と、`ArFoundation/`・`MetaCamera/`・`Null/` の実装、`PanelPoseFile`・`CameraFrame` |
 | Net | `Assets/KitchenXR/Net/` | `ManorClient`・`ManorDiscovery`・`ManorSettings`・`ManorDeviceFile`・`RecipeStore`・`MediaStore`・`CookEventQueue`・`LastSessionStore` |
-| Presentation | `Assets/KitchenXR/Presentation/` | 板（UI Toolkit）・`PokePress`・`PanelPlacement`・`WristMenu`・`FingertipCursor`・`Video/`・`Hazard/`（注意の板と領域） |
+| Presentation | `Assets/KitchenXR/Presentation/` | 板（UI Toolkit）・`PokePress`・`PanelPlacement`・`WristMenu`・`FingertipCursor`・`Video/`・`Hazard/`（注意の板と領域）・`CameraProbe`（カメラの口。釦は無い） |
 | App | `Assets/KitchenXR/App/` | `Bootstrap`（どのアダプタを挿すか）・`FileLog`・`Editor/`（シーン生成・ビルド） |
 
-守っている規則は3つで、いずれも `Tests/EditMode/PlatformIsolationTests.cs` が検算します。
+守っている規則は4つで、いずれも `Tests/EditMode/PlatformIsolationTests.cs` が検算します。
 
 - **Domain は UnityEngine に依存しない。** `KitchenXR.Domain.asmdef` は
   `noEngineReferences: true`（参照は Newtonsoft.Json だけ）なので、構造として破れません。
@@ -34,6 +35,9 @@ graph LR
   （`Platform/PanelPoseFile.cs` や `Platform/Null/` も「外」です）。
 - **WebView に触るのは `Presentation/Video/` の中だけ。** 板は `IVideoPlayer` の口しか見ません
   （WebView は Android にしか無いので、Editor では `NullVideoPlayer` に差し替わります）。
+- **パススルーカメラの SDK に触るのは `Platform/MetaCamera/` の中だけ。**
+  `UnityEngine.XR.OpenXR.Features.Meta`・`MetaOpenXRCameraSubsystem`・`XRCpuImage` への言及が
+  その外に出たら試験が落ちます（§8）。
 
 アセンブリは `KitchenXR.Domain`・`KitchenXR.Runtime`・`KitchenXR.App.Editor`・
 `KitchenXR.Tests.EditMode`・`KitchenXR.Tests.PlayMode` の5つです。
@@ -50,7 +54,7 @@ Pixels Per Unit 100、板の `localScale` は 0.2 なので **1 UI px = 2mm** �
 | レシピ | `RecipePanel` | 260×190 px ≒ 52×38cm | 工程の点列と進捗%、左に工程画像（正方形）、右に見出し・説明・グループの添え行・材料の札・「次: …」、下に `[一覧へ][配置] … [戻る][次へ]`。右の列が入り切らなければその列だけ文字を 6px → 5px → 4.5px と落とす |
 | 材料 | `IngredientsPanel` | 170×240 px ≒ 34×48cm | チェックの行（縦のみ。16 点までスクロール無し）。今の工程で使う材料を強調 |
 | タイマー | `TimerPanel` | 220×220 px ≒ 44×44cm | 1/3/5/10 分と ±30 秒で作り、3つまで同時に動く。終了は合成音と点滅 |
-| 動画 | `Presentation/Video/VideoPanel` | 16:9 は 354×224 px、9:16 は 206×264 px | 左に窓（WebView）・右に再生リスト（100 px 幅は向きで変えない）・下に操作部と札3行 |
+| 動画 | `Presentation/Video/VideoPanel` | 16:9 は 354×224 px、9:16 は 206×264 px | 左に窓（WebView）・右に再生リスト（100 px 幅は向きで変えない）・下に操作部と札3行。**カメラの釦と窓は 1.1.0 で撤去**（§8） |
 | 手首メニュー | `WristMenu`・`WristMenuButton`・`PlacementMenuPanel` | 釦 22×22 px ≒ 4.4cm 角／メニューは頁で高さが変わる（130×92〜176 px） | 頁は4つ（下の表） |
 | 注意の板 | `Presentation/Hazard/HazardPanel` | 100×60 px ≒ 20×12cm | 帯（琥珀か赤）＋記号＋題名、下に本文1〜2行。**触れない板** |
 | 「消す」 | `Presentation/Hazard/HazardDeleteChip` | 34×24 px ≒ 6.8×4.8cm | 注意の板の右横に、配置モードの間だけ出る（2度押し） |
@@ -264,3 +268,87 @@ Pixels Per Unit 100、板の `localScale` は 0.2 なので **1 UI px = 2mm** �
 - 当てる先は一覧・レシピ・材料・タイマーの4枚。動画の板は自分で寸法を決める（16:9 ⇄ 9:16）ので
   混ぜません。手首メニューと配置の操作も、出ている間だけの板なので対象外です。
 </content>
+
+## 8. カメラの口（`Platform/MetaCamera`）
+
+ロードマップ v1-d の段 (a)——**Quest 3 のカメラから1枚もらえるか**は実機で確かめ済みです。
+**検証用の釦（「カメラ」「連写2fps」）と 10cm の窓は 1.1.0 で撤去しました**——台所に
+「押しても調理が進まない釦」を残さないためです。**口（`IPassthroughCamera` と Meta の実装）と
+`CameraProbe` の取得・JPEG・送信のロジックは残してあります**。釦が無いので普段は眠っていて、
+次の段（認識）が呼びます。認識も判定もここではしません（段 (b)(d) の仕事）。根拠は
+[`research/2026-09-13_quest3-camera-and-recognition.md`](research/2026-09-13_quest3-camera-and-recognition.md)
+の §1・§5。
+
+### 8.1 取る
+
+- 口は `Platform/IPassthroughCamera`（`IsSupported`・`RequestPermissionAsync`・
+  `TryAcquire`・`AcquireAsync`・`PermissionJustGranted`・`TransformationText`・`Dispose`）で、
+  返すのは `CameraFrame`（画素・寸法・撮影時刻・内部パラメータ）だけ。
+  板も `CameraProbe` も SDK の型を見ません。
+- 実装は `Platform/MetaCamera/MetaOpenXRPassthroughCamera`。**AR Foundation の汎用 API
+  （`ARCameraManager.TryAcquireLatestCpuImage`）では取れません**——対応表で Meta の
+  "Camera image" は非対応なので、provider 固有の `MetaOpenXRCameraSubsystem` を
+  `SubsystemManager` から引いて直に叩きます。Start／Stop は rig の `ARCameraManager` が持つので、
+  ここでは**見つけるだけ**（持ち主を2つにしない）。
+- 変換は `XRCpuImage` の中で終わらせます。YUV420 → `RGBA32`、長辺を **640** まで縮小、
+  反転は **`MirrorX`**。実機では `MirrorY` だと絵が 180 度回っていました
+  （実測 2026-09-13。`MirrorY(元) = Rot180(真)` ⇒ `真 = MirrorX(元)`。調査 §7）。
+  左右が合っているかは実機でしか見えないので、札に「反転: X」を出しています。
+  **`Dispose` は必ず通す**——取りこぼすと AR プラットフォーム側がメモリ切れになります。
+- **カメラは設定で入／切します**（一覧の板の「設定」。`settings.json` の `camera_enabled`。
+  **既定は無効**）。無効のうちは権限を求めず、`CameraProbe` は作られても眠ります
+  （呼ばれても口に触りません）。
+- **権限は起動時に求めます**（`Bootstrap.RequestHeadsetCameraPermissionAtStartup`。
+  `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]` なので**場面が読まれる前＝AR セッションが
+  立つ前**）。権限が無いまま始まった subsystem はそのセッションの間ずっと 1 枚も返さないので、
+  許可済みで起動するのが唯一カメラが動く道です。呼ぶのは manifest に権限が入っているビルド
+  ——Camera Image Support を立てたビルド——で、かつ `camera_enabled` が真のときだけ
+  （`IsHeadsetCameraDeclared`）。
+- **初めて有効にしたときだけ**その場で権限を求め、下りたら一覧の板の覆いに
+  「カメラを使うには一度アプリを立ち上げ直してください」＋「閉じる」を出します
+  （効くのは次の起動から）。拒否されたら理由を出して設定は無効へ戻します。
+- **口は起こし直しません。`ARCameraManager` にも subsystem にも触りません。**
+  Unity OpenXR: Meta ではパススルーの描画が `ARCameraManager` に結び付いているので、
+  権限の直後に disable→enable したら **MR の視界が真っ暗になって戻りませんでした**
+  （実測 2026-09-13。調査 §7.1）。1 枚も取れないより背景が黒い方がまずい。
+  この壊れ方は実機でしか現れないので、`PlatformIsolationTests` が
+  「`MetaOpenXRPassthroughCamera` のコードに `enabled =`・`ARCameraManager`・`.Stop()`・`.Start()`
+  が現れない」を静的に縛っています。
+- 許可した直後のセッションは諦めます——`CameraProbe` が 0.4 秒おきに 4 回まで取り直し、
+  それでも駄目なら札に「許可されました。アプリを立ち上げ直してください」と出します。
+- 連写は `ConvertAsync` の道（`AcquireAsync`）を通り、変換で主スレッドを止めません。
+- Editor は必ず `Platform/Null/NullPassthroughCamera` に落ちます（XR Simulator はカメラ非対応）。
+  差し替えは `PassthroughCameraFactory`（`AnchorStoreFactory` と同じ役回り）。
+
+### 8.2 設定（3つだけ。追加パッケージは要りません）
+
+| 事項 | どこ | 効き目 |
+|---|---|---|
+| **Camera Image Support** | OpenXR →「Meta Quest: Camera (Passthrough)」。`AndroidPlayerSetup.ApplyCameraImageSupport` が feature id と `SerializedObject` で立てる | 画像取得が有効になり、**manifest に `horizonos.permission.HEADSET_CAMERA` が入る**（2.5.0 以降は opt-in したときだけ入る）。だから `Plugins/Android/AndroidManifest.xml` は要らない |
+| **minSdk 32** | `AndroidPlayerSetup.CameraMinimumSdk` | CPU 画像は Android 12L 以上。WebView の 26 と別に持ち、厳しい方を使う |
+| **実行時の権限** | `MetaOpenXRPassthroughCamera.RequestPermissionAsync` | manifest に在るだけでは足りない。`Permission.RequestUserPermission` を自分で呼ぶ |
+
+型（`ARCameraFeature`）ではなく feature id で引くのは、カメラの SDK への参照を
+`Platform/MetaCamera/` の外へ出さないためです（§1 の4つ目の規則）。
+検算は `KitchenSceneIntegrityTests`。
+
+### 8.3 出さない（釦は 1.1.0 で撤去）
+
+- 検証用の UI——動画の板の一覧側にあった「カメラ」「連写2fps」の釦・10cm 角の窓・実測の札
+  ——は **1.1.0 で撤去しました**。段 (a) で確かめたいこと（1枚取れるか・寸法・所要・反転）は
+  実機で確かめ終わったので、台所に押しても調理が進まない釦を残しません。
+  `VideoPanel` はカメラを知りません（`BindCamera`・`SetCameraAvailable` とも無くなりました）。
+- 実測の道は `CameraProbe.Report` が **`FileLog`** へ残します。札はもう無いので、
+  次の段（認識）で何が起きたかは Editor のログとこのファイルだけが持ちます。
+- 残した実測値（2026-09-13。調査 §7）:
+  `取得 640×640 / 取得〜表示 22ms / 内部パラメータ: あり / 反転: X`。
+
+### 8.4 (c) の下見（JPEG 化と送信の負荷）
+
+- `CameraProbe.ToggleBurst` は残してあります（釦からは呼ばれません）。2枚/秒で
+  取得 → `EncodeToJPG` 相当（`ImageConversion.EncodeArrayToJPG`・品質 70）までの
+  **KB と ms** を測ります。JPEG 化は別スレッドで回し、Unity に弾かれたら
+  主スレッドでやり直します（黙って落とさない）。
+- manor の繋ぎ先と鍵があれば、**1枚だけ** `POST /api/v1/kitchen/vision/frame`
+  （`image/jpeg`・Bearer は既存の `ManorClient` の経路）へ投げて、往復 ms と HTTP 状態を出します。
+  **manor 側の受け口はまだ無いので 404 が正常**——測りたいのは時間だけなので、それで足ります。

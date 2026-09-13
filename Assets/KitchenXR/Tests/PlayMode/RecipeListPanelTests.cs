@@ -645,6 +645,91 @@ namespace KitchenXR.Tests.PlayMode
             Assert.IsTrue(panel.IsBusy);
             Assert.IsEmpty(panel.PairingCode, "準備中の覆いに番号が出ています。");
         }
+
+        // ---------------------------------------------------------------- カメラの設定
+
+        /// <summary>
+        /// 設定の「カメラ 無効／有効」。既定は無効が琥珀で、有効を突くと入／切が上がる
+        /// （受けた <c>Bootstrap</c> が権限を求めて保存する）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 設定のカメラは無効が既定で有効を突くと上がる()
+        {
+            yield return BuildRig();
+            yield return BuildPanel("RecipeListPanel", ListUxmlPath);
+
+            var panel = _panelGo.AddComponent<RecipeListPanel>();
+            panel.Show(SampleAndManorItems(), string.Empty);
+            panel.SetCameraEnabled(false);
+            panel.ShowSettings(true);
+
+            yield return Settle();
+            yield return BuildPokeInteractor();
+
+            var off = Root.Q<Button>("cameraOffButton");
+            var on = Root.Q<Button>("cameraOnButton");
+            Assert.IsNotNull(off, "設定に「無効」の釦がありません。");
+            Assert.IsNotNull(on, "設定に「有効」の釦がありません。");
+
+            Assert.IsTrue(off.ClassListContains("kitchen-button--primary"),
+                "既定（無効）が琥珀になっていません。");
+            Assert.IsFalse(on.ClassListContains("kitchen-button--primary"));
+
+            bool? chosen = null;
+            panel.CameraEnabledSelected += value => chosen = value;
+
+            yield return PokeAt(WorldPositionOf(on));
+
+            Assert.AreEqual(true, chosen, "「有効」を突いても上がっていません。");
+
+            // 映すのは受けた側の仕事（権限が下りて初めて有効になる）。
+            panel.SetCameraEnabled(true);
+            yield return Settle();
+            Assert.IsTrue(on.ClassListContains("kitchen-button--primary"));
+            Assert.IsTrue(off.ClassListContains("kitchen-button--secondary"));
+
+            yield return WaitRealSeconds(0.7f);
+            yield return PokeAt(WorldPositionOf(off));
+            Assert.AreEqual(false, chosen, "「無効」を突いても上がっていません。");
+        }
+
+        /// <summary>
+        /// 初めて有効にした後の案内。覆いに出て、「閉じる」を突けば消える
+        /// ——準備中やペアリングの覆いと違い、自分で畳める。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 案内の覆いは閉じる釦で消える()
+        {
+            yield return BuildRig();
+            yield return BuildPanel("RecipeListPanel", ListUxmlPath);
+
+            var panel = _panelGo.AddComponent<RecipeListPanel>();
+            panel.Show(SampleAndManorItems(), string.Empty);
+
+            yield return Settle();
+            yield return BuildPokeInteractor();
+
+            Assert.IsFalse(panel.IsBusy);
+
+            panel.ShowNotice(CameraProbe.RestartNoticeText);
+            yield return Settle();
+
+            Assert.IsTrue(panel.IsBusy, "案内が覆いに出ていません。");
+            Assert.AreEqual(CameraProbe.RestartNoticeText, panel.BusyText);
+            Assert.IsTrue(panel.IsNoticeClosable, "案内なのに「閉じる」が出ていません。");
+
+            var close = Root.Q<Button>("busyCloseButton");
+            Assert.IsNotNull(close, "busyCloseButton が UXML にありません。");
+            yield return PokeAt(WorldPositionOf(close));
+
+            Assert.IsFalse(panel.IsBusy, "「閉じる」を突いても覆いが消えません。");
+
+            // 準備中の覆いには「閉じる」を出さない（終わるまで閉じさせない）。
+            panel.ShowBusy("準備中");
+            yield return Settle();
+            Assert.IsTrue(panel.IsBusy);
+            Assert.IsFalse(panel.IsNoticeClosable, "準備中の覆いに「閉じる」が出ています。");
+        }
     }
 }
 #endif

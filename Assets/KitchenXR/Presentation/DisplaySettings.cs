@@ -15,9 +15,9 @@ namespace KitchenXR.Presentation
     }
 
     /// <summary>
-    /// 表示の設定。持つのは文字の大きさと板の大きさの2つだけ。どちらも小・中・大の3段で、
-    /// 自由な数値にしない——調理中の手で細かい目盛りを合わせるのは無理だし、中途半端な値に
-    /// すると「1m 先で読める」が保証できなくなる。
+    /// 表示の設定。文字の大きさと板の大きさは小・中・大の3段で、自由な数値にしない
+    /// ——調理中の手で細かい目盛りを合わせるのは無理だし、中途半端な値にすると
+    /// 「1m 先で読める」が保証できなくなる。カメラの入／切もここに置く。
     ///
     /// 置き場は <c>Application.persistentDataPath/settings.json</c>
     /// （<see cref="KitchenXR.Net.LastSessionStore"/> と同じ流儀）。
@@ -31,6 +31,7 @@ namespace KitchenXR.Presentation
 
         private const string FontScaleKey = "font_scale";
         private const string PanelScaleKey = "panel_scale";
+        private const string CameraEnabledKey = "camera_enabled";
 
         private readonly string _path;
 
@@ -52,13 +53,20 @@ namespace KitchenXR.Presentation
         public DisplayScale PanelScale { get; set; } = DisplayScale.Medium;
 
         /// <summary>
+        /// カメラを使うか。**既定は無効**——カメラを使わない日のほうが多いし、
+        /// 無効のうちは権限も求めない（起動のたびにダイアログが出ない）。
+        /// </summary>
+        public bool CameraEnabled { get; set; }
+
+        /// <summary>
         /// 読む。ファイルが無い・読めない・JSON が壊れている・知らない段が書かれている、
-        /// のどれでも既定（中・中）に戻す。戻り値は「ファイルから読めたか」（試験と診断用）。
+        /// のどれでも既定（中・中・カメラ無効）に戻す。戻り値は「ファイルから読めたか」。
         /// </summary>
         public bool Load()
         {
             FontScale = DisplayScale.Medium;
             PanelScale = DisplayScale.Medium;
+            CameraEnabled = false;
 
             if (!File.Exists(_path))
             {
@@ -94,6 +102,8 @@ namespace KitchenXR.Presentation
 
             FontScale = ParseScale(obj[FontScaleKey]?.ToString());
             PanelScale = ParseScale(obj[PanelScaleKey]?.ToString());
+            CameraEnabled = obj[CameraEnabledKey]?.Type == JTokenType.Boolean &&
+                            obj[CameraEnabledKey].Value<bool>();
             return true;
         }
 
@@ -104,6 +114,7 @@ namespace KitchenXR.Presentation
             {
                 [FontScaleKey] = ToToken(FontScale),
                 [PanelScaleKey] = ToToken(PanelScale),
+                [CameraEnabledKey] = CameraEnabled,
             };
 
             try

@@ -7,6 +7,7 @@
         "Unity.XR.Hands",
         "Unity.XR.ARFoundation",
         "Unity.XR.ARSubsystems",
+        "Unity.XR.MetaOpenXR",
         "Unity.XR.CoreUtils",
         "UniTask",
         "UnityEngine.UI",
