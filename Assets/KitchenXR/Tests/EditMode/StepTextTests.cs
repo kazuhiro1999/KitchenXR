@@ -265,5 +265,132 @@ namespace KitchenXR.Tests.EditMode
             Assert.AreEqual(string.Empty, StepText.NormalizeGroupKey(null));
             Assert.AreEqual(string.Empty, StepText.NormalizeGroupKey("  "));
         }
+
+        // ------------------------------------------------------------ ingredients_used の推定
+
+        /// <summary>
+        /// manor から取り込んだレシピは <c>ingredients_used</c> が空なので、
+        /// 材料の板が1行も光らない。空のときは説明から拾う。
+        /// </summary>
+        private static IReadOnlyList<Ingredient> Chahan() => new List<Ingredient>
+        {
+            new Ingredient("ごはん", "300", "g", string.Empty, string.Empty),
+            new Ingredient("卵", "2", "個", string.Empty, string.Empty),
+            new Ingredient("長ねぎ（青い部分）", "1/2", "本", "みじん切り", string.Empty),
+            new Ingredient("ごま油", "大さじ1", string.Empty, string.Empty, string.Empty),
+            new Ingredient("しょうゆ", "小さじ1", string.Empty, string.Empty, "A"),
+            new Ingredient("酒", "小さじ1", string.Empty, string.Empty, "A"),
+        };
+
+        [Test]
+        public void 説明に出てくる材料名を拾う()
+        {
+            var used = StepText.InferIngredientsUsed("ごはんと卵を混ぜる。", Chahan());
+
+            CollectionAssert.AreEqual(new[] { "ごはん", "卵" }, used,
+                "材料の並び順で返らないと、札の並びが工程ごとに変わります。");
+        }
+
+        [Test]
+        public void 材料名の括弧の添え書きは落として照合する()
+        {
+            var used = StepText.InferIngredientsUsed("長ねぎを散らす。", Chahan());
+
+            CollectionAssert.AreEqual(new[] { "長ねぎ（青い部分）" }, used,
+                "名前は材料に書かれたまま返す（板の行の鍵に使うため）。");
+        }
+
+        [Test]
+        public void グループ参照はその組の材料を全部拾う()
+        {
+            var used = StepText.InferIngredientsUsed("(A)を回し入れる。", Chahan());
+
+            CollectionAssert.AreEqual(new[] { "しょうゆ", "酒" }, used);
+        }
+
+        [Test]
+        public void グループ参照と名前は一緒に拾う()
+        {
+            var used = StepText.InferIngredientsUsed("ごはんを炒め、(A)を回し入れる。", Chahan());
+
+            CollectionAssert.AreEqual(new[] { "ごはん", "しょうゆ", "酒" }, used);
+        }
+
+        [Test]
+        public void 長い名前が先に当たるので短い名前は誤爆しない()
+        {
+            var ingredients = new List<Ingredient>
+            {
+                new Ingredient("ごま油", "大さじ1", string.Empty, string.Empty, string.Empty),
+                new Ingredient("油", "適量", string.Empty, string.Empty, string.Empty),
+            };
+
+            var used = StepText.InferIngredientsUsed("ごま油を熱する。", ingredients);
+
+            CollectionAssert.AreEqual(new[] { "ごま油" }, used,
+                "「ごま油」の中の「油」まで拾っています。");
+        }
+
+        [Test]
+        public void 短い名前は複合語の中では拾わない()
+        {
+            var ingredients = new List<Ingredient>
+            {
+                new Ingredient("油", "適量", string.Empty, string.Empty, string.Empty),
+                new Ingredient("水", "100", "ml", string.Empty, string.Empty),
+            };
+
+            Assert.IsEmpty(StepText.InferIngredientsUsed("ごま油を熱する。", ingredients),
+                "「ごま油」に「油」が当たっています。");
+            Assert.IsEmpty(StepText.InferIngredientsUsed("油揚げを刻む。", ingredients),
+                "「油揚げ」に「油」が当たっています。");
+            Assert.IsEmpty(StepText.InferIngredientsUsed("水菜を添える。", ingredients),
+                "「水菜」に「水」が当たっています。");
+        }
+
+        [Test]
+        public void 短い名前も助詞の前後なら拾う()
+        {
+            var ingredients = new List<Ingredient>
+            {
+                new Ingredient("油", "適量", string.Empty, string.Empty, string.Empty),
+            };
+
+            CollectionAssert.AreEqual(new[] { "油" },
+                StepText.InferIngredientsUsed("フライパンに油をひく。", ingredients));
+        }
+
+        [Test]
+        public void 長い名前は部分一致でも拾う()
+        {
+            var ingredients = new List<Ingredient>
+            {
+                new Ingredient("合びき肉", "300", "g", string.Empty, string.Empty),
+            };
+
+            CollectionAssert.AreEqual(new[] { "合びき肉" },
+                StepText.InferIngredientsUsed("合びき肉をほぐしながら炒める。", ingredients));
+        }
+
+        [Test]
+        public void 全角と空白の揺れを吸収する()
+        {
+            var ingredients = new List<Ingredient>
+            {
+                new Ingredient("バター", "10", "g", string.Empty, string.Empty),
+            };
+
+            CollectionAssert.AreEqual(new[] { "バター" },
+                StepText.InferIngredientsUsed("バ タ ー を落とす。", ingredients));
+        }
+
+        [Test]
+        public void 材料が出てこなければ空()
+        {
+            Assert.IsEmpty(StepText.InferIngredientsUsed("弱火で5分そのまま置く。", Chahan()));
+            Assert.IsEmpty(StepText.InferIngredientsUsed(string.Empty, Chahan()));
+            Assert.IsEmpty(StepText.InferIngredientsUsed(null, Chahan()));
+            Assert.IsEmpty(StepText.InferIngredientsUsed("ごはんを炒める。", null));
+        }
     }
 }

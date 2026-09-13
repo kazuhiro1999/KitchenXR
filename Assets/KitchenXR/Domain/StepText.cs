@@ -106,30 +106,9 @@ namespace KitchenXR.Domain
                 return new StepTextResult(text, Array.Empty<string>());
             }
 
-            // 参照を出てきた順に拾う（同じグループが2度出ても行は1本）。
-            var hits = new List<KeyValuePair<int, string>>();
-            Collect(Bracketed, text, hits);
-            Collect(WordLetter, text, hits);
-            Collect(LetterOf, text, hits);
-            Collect(BareWideLetter, text, hits);
-            Collect(StandaloneWord, text, hits);
-            if (hits.Count == 0)
-            {
-                return new StepTextResult(text, Array.Empty<string>());
-            }
-
-            hits.Sort((a, b) => a.Key.CompareTo(b.Key));
-
             var notes = new List<string>();
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var hit in hits)
+            foreach (var key in ReferencedGroupKeys(text))
             {
-                var key = NormalizeGroupKey(hit.Value);
-                if (key.Length == 0 || !seen.Add(key))
-                {
-                    continue;
-                }
-
                 // 参照が在っても材料側に無ければ何も添えない。
                 if (groups.TryGetValue(key, out var group))
                 {
@@ -138,6 +117,305 @@ namespace KitchenXR.Domain
             }
 
             return new StepTextResult(text, notes);
+        }
+
+        /// <summary>説明の中のグループ参照を、出てきた順・重複なしの正規化済みの鍵で返す。</summary>
+        private static List<string> ReferencedGroupKeys(string text)
+        {
+            var hits = new List<KeyValuePair<int, string>>();
+            Collect(Bracketed, text, hits);
+            Collect(WordLetter, text, hits);
+            Collect(LetterOf, text, hits);
+            Collect(BareWideLetter, text, hits);
+            Collect(StandaloneWord, text, hits);
+
+            hits.Sort((a, b) => a.Key.CompareTo(b.Key));
+
+            var keys = new List<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var hit in hits)
+            {
+                var key = NormalizeGroupKey(hit.Value);
+                if (key.Length > 0 && seen.Add(key))
+                {
+                    keys.Add(key);
+                }
+            }
+
+            return keys;
+        }
+
+        // ---------------------------------------------------------------- ingredients_used の推定
+
+        /// <summary>
+        /// 短い材料名（正規化してこの字数以下）は「完全な語としての出現」にだけ当てる。
+        /// 「油」が「ごま油」「油揚げ」に当たるのを防ぐため。
+        /// </summary>
+        public const int ShortNameLength = 2;
+
+        /// <summary>
+        /// 短い名前の前に来てよい仮名（助詞・接続の仮名）。これ以外の仮名が前に在ったら
+        /// 複合語の一部とみなして当てない——「ごま油」「ひまわり油」「なたね油」を弾く。
+        /// </summary>
+        private const string ParticleKana = "をにはがでともやへのて";
+
+        /// <summary>
+        /// 工程の説明から「この工程で使う材料」を推定する（<c>ingredients_used</c> が空のとき用）。
+        ///
+        /// 拾うのは2つ:
+        ///   1. 説明の文に**名前が出てくる**材料（長い名前から先に照合し、当たった所は塗り潰す）
+        ///   2. `(A)`・`調味料B` などの**グループ参照**に属する材料（照合は <see cref="ExpandGroups"/> と同じ）
+        ///
+        /// 正規化は全角→半角・空白の除去・材料名の「（…）」の除去だけ。同義の揺れ（「しょうゆ」と
+        /// 「醤油」）は扱わない——辞書を持たずに当てにいくと、外れ方が説明できなくなる。
+        ///
+        /// 返す順はレシピの材料の並び順。名前は材料に書かれたまま（板の行の鍵に使うため）。
+        /// </summary>
+        public static IReadOnlyList<string> InferIngredientsUsed(
+            string instruction, IReadOnlyList<Ingredient> ingredients)
+        {
+            if (ingredients == null || ingredients.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            var text = NormalizeText(instruction ?? string.Empty);
+            var chosen = new HashSet<string>(StringComparer.Ordinal);
+
+            if (text.Length > 0)
+            {
+                MarkByName(text, ingredients, chosen);
+                MarkByGroup(text, ingredients, chosen);
+            }
+
+            if (chosen.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            // レシピの並び順で返す（同じ名前が2行あっても1つ）。
+            var result = new List<string>();
+            var emitted = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var ingredient in ingredients)
+            {
+                if (ingredient != null && chosen.Contains(ingredient.Name) && emitted.Add(ingredient.Name))
+                {
+                    result.Add(ingredient.Name);
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>名前が文に出てくる材料を拾う。長い名前から当て、当たった所は塗り潰す。</summary>
+        private static void MarkByName(
+            string text, IReadOnlyList<Ingredient> ingredients, HashSet<string> chosen)
+        {
+            // 塗り潰しの跡。長い名前が先に取った所へ短い名前を当てない
+            //（「ごま油」が在れば、その中の「油」は当たらない）。
+            var taken = new bool[text.Length];
+
+            var ordered = new List<Ingredient>();
+            foreach (var ingredient in ingredients)
+            {
+                if (ingredient != null && ingredient.Name.Length > 0)
+                {
+                    ordered.Add(ingredient);
+                }
+            }
+
+            ordered.Sort((a, b) => NormalizeName(b.Name).Length.CompareTo(NormalizeName(a.Name).Length));
+
+            foreach (var ingredient in ordered)
+            {
+                var name = NormalizeName(ingredient.Name);
+                if (name.Length == 0 || chosen.Contains(ingredient.Name))
+                {
+                    continue;
+                }
+
+                if (FindOccurrence(text, name, taken, out var at))
+                {
+                    for (var i = at; i < at + name.Length; i++)
+                    {
+                        taken[i] = true;
+                    }
+
+                    chosen.Add(ingredient.Name);
+                }
+            }
+        }
+
+        /// <summary>`(A)` などの参照に属する材料をまとめて拾う。</summary>
+        private static void MarkByGroup(
+            string text, IReadOnlyList<Ingredient> ingredients, HashSet<string> chosen)
+        {
+            var keys = ReferencedGroupKeys(text);
+            if (keys.Count == 0)
+            {
+                return;
+            }
+
+            var groups = BuildGroups(ingredients);
+            foreach (var key in keys)
+            {
+                if (!groups.TryGetValue(key, out var group))
+                {
+                    continue;
+                }
+
+                foreach (var item in group.Items)
+                {
+                    chosen.Add(item.Name);
+                }
+            }
+        }
+
+        /// <summary>塗り潰されていない所で名前を探す。短い名前は語として立っている所だけ。</summary>
+        private static bool FindOccurrence(string text, string name, bool[] taken, out int at)
+        {
+            at = -1;
+
+            for (var start = text.IndexOf(name, StringComparison.Ordinal);
+                 start >= 0;
+                 start = text.IndexOf(name, start + 1, StringComparison.Ordinal))
+            {
+                var end = start + name.Length;
+
+                var overlaps = false;
+                for (var i = start; i < end; i++)
+                {
+                    if (taken[i])
+                    {
+                        overlaps = true;
+                        break;
+                    }
+                }
+
+                if (overlaps)
+                {
+                    continue;
+                }
+
+                if (name.Length > ShortNameLength || IsWholeWord(text, start, end))
+                {
+                    at = start;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 短い名前が「語として」出ているか。
+        ///
+        /// 後ろは仮名なら可（「油を」の「を」は助詞）。漢字・カタカナ・英数が続いたら複合語
+        /// （「油揚げ」「水菜」）なので採らない。前は助詞の仮名か句読点・空白・文頭だけ——
+        /// 「ごま油」「ひまわり油」の類は前の仮名が名詞の一部なので、そこで切る。
+        /// </summary>
+        private static bool IsWholeWord(string text, int start, int end)
+        {
+            if (start > 0)
+            {
+                var before = text[start - 1];
+                if (IsCompoundChar(before))
+                {
+                    return false;
+                }
+
+                if (IsKana(before) && ParticleKana.IndexOf(before) < 0)
+                {
+                    return false;
+                }
+            }
+
+            return end >= text.Length || !IsCompoundChar(text[end]);
+        }
+
+        /// <summary>複合語を作る字（漢字・カタカナ・英数・々・ー）。仮名は含めない。</summary>
+        private static bool IsCompoundChar(char ch)
+        {
+            if (ch >= '0' && ch <= '9')
+            {
+                return true;
+            }
+
+            if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z'))
+            {
+                return true;
+            }
+
+            if (ch == '々' || ch == 'ー')
+            {
+                return true;
+            }
+
+            // カタカナ（ー は上で見た）と CJK 統合漢字。
+            return (ch >= 'ァ' && ch <= 'ヶ') || (ch >= '一' && ch <= '鿿');
+        }
+
+        private static bool IsKana(char ch) => ch >= 'ぁ' && ch <= 'ん';
+
+        /// <summary>説明の側の正規化。全角→半角・大文字化・空白の除去（字の並びだけを残す）。</summary>
+        private static string NormalizeText(string raw)
+        {
+            var sb = new StringBuilder(raw.Length);
+            foreach (var ch in raw)
+            {
+                var c = ToHalfWidth(ch);
+                if (!char.IsWhiteSpace(c))
+                {
+                    sb.Append(char.ToUpperInvariant(c));
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 材料名の側の正規化。説明と同じ扱いに加えて「（青い部分）」のような添え書きを落とす
+        /// ——添え書きは文の側には出てこない。
+        /// </summary>
+        public static string NormalizeName(string raw)
+        {
+            if (string.IsNullOrEmpty(raw))
+            {
+                return string.Empty;
+            }
+
+            var sb = new StringBuilder(raw.Length);
+            var depth = 0;
+
+            foreach (var ch in raw)
+            {
+                var c = ToHalfWidth(ch);
+
+                if (c == '(' || c == '[' || c == '【' || c == '〔')
+                {
+                    depth++;
+                    continue;
+                }
+
+                if (c == ')' || c == ']' || c == '】' || c == '〕')
+                {
+                    if (depth > 0)
+                    {
+                        depth--;
+                    }
+
+                    continue;
+                }
+
+                if (depth > 0 || char.IsWhiteSpace(c))
+                {
+                    continue;
+                }
+
+                sb.Append(char.ToUpperInvariant(c));
+            }
+
+            return sb.ToString();
         }
 
         private static void Collect(Regex pattern, string text, List<KeyValuePair<int, string>> hits)

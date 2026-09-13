@@ -378,7 +378,8 @@ namespace KitchenXR.Presentation
             var next = session.NextStep;
             _nextLabel.text = next != null ? $"次: {next.Title}" : "次: —";
 
-            ShowImageOrChip(current);
+            // 札に並べる材料も ingredients_used が空なら推定で埋める（材料の板の強調と同じ名前）。
+            ShowImageOrChip(current, session.CurrentIngredientsUsed);
 
             // 工程が変わったら文字の大きさを一度戻す（短い工程で小さいままにしない）。
             // 入り切らなければ下の LayoutTextColumn がまた落とす。
@@ -439,7 +440,7 @@ namespace KitchenXR.Presentation
             }
         }
 
-        private void ShowImageOrChip(Step step)
+        private void ShowImageOrChip(Step step, IReadOnlyList<string> used)
         {
             var key = RecipeStore.StepImageKey(step.Index);
             if (_shownImageKey == key)
@@ -452,7 +453,7 @@ namespace KitchenXR.Presentation
             _imageLoadCts?.Dispose();
             _imageLoadCts = null;
 
-            ShowChip(step);
+            ShowChip(used);
 
             if (_store == null || string.IsNullOrEmpty(step.Image))
             {
@@ -495,12 +496,12 @@ namespace KitchenXR.Presentation
         /// 画像の代わりの札。画像の上ではなく説明の下に出る（重ねると写真が読めない）。
         /// 材料が1つも無い工程は見出しと同じ文字を繰り返すだけなので、何も出さない。
         /// </summary>
-        private void ShowChip(Step step)
+        private void ShowChip(IReadOnlyList<string> used)
         {
             ReleaseShownTexture();
             _currentImage.style.backgroundImage = StyleKeyword.Null;
 
-            var text = BuildIngredientChipText(step);
+            var text = BuildIngredientChipText(used);
             _currentIngredientChip.text = text;
             _currentIngredientChip.style.display =
                 string.IsNullOrEmpty(text) ? DisplayStyle.None : DisplayStyle.Flex;
@@ -526,18 +527,18 @@ namespace KitchenXR.Presentation
             _shownTexture = null;
         }
 
-        private static string BuildIngredientChipText(Step step)
+        private static string BuildIngredientChipText(IReadOnlyList<string> used)
         {
-            if (step.IngredientsUsed.Count == 0)
+            if (used == null || used.Count == 0)
             {
                 return string.Empty;
             }
 
             var sb = new StringBuilder();
-            for (var i = 0; i < step.IngredientsUsed.Count; i++)
+            for (var i = 0; i < used.Count; i++)
             {
                 if (i > 0) sb.Append(" / ");
-                sb.Append(step.IngredientsUsed[i]);
+                sb.Append(used[i]);
             }
 
             return sb.ToString();

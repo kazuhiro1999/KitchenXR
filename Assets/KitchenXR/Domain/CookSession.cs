@@ -30,6 +30,38 @@ namespace KitchenXR.Domain
         /// <summary>今の工程。完了後や工程が無いレシピでは null。</summary>
         public Step CurrentStep => IsComplete || Current <= 0 ? null : Recipe.Steps[Current - 1];
 
+        /// <summary>
+        /// その工程で使う材料の名前。契約の <c>ingredients_used</c> があればそれを使い、
+        /// **空なら説明から推定する**（manor から取り込んだレシピは空のことがあり、
+        /// そのままだと材料の板が1行も光らない）。推定は工程ごとに1度だけ。
+        /// </summary>
+        public IReadOnlyList<string> IngredientsUsedFor(Step step)
+        {
+            if (step == null)
+            {
+                return System.Array.Empty<string>();
+            }
+
+            if (step.IngredientsUsed.Count > 0)
+            {
+                return step.IngredientsUsed;
+            }
+
+            if (!_inferredIngredients.TryGetValue(step.Index, out var inferred))
+            {
+                inferred = StepText.InferIngredientsUsed(step.Instruction, Recipe.Ingredients);
+                _inferredIngredients[step.Index] = inferred;
+            }
+
+            return inferred;
+        }
+
+        /// <summary>今の工程で使う材料（<see cref="IngredientsUsedFor"/>）。完了後は空。</summary>
+        public IReadOnlyList<string> CurrentIngredientsUsed => IngredientsUsedFor(CurrentStep);
+
+        private readonly Dictionary<int, IReadOnlyList<string>> _inferredIngredients =
+            new Dictionary<int, IReadOnlyList<string>>();
+
         /// <summary>次の工程（見出しだけ薄く出す用）。無ければ null。</summary>
         public Step NextStep => !IsComplete && Current > 0 && Current < Recipe.Steps.Count
             ? Recipe.Steps[Current]

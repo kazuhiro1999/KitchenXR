@@ -355,6 +355,51 @@ namespace KitchenXR.Tests.PlayMode
             Assert.Greater(pitch, 3f, "行が重なっています。");
         }
 
+        /// <summary>
+        /// <c>ingredients_used</c> を持たないレシピ（manor から取り込んだもの）でも、
+        /// 説明に名前が出てくる材料の行が黄色く光ること。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 使う材料が書かれていなくても説明から拾って行が光る()
+        {
+            yield return BuildPanel(IngredientsUxmlPath, IngredientsWidthUnits, IngredientsHeightUnits);
+
+            const string json = @"{
+  ""id"": ""infer"",
+  ""title"": ""取り込み"",
+  ""phases"": [{""id"": ""cook"", ""title"": ""作る""}],
+  ""ingredients"": [
+    {""name"": ""ごはん"", ""qty"": ""300"", ""unit"": ""g""},
+    {""name"": ""ごま油"", ""qty"": ""大さじ1""},
+    {""name"": ""しょうゆ"", ""qty"": ""小さじ1"", ""group"": ""A""},
+    {""name"": ""酒"", ""qty"": ""小さじ1"", ""group"": ""A""}
+  ],
+  ""steps"": [
+    {""index"": 1, ""phase"": ""cook"", ""title"": ""炒める"", ""instruction"": ""ごはんを炒め、(A)を回し入れる。""}
+  ]
+}";
+
+            var session = new CookSession(RecipeJson.Parse(json));
+            var panel = _go.AddComponent<IngredientsPanel>();
+            panel.BindRecipe(session.Recipe);
+            panel.Refresh(session);
+
+            yield return Settle();
+
+            Assert.IsEmpty(session.Recipe.Steps[0].IngredientsUsed,
+                "この検算はレシピ側が空であることが前提です。");
+
+            var rows = Root.Query<VisualElement>(className: "ingredient-row").ToList();
+            Assert.AreEqual(4, rows.Count);
+
+            bool Lit(int index) => rows[index].ClassListContains("ingredient-row--highlight");
+
+            Assert.IsTrue(Lit(0), "説明に出てくる「ごはん」が光っていません。");
+            Assert.IsTrue(Lit(2), "(A) の「しょうゆ」が光っていません。");
+            Assert.IsTrue(Lit(3), "(A) の「酒」が光っていません。");
+            Assert.IsFalse(Lit(1), "説明に出てこない「ごま油」まで光っています。");
+        }
+
         // ---------------------------------------------------------------- 手のひらメニュー
 
         /// <summary>
