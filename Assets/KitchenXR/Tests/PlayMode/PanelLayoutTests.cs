@@ -36,9 +36,15 @@ namespace KitchenXR.Tests.PlayMode
         private const float PlacementMenuWidthUnits = 130f;
         private const float PlacementMenuHeightUnits = 92f;
 
-        /// <summary>契約の上限（工程の説明は 60 文字以内）に合わせた最悪の1文。</summary>
-        private const string LongInstruction =
-            "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをんあいうえおかきくけこさしすせそた";
+        /// <summary>46 文字。以下の「最悪の1文」を数えやすくするための部品。</summary>
+        private const string Kana46 =
+            "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん";
+
+        /// <summary>契約の上限（工程の説明は 100 文字以内）に合わせた最悪の1文。</summary>
+        private const string LongInstruction = Kana46 + Kana46 + "あいうえおかきく";
+
+        /// <summary>上限いっぱいで、なおグループ参照が2つ入っている最悪の1文（92 + 8 = 100 文字）。</summary>
+        private const string LongGroupInstruction = Kana46 + Kana46 + "(A)と(B)。";
 
         private static readonly string RecipeJsonText = @"{
   ""id"": ""layout"",
@@ -48,6 +54,26 @@ namespace KitchenXR.Tests.PlayMode
     {""index"": 1, ""phase"": ""cook"", ""title"": ""とても長い工程の見出しをここに入れる"",
      ""instruction"": """ + LongInstruction + @""",
      ""ingredients_used"": [""卵"", ""ねぎ""]},
+    {""index"": 2, ""phase"": ""cook"", ""title"": ""次の工程"", ""instruction"": ""仕上げる。""}
+  ]
+}";
+
+        /// <summary>100 文字の説明＋グループ参照2つ＋材料の札という、右の列が最も混む組み合わせ。</summary>
+        private static readonly string GroupRecipeJsonText = @"{
+  ""id"": ""layout-group"",
+  ""title"": ""検算"",
+  ""ingredients"": [
+    {""name"": ""しょうゆ"", ""qty"": ""大さじ1"", ""group"": ""A""},
+    {""name"": ""みりん"", ""qty"": ""大さじ1"", ""group"": ""A""},
+    {""name"": ""砂糖"", ""qty"": ""小さじ1"", ""group"": ""A""},
+    {""name"": ""片栗粉"", ""qty"": ""小さじ2"", ""group"": ""B""},
+    {""name"": ""水"", ""qty"": ""100"", ""unit"": ""ml"", ""group"": ""B""}
+  ],
+  ""phases"": [{""id"": ""cook"", ""title"": ""作る""}],
+  ""steps"": [
+    {""index"": 1, ""phase"": ""cook"", ""title"": ""とても長い工程の見出し"",
+     ""instruction"": """ + LongGroupInstruction + @""",
+     ""ingredients_used"": [""しょうゆ"", ""片栗粉""]},
     {""index"": 2, ""phase"": ""cook"", ""title"": ""次の工程"", ""instruction"": ""仕上げる。""}
   ]
 }";
@@ -127,7 +153,11 @@ namespace KitchenXR.Tests.PlayMode
             Assert.LessOrEqual(text.layout.height, content.layout.height + 0.5f,
                 "本文が枠からはみ出しています。");
 
-            // 説明が潰れていない（60 文字が最低でも3行ぶんの高さで出ている）。
+            // 添え行の無い 100 文字は素の 6px のまま入る（実測）。落とすのは添え行が付いたとき。
+            Assert.AreEqual(0, panel.TextDensity,
+                $"添え行の無い 100 文字で文字を落としています（{instruction.resolvedStyle.fontSize}px）。");
+
+            // 説明が潰れていない（最低でも3行ぶんの高さで出ている）。
             var lineHeight = instruction.resolvedStyle.fontSize * 1.4f;
             Assert.GreaterOrEqual(instruction.layout.height, lineHeight * 3f,
                 $"説明が3行ぶんも出ていません（{instruction.layout.height}px）。");
@@ -189,6 +219,81 @@ namespace KitchenXR.Tests.PlayMode
             }
         }
 
+        /// <summary>
+        /// 説明の上限を 60 → 100 文字に緩めた（Docs/MANOR.md §4）。最悪の場合——100 文字の説明に
+        /// グループの添え行が2本——でも右の列に収まること。板は置き場所を覚える対象なので
+        /// 広げられず、説明を切り詰めるのも設計で禁じているので、収まらなければ
+        /// <see cref="RecipePanel"/> が右の列の文字を一段（それでも駄目ならもう一段）落とす。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator レシピの板は100文字の説明とグループの添え行2本を右の列に収める()
+        {
+            yield return BuildPanel(RecipeUxmlPath, RecipeWidthUnits, RecipeHeightUnits);
+
+            var panel = _go.AddComponent<RecipePanel>();
+            panel.Refresh(new CookSession(RecipeJson.Parse(GroupRecipeJsonText)));
+
+            yield return Settle();
+
+            var text = Root.Q<VisualElement>("currentText");
+            var instruction = Root.Q<Label>("currentInstruction");
+            var notes = Root.Q<Label>("groupNotes");
+            var nextLabel = Root.Q<Label>("nextLabel");
+            Assert.IsNotNull(notes, "グループの添え行の置き場がありません。");
+
+            // 添え行が2本出ている（(A) と (B)）。
+            Assert.AreNotEqual(DisplayStyle.None, notes.resolvedStyle.display,
+                "グループの添え行が畳まれたままです。");
+            Assert.AreEqual(2, notes.text.Split('\n').Length,
+                $"添え行が2本になっていません: 「{notes.text}」");
+            StringAssert.Contains("(A)＝", notes.text);
+            StringAssert.Contains("(B)＝", notes.text);
+
+            // 本文は出典のまま（開いた材料名を混ぜない）。
+            Assert.AreEqual(LongGroupInstruction, instruction.text,
+                "説明の本文が書き換わっています。");
+
+            // 説明・添え行・「次: …」のどれも右の列からはみ出していない。
+            Assert.LessOrEqual(instruction.layout.yMax, text.layout.height + 0.5f,
+                "100 文字の説明が右の列からはみ出しています。");
+            Assert.LessOrEqual(notes.layout.yMax, text.layout.height + 0.5f,
+                "グループの添え行が右の列からはみ出しています。");
+            Assert.LessOrEqual(nextLabel.layout.yMax, text.layout.height + 0.5f,
+                "「次: …」が右の列からはみ出しています。");
+
+            // 落とすのは2段まで。3段目が要る＝この寸法では入り切っていない。
+            Assert.LessOrEqual(panel.TextDensity, RecipePanel.MaxTextDensity);
+
+            // 落とした後でも読める大きさ（4.5px ≒ 9mm）を下回らない。
+            // この最悪の組み合わせは実測で2段目（4.5px）まで使い切る——ここが余白の底。
+            Assert.GreaterOrEqual(instruction.resolvedStyle.fontSize, 4.5f - 0.01f,
+                $"説明が {instruction.resolvedStyle.fontSize}px まで小さくなっています。");
+        }
+
+        /// <summary>
+        /// 文字の大きさが「大」（本文 7.5px）でも、100 文字の説明＋添え行が列からはみ出さないこと。
+        /// ここは必ず1段は落ちる——落ちなければ逃げ道が働いていない。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 文字が大きいときは右の列の文字を一段落として収める()
+        {
+            yield return BuildPanel(RecipeUxmlPath, RecipeWidthUnits, RecipeHeightUnits);
+
+            var panel = _go.AddComponent<RecipePanel>();
+            DisplaySettingsApplier.ApplyFontScale(DisplayScale.Large, panel);
+            panel.Refresh(new CookSession(RecipeJson.Parse(GroupRecipeJsonText)));
+
+            yield return Settle();
+
+            var text = Root.Q<VisualElement>("currentText");
+            var nextLabel = Root.Q<Label>("nextLabel");
+
+            Assert.Greater(panel.TextDensity, 0,
+                "文字「大」で 100 文字の説明が入り切っているはずがありません（判定が働いていない）。");
+            Assert.LessOrEqual(nextLabel.layout.yMax, text.layout.height + 0.5f,
+                $"文字「大」で右の列からはみ出しています（中身 {nextLabel.layout.yMax}px / 列 {text.layout.height}px）。");
+        }
+
         private static bool IsDescendantOf(VisualElement element, VisualElement ancestor)
         {
             for (var e = element.parent; e != null; e = e.parent)
@@ -248,6 +353,51 @@ namespace KitchenXR.Tests.PlayMode
             var pitch = rows[1].layout.y - rows[0].layout.y;
             Assert.LessOrEqual(pitch, 12f, $"材料の行の送りが {pitch}px あります（詰まっていません）。");
             Assert.Greater(pitch, 3f, "行が重なっています。");
+        }
+
+        /// <summary>
+        /// <c>ingredients_used</c> を持たないレシピ（manor から取り込んだもの）でも、
+        /// 説明に名前が出てくる材料の行が黄色く光ること。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 使う材料が書かれていなくても説明から拾って行が光る()
+        {
+            yield return BuildPanel(IngredientsUxmlPath, IngredientsWidthUnits, IngredientsHeightUnits);
+
+            const string json = @"{
+  ""id"": ""infer"",
+  ""title"": ""取り込み"",
+  ""phases"": [{""id"": ""cook"", ""title"": ""作る""}],
+  ""ingredients"": [
+    {""name"": ""ごはん"", ""qty"": ""300"", ""unit"": ""g""},
+    {""name"": ""ごま油"", ""qty"": ""大さじ1""},
+    {""name"": ""しょうゆ"", ""qty"": ""小さじ1"", ""group"": ""A""},
+    {""name"": ""酒"", ""qty"": ""小さじ1"", ""group"": ""A""}
+  ],
+  ""steps"": [
+    {""index"": 1, ""phase"": ""cook"", ""title"": ""炒める"", ""instruction"": ""ごはんを炒め、(A)を回し入れる。""}
+  ]
+}";
+
+            var session = new CookSession(RecipeJson.Parse(json));
+            var panel = _go.AddComponent<IngredientsPanel>();
+            panel.BindRecipe(session.Recipe);
+            panel.Refresh(session);
+
+            yield return Settle();
+
+            Assert.IsEmpty(session.Recipe.Steps[0].IngredientsUsed,
+                "この検算はレシピ側が空であることが前提です。");
+
+            var rows = Root.Query<VisualElement>(className: "ingredient-row").ToList();
+            Assert.AreEqual(4, rows.Count);
+
+            bool Lit(int index) => rows[index].ClassListContains("ingredient-row--highlight");
+
+            Assert.IsTrue(Lit(0), "説明に出てくる「ごはん」が光っていません。");
+            Assert.IsTrue(Lit(2), "(A) の「しょうゆ」が光っていません。");
+            Assert.IsTrue(Lit(3), "(A) の「酒」が光っていません。");
+            Assert.IsFalse(Lit(1), "説明に出てこない「ごま油」まで光っています。");
         }
 
         // ---------------------------------------------------------------- 手のひらメニュー

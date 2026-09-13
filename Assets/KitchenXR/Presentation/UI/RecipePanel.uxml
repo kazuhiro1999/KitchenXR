@@ -13,6 +13,7 @@
                 <ui:VisualElement name="currentText" class="recipe-text-column">
                     <ui:Label name="currentTitle" text="工程の見出し" class="heading recipe-step-title" />
                     <ui:Label name="currentInstruction" text="工程の説明" class="body-text recipe-instruction" />
+                    <ui:Label name="groupNotes" text="" class="caption recipe-group-notes is-hidden" />
                     <ui:Label name="currentIngredientChip" text="材料名" class="caption recipe-ingredient-chip" />
                     <ui:VisualElement class="recipe-text-spacer" />
                     <ui:Label name="nextLabel" text="次: —" class="caption caption--dim recipe-next-label" />

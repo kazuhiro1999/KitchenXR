@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using Cysharp.Threading.Tasks;
@@ -42,6 +43,13 @@ namespace KitchenXR.Presentation
         /// <summary>工程の画像が本文の幅に占めてよい割合。残りが説明の置き場になる。</summary>
         private const float ImageMaxWidthRatio = 0.55f;
 
+        /// <summary>右の列が入り切らないときに当てる、一段小さい文字（RecipePanel.uss）。</summary>
+        private const string TextColumnDenseClass = "recipe-text-column--dense";
+        private const string TextColumnDenserClass = "recipe-text-column--denser";
+
+        /// <summary>文字を落とせる段数（0 = そのまま、1 = 5px、2 = 4.5px）。</summary>
+        public const int MaxTextDensity = 2;
+
         /// <summary>工程画像の周りの余白（UI px。RecipePanel.uss の .recipe-image-area の margin と対）。5px ≒ 1cm。</summary>
         public const float ImageInsetUnits = 5f;
 
@@ -65,9 +73,14 @@ namespace KitchenXR.Presentation
         private VisualElement _currentSection;
         private Label _currentTitle;
         private VisualElement _currentImage;
+        private VisualElement _currentText;
         private Label _currentIngredientChip;
         private Label _currentInstruction;
+        private Label _groupNotes;
         private Label _nextLabel;
+
+        /// <summary>今どこまで文字を落としているか（0..<see cref="MaxTextDensity"/>）。</summary>
+        private int _textDensity;
         private VisualElement _completeSection;
         private Button _backButton;
         private Button _nextButton;
@@ -94,8 +107,10 @@ namespace KitchenXR.Presentation
             _currentSection = root.Q<VisualElement>("currentSection");
             _currentTitle = root.Q<Label>("currentTitle");
             _currentImage = root.Q<VisualElement>("currentImage");
+            _currentText = root.Q<VisualElement>("currentText");
             _currentIngredientChip = root.Q<Label>("currentIngredientChip");
             _currentInstruction = root.Q<Label>("currentInstruction");
+            _groupNotes = root.Q<Label>("groupNotes");
             _nextLabel = root.Q<Label>("nextLabel");
             _completeSection = root.Q<VisualElement>("completeSection");
             _backButton = root.Q<Button>("backButton");
@@ -122,7 +137,16 @@ namespace KitchenXR.Presentation
 
             // 工程の画像を正方形に保つ（契約の工程画像は 1:1）。USS に aspect-ratio が無いので、
             // 本文の高さが決まった瞬間に同じ値を幅へ入れる。
-            _currentSection?.RegisterCallback<GeometryChangedEvent>(_ => LayoutStepImage());
+            _currentSection?.RegisterCallback<GeometryChangedEvent>(_ =>
+            {
+                LayoutStepImage();
+                LayoutTextColumn();
+            });
+
+            // 説明と添え行は自分の高さが変わっても親（列）の矩形を動かさない
+            // ——列に張った callback では気付けないので、伸び縮みする当人にも張る。
+            _currentInstruction?.RegisterCallback<GeometryChangedEvent>(_ => LayoutTextColumn());
+            _groupNotes?.RegisterCallback<GeometryChangedEvent>(_ => LayoutTextColumn());
 
             // 「配置」も2度押し（調理の面に並んでいる釦なので、1度では動かさない）。
             _placementPress = new TwoPressButton(
@@ -209,6 +233,78 @@ namespace KitchenXR.Presentation
             _currentImage.style.height = side;
         }
 
+        /// <summary>
+        /// 右の列が入り切らなければ、**その列の中だけ**文字を一段小さくする（2段まで）。
+        ///
+        /// 説明の上限を 60 → 100 文字に緩めたぶん、長い工程では 6px の本文＋グループの添え行が
+        /// 列からはみ出す。板は置き場所を覚える対象なので広げられず、説明を切り詰めるのは
+        /// 設計で禁じている（短さはサーバの保証）。残るのは文字を落とす道だけ。
+        ///
+        /// 測り方は「列の最後の子（次: …）の下端」と「列の高さ」の差。説明も添え行も
+        /// <c>flex-shrink: 0</c> にしてあるので、入り切らなければ下端が列を越える
+        /// ——添え行のぶんも自然に数に入る。
+        ///
+        /// 落とすだけで戻さないのが肝心（戻すと 収まる↔溢れる を往復して点滅する）。
+        /// 元に戻すのは工程が変わったときだけ（<see cref="ResetTextDensity"/>）。
+        /// </summary>
+        private void LayoutTextColumn()
+        {
+            if (_currentText == null || _nextLabel == null || _textDensity >= MaxTextDensity)
+            {
+                return;
+            }
+
+            var columnHeight = _currentText.resolvedStyle.height;
+            var contentBottom = _nextLabel.layout.yMax;
+            if (float.IsNaN(columnHeight) || float.IsNaN(contentBottom)
+                || columnHeight <= 0f || contentBottom <= 0f)
+            {
+                return; // まだレイアウトが走っていない。
+            }
+
+            if (contentBottom <= columnHeight + 0.5f)
+            {
+                return; // 収まっている。
+            }
+
+            _textDensity++;
+            ApplyTextDensity();
+        }
+
+        private void ResetTextDensity()
+        {
+            if (_textDensity == 0)
+            {
+                return;
+            }
+
+            _textDensity = 0;
+            ApplyTextDensity();
+        }
+
+        private void ApplyTextDensity()
+        {
+            if (_currentText == null)
+            {
+                return;
+            }
+
+            _currentText.RemoveFromClassList(TextColumnDenseClass);
+            _currentText.RemoveFromClassList(TextColumnDenserClass);
+
+            if (_textDensity == 1)
+            {
+                _currentText.AddToClassList(TextColumnDenseClass);
+            }
+            else if (_textDensity >= 2)
+            {
+                _currentText.AddToClassList(TextColumnDenserClass);
+            }
+        }
+
+        /// <summary>いま何段文字を落としているか（試験用。0 なら素の大きさ）。</summary>
+        public int TextDensity => _textDensity;
+
         /// <summary>「配置」が2度目を待っているか（試験用）。</summary>
         public bool IsPlacementArmed => _placementPress != null && _placementPress.IsArmed;
 
@@ -273,16 +369,42 @@ namespace KitchenXR.Presentation
             }
 
             _currentTitle.text = current.Title;
-            _currentInstruction.text = current.Instruction;
+
+            // 本文は出典のまま。(A)(B) のようなグループ参照は書き換えず、開いた行を下に添える。
+            var expanded = StepText.ExpandGroups(current.Instruction, session.Recipe.Ingredients);
+            _currentInstruction.text = expanded.Text;
+            ShowGroupNotes(expanded.Notes);
 
             var next = session.NextStep;
             _nextLabel.text = next != null ? $"次: {next.Title}" : "次: —";
 
-            ShowImageOrChip(current);
+            // 札に並べる材料も ingredients_used が空なら推定で埋める（材料の板の強調と同じ名前）。
+            ShowImageOrChip(current, session.CurrentIngredientsUsed);
+
+            // 工程が変わったら文字の大きさを一度戻す（短い工程で小さいままにしない）。
+            // 入り切らなければ下の LayoutTextColumn がまた落とす。
+            ResetTextDensity();
 
             // 既にレイアウトが済んでいる板（＝2工程目以降）では GeometryChangedEvent が来ないので、
             // ここでも一度当てる。初回は高さが未確定で、上の登録が受け持つ。
             LayoutStepImage();
+            LayoutTextColumn();
+        }
+
+        /// <summary>
+        /// グループの添え行を出す（1グループ1行）。参照が無ければ行ごと畳む
+        /// ——空の Label を残すと余白だけが列の高さを食う。
+        /// </summary>
+        private void ShowGroupNotes(IReadOnlyList<string> notes)
+        {
+            if (_groupNotes == null)
+            {
+                return;
+            }
+
+            var text = notes == null || notes.Count == 0 ? string.Empty : string.Join("\n", notes);
+            _groupNotes.text = text;
+            SetHidden(_groupNotes, text.Length == 0);
         }
 
         /// <summary>
@@ -318,7 +440,7 @@ namespace KitchenXR.Presentation
             }
         }
 
-        private void ShowImageOrChip(Step step)
+        private void ShowImageOrChip(Step step, IReadOnlyList<string> used)
         {
             var key = RecipeStore.StepImageKey(step.Index);
             if (_shownImageKey == key)
@@ -331,7 +453,7 @@ namespace KitchenXR.Presentation
             _imageLoadCts?.Dispose();
             _imageLoadCts = null;
 
-            ShowChip(step);
+            ShowChip(used);
 
             if (_store == null || string.IsNullOrEmpty(step.Image))
             {
@@ -374,12 +496,12 @@ namespace KitchenXR.Presentation
         /// 画像の代わりの札。画像の上ではなく説明の下に出る（重ねると写真が読めない）。
         /// 材料が1つも無い工程は見出しと同じ文字を繰り返すだけなので、何も出さない。
         /// </summary>
-        private void ShowChip(Step step)
+        private void ShowChip(IReadOnlyList<string> used)
         {
             ReleaseShownTexture();
             _currentImage.style.backgroundImage = StyleKeyword.Null;
 
-            var text = BuildIngredientChipText(step);
+            var text = BuildIngredientChipText(used);
             _currentIngredientChip.text = text;
             _currentIngredientChip.style.display =
                 string.IsNullOrEmpty(text) ? DisplayStyle.None : DisplayStyle.Flex;
@@ -405,18 +527,18 @@ namespace KitchenXR.Presentation
             _shownTexture = null;
         }
 
-        private static string BuildIngredientChipText(Step step)
+        private static string BuildIngredientChipText(IReadOnlyList<string> used)
         {
-            if (step.IngredientsUsed.Count == 0)
+            if (used == null || used.Count == 0)
             {
                 return string.Empty;
             }
 
             var sb = new StringBuilder();
-            for (var i = 0; i < step.IngredientsUsed.Count; i++)
+            for (var i = 0; i < used.Count; i++)
             {
                 if (i > 0) sb.Append(" / ");
-                sb.Append(step.IngredientsUsed[i]);
+                sb.Append(used[i]);
             }
 
             return sb.ToString();

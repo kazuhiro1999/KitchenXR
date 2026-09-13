@@ -4,7 +4,7 @@ namespace KitchenXR.Domain
 {
     /// <summary>
     /// 工程1つ（契約 JSON の steps[]）。「1動作1工程」の単位。
-    /// 短さ（title ≤ 12・instruction ≤ 60）はサーバで保証する前提なので、
+    /// 短さ（title ≤ 12・instruction ≤ 100）はサーバで保証する前提なので、
     /// クライアント側では検算も切り詰めもしない。
     /// </summary>
     public sealed class Step

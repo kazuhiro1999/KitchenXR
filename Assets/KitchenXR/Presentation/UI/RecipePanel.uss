@@ -5,7 +5,9 @@
  *   2. 本文は ScrollView ではなく左右2列。工程の画像は契約上 1:1 なので、縦に積むと正方形が
  *      幅いっぱいまで伸びて説明を押し出す。左に正方形（高さは本文の残り全部）、右に見出し・
  *      説明・次、とすると 260×190 の板でも全部が1画面に収まる
- *   3. 説明は契約上 60 文字以内。右の列（約 110px ≒ 22cm）に本文 6px なら 3〜4 行で収まる。
+ *   3. 説明は契約上 100 文字以内。右の列（約 110px ≒ 22cm）に本文 6px なら 6 行ほど。
+ *      グループの添え行（(B)＝…）も同じ列に入るので、入り切らないときは
+ *      RecipePanel.cs が右の列だけ一段小さい文字に落とす（--dense / --denser）。
  *      それでも溢れる想定外のレシピのために overflow: hidden を保険に置く
  */
 
@@ -85,7 +87,7 @@
     border-bottom-right-radius: var(--radius-medium);
 }
 
-/* 右の列。見出し・説明・材料の札・（余白）・次。 */
+/* 右の列。見出し・説明・添え行・材料の札・（余白）・次。 */
 .recipe-text-column {
     flex-grow: 1;
     flex-shrink: 1;
@@ -94,13 +96,52 @@
     overflow: hidden;
 }
 
+/*
+ * 入り切らないときの逃げ道2段（RecipePanel.LayoutTextColumn が付ける）。
+ * 板も列も広げられないので、**右の列の中だけ**文字を一段ずつ落とす。
+ *
+ * カスタムプロパティは継承するので、列に置けば説明（body）も添え行・材料の札・
+ * 「次: …」（caption）も一緒に下がる。見出しは触らない——工程の名前は
+ * 板を離れて見る文字なので、ここを削ると読めなくなる。
+ *
+ * 板の設定（font-scale--*）は .root-panel 側に付くので、より内側のこちらが勝つ。
+ * 値は「中」の 6px / 5px を基準にした1段目（font-scale--small 相当）と2段目。
+ */
+.recipe-text-column--dense {
+    --font-size-body: 5px;
+    --font-size-caption: 4.25px;
+}
+
+.recipe-text-column--denser {
+    --font-size-body: 4.5px;
+    --font-size-caption: 4px;
+}
+
 .recipe-step-title {
     flex-shrink: 0;
     margin-bottom: 2px;
 }
 
+/*
+ * 説明。縮めない（flex-shrink: 0）——縮むと入り切らないことが列の高さに出ず、
+ * 文字を落とす判定（RecipePanel.LayoutTextColumn）が働かなくなる。
+ * 溢れたぶんは列の overflow: hidden が切る（保険）。
+ */
 .recipe-instruction {
-    flex-shrink: 1;
+    flex-shrink: 0;
+    white-space: normal;
+    overflow: hidden;
+}
+
+/*
+ * 説明の下の添え行——`(B)＝しょうゆ 大さじ1・みりん 大さじ1`。
+ * 本文の (A)(B) が何の材料かを、材料の板を見に行かずに分かるようにする
+ * （Domain/StepText.ExpandGroups が作る）。1〜2 行を想定して折り返す。
+ * 参照が無い工程では C# が is-hidden を付けるので、行も余白も残らない。
+ */
+.recipe-group-notes {
+    flex-shrink: 0;
+    margin-top: 2px;
     white-space: normal;
     overflow: hidden;
 }

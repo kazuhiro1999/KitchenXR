@@ -87,10 +87,13 @@ namespace KitchenXR.Presentation
             SetClass(check, "ingredient-row__check--checked", checkedNow);
         }
 
-        /// <summary>今の工程で使う材料の行を強調する。</summary>
+        /// <summary>
+        /// 今の工程で使う材料の行を強調する。<c>ingredients_used</c> が空の工程は
+        /// セッションが説明から推定した名前で光る。
+        /// </summary>
         public void Refresh(CookSession session)
         {
-            var used = session.CurrentStep?.IngredientsUsed;
+            var used = session.CurrentIngredientsUsed;
 
             foreach (var pair in _rowsByName)
             {
