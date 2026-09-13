@@ -47,6 +47,12 @@ namespace KitchenXR.Presentation.Hazard
         /// <summary>ピンチが無いまま時間切れで囲むのをやめた（札に出す）。</summary>
         public event Action DrawTimedOut;
 
+        /// <summary>手前の辺が決まった（＝奥行きの段に入った。札に出す）。</summary>
+        public event Action EdgeFixed;
+
+        /// <summary>辺か奥行きが短すぎて確定できなかった（札に出す）。</summary>
+        public event Action DrawTooSmall;
+
         /// <summary>今の領域（試験と近接の判定が見る）。</summary>
         public IReadOnlyList<ZoneEntry> Entries => _entries;
 
@@ -54,6 +60,9 @@ namespace KitchenXR.Presentation.Hazard
 
         /// <summary>今 領域を描いている最中か。</summary>
         public bool IsDrawing => _drawing != null && (_drawing.IsArmed || _drawing.IsDragging);
+
+        /// <summary>手前の辺が決まって奥行きの段にいるか（札の書き分け）。</summary>
+        public bool HasEdge => _drawing != null && _drawing.HasEdge;
 
         public void Bind(
             HazardZoneFile file, IAnchorStore anchors, Transform origin = null,
@@ -74,23 +83,29 @@ namespace KitchenXR.Presentation.Hazard
 
             if (_drawing != null)
             {
-                _drawing.Committed -= HandleCommitted;
-                _drawing.Progress -= HandleProgress;
-                _drawing.TimedOut -= HandleTimedOut;
+                Unsubscribe();
                 _drawing.Committed += HandleCommitted;
                 _drawing.Progress += HandleProgress;
                 _drawing.TimedOut += HandleTimedOut;
+                _drawing.EdgeFixed += HandleEdgeFixed;
+                _drawing.TooSmall += HandleTooSmall;
             }
         }
 
-        private void OnDestroy()
+        private void OnDestroy() => Unsubscribe();
+
+        private void Unsubscribe()
         {
-            if (_drawing != null)
+            if (_drawing == null)
             {
-                _drawing.Committed -= HandleCommitted;
-                _drawing.Progress -= HandleProgress;
-                _drawing.TimedOut -= HandleTimedOut;
+                return;
             }
+
+            _drawing.Committed -= HandleCommitted;
+            _drawing.Progress -= HandleProgress;
+            _drawing.TimedOut -= HandleTimedOut;
+            _drawing.EdgeFixed -= HandleEdgeFixed;
+            _drawing.TooSmall -= HandleTooSmall;
         }
 
         // ---------------------------------------------------------------- 覚える・戻す
@@ -250,27 +265,30 @@ namespace KitchenXR.Presentation.Hazard
         public HazardZone Last => _entries.Count == 0 ? null : _entries[_entries.Count - 1].Zone;
 
         /// <summary>
-        /// 描いている途中の見せ方。始点を置いた瞬間に**点**を出し、矩形が領域になる大きさに
-        /// なったら半透明の面と縁の線を重ねる（点はそのまま＝どこから始めたかが分かる）。
+        /// 描いている途中の見せ方。1段目は**点 A ＋ そこから手までの辺の線**だけ、
+        /// 2段目は辺の線に**長方形**（半透明の面＋縁の線＋床への投影線）を重ねる。
         /// </summary>
         private void HandleProgress()
         {
-            if (_drawing == null || !_drawing.HasStart)
+            if (_drawing == null || !_drawing.HasEdgeStart)
             {
                 HidePreview();
                 return;
             }
 
             var preview = EnsurePreview();
-            preview.ShowPoint(_drawing.Start);
+            preview.ShowPoint(_drawing.EdgeStart);
+            preview.ShowEdge(_drawing.EdgeStart, _drawing.EdgeEnd);
 
-            var zone = HazardZone.FromCorners(
-                "preview", HazardZone.StoveKind, _drawing.Start, _drawing.Current,
-                _drawing.YawDegrees, FloorY);
+            var zone = _drawing.HasEdge
+                ? HazardZone.FromEdgeAndDepth(
+                    "preview", HazardZone.StoveKind,
+                    _drawing.EdgeStart, _drawing.EdgeEnd, _drawing.Depth, FloorY)
+                : null;
 
             if (zone == null)
             {
-                // まだ小さすぎる（つまんだ直後・終点待ち）。点だけ出しておく。
+                // 辺を引いている途中か、奥行きがまだ浅い。辺の線だけ出しておく。
                 preview.SetLevel(HazardAlertLevel.Off, false);
                 preview.SetFillShown(false);
                 return;
@@ -287,16 +305,21 @@ namespace KitchenXR.Presentation.Hazard
             DrawTimedOut?.Invoke();
         }
 
-        private void HandleCommitted(Vector3 start, Vector3 end, float yaw)
+        private void HandleEdgeFixed() => EdgeFixed?.Invoke();
+
+        private void HandleTooSmall() => DrawTooSmall?.Invoke();
+
+        private void HandleCommitted(Vector3 a, Vector3 b, float depth)
         {
             HidePreview();
 
-            var zone = HazardZone.FromCorners(
-                Guid.NewGuid().ToString("N"), HazardZone.StoveKind, start, end, yaw, FloorY);
+            var zone = HazardZone.FromEdgeAndDepth(
+                Guid.NewGuid().ToString("N"), HazardZone.StoveKind, a, b, depth, FloorY);
 
             if (zone == null)
             {
                 Debug.Log("[KitchenXR] 囲んだ範囲が小さすぎるので領域を作りませんでした。");
+                DrawTooSmall?.Invoke();
                 Changed?.Invoke();
                 return;
             }
@@ -357,6 +380,7 @@ namespace KitchenXR.Presentation.Hazard
 
             _preview.SetFillShown(false);
             _preview.HidePoint();
+            _preview.HideEdge();
             _preview.SetLevel(HazardAlertLevel.Off, false);
         }
 

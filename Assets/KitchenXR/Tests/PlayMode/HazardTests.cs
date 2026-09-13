@@ -176,7 +176,7 @@ namespace KitchenXR.Tests.PlayMode
 
             // 実機の XR Hands の代わりに、試験が手で動かすピンチを挿す。
             _pinch = new ManualPinchSource();
-            _drawing.Bind(Array.Empty<XRBaseInputInteractor>(), _cameraGo.transform);
+            _drawing.Bind(Array.Empty<XRBaseInputInteractor>());
             _drawing.SetPinchSource(_pinch);
             _zones.Bind(_zoneFile, new InMemoryAnchorStore(), _originGo.transform, _drawing);
             _proximity.Bind(_zones, _sound, new[] { _poke }, _cameraGo.transform, _policy);
@@ -414,16 +414,17 @@ namespace KitchenXR.Tests.PlayMode
         // ---------------------------------------------------------------- 5. 領域
 
         /// <summary>
-        /// 1回のピンチで対角まで引く。**手の位置そのもの**が始点／終点になること
-        /// （レイの当たり点ではない）と、高さが始点の面に貼り付くことを見る。
+        /// 1段目（手前の辺）。つまんだ瞬間に点が出て、**つまんでいる間ずっと**辺の線が
+        /// 手に付いてくること。高さは点 A の面に貼り付く（＝必ず水平な辺）。
         /// </summary>
         [UnityTest]
-        public IEnumerator 一度のピンチで対角まで引くと矩形になる()
+        public IEnumerator 一段目は手前の辺をリアルタイムに引く()
         {
             yield return BuildAll();
 
             _zones.BeginDraw();
             Assert.IsTrue(_drawing.IsArmed, "「囲む」で待ちに入っていません。");
+            Assert.AreEqual(HazardZoneDrawing.Phase.WaitingEdge, _drawing.CurrentPhase);
 
             // 「囲む」を押した手がもうつまんでいても始点にはしない（離してからの1回を待つ）。
             _pinch.PinchAt(new Vector3(-0.3f, 0.9f, 1.0f));
@@ -433,22 +434,65 @@ namespace KitchenXR.Tests.PlayMode
             _pinch.Release();
             yield return null;
 
-            // コンロの手前の角でつまむ。
+            // 手前の辺の左端でつまむ。
             _pinch.PinchAt(new Vector3(-0.3f, 0.9f, 1.0f));
             yield return null;
 
-            Assert.IsTrue(_drawing.IsDragging, "つまんでも始点が置かれません。");
+            Assert.AreEqual(HazardZoneDrawing.Phase.DrawingEdge, _drawing.CurrentPhase,
+                "つまんでも辺が始まりません。");
             Assert.AreEqual(0.9f, _drawing.PlaneY, 1e-4f, "始点の高さに面が張られていません。");
             Assert.IsTrue(_zones.Preview.IsPointVisible, "始点の点が出ていません。");
+            Assert.IsTrue(_zones.Preview.IsEdgeVisible, "つまんだ瞬間に辺の線が出ていません。");
 
-            // 手が上下しても矩形は水平（始点の高さに貼り付く）。
-            _pinch.PinchAt(new Vector3(0.3f, 1.4f, 1.5f));
+            // 引いている**途中**で辺が手に付いてくる（確定を待たない）。手が上下しても水平。
+            _pinch.PinchAt(new Vector3(0.0f, 1.4f, 1.0f));
             yield return null;
-            Assert.AreEqual(0.9f, _drawing.Current.y, 1e-4f, "矩形が水平になっていません。");
+            Assert.AreEqual(0.9f, _drawing.EdgeEnd.y, 1e-4f, "辺が水平になっていません。");
+            Assert.AreEqual(0f, _drawing.EdgeEnd.x, 1e-4f, "辺の端が手に付いてきていません。");
+            Assert.IsTrue(_zones.Preview.IsEdgeVisible);
 
-            // 引いている途中の矩形が見えていること（半透明の面＋縁の線）。
+            // 辺の段では矩形はまだ出さない（奥行きが決まっていない）。
+            Assert.IsFalse(_zones.Preview.IsFillVisible, "奥行きの前に矩形が出ています。");
+
+            // 右端まで引いて離す＝手前の辺が決まり、向きもここで決まる。
+            _pinch.PinchAt(new Vector3(0.3f, 0.9f, 1.0f));
+            yield return null;
+            _pinch.Release();
+            yield return null;
+
+            Assert.AreEqual(HazardZoneDrawing.Phase.WaitingDepth, _drawing.CurrentPhase,
+                "辺を離しても奥行きの段に移っていません。");
+            Assert.AreEqual(0, _zones.Count, "辺だけで領域ができました。");
+            Assert.AreEqual(0.6f, _drawing.EdgeLength, 1e-3f);
+            Assert.AreEqual(0f, Mathf.DeltaAngle(0f, _drawing.YawDegrees), 1e-3f,
+                "x 方向の辺なら向きは 0° のはずです。");
+            Assert.IsTrue(_zones.Preview.IsEdgeVisible, "奥行きを待つ間に辺の線が消えています。");
+        }
+
+        /// <summary>
+        /// 2段目（奥行き）。つまんだ瞬間から長方形が出て、手の動きに付いてくること。
+        /// 離した位置で確定し、高さは**点 A**の高さ（2回目の手の高さではない）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 二段目は奥行きをリアルタイムに引いて確定する()
+        {
+            yield return BuildAll();
+
+            yield return DrawEdge(new Vector3(-0.3f, 0.9f, 1.0f), new Vector3(0.3f, 0.9f, 1.0f));
+
+            // 奥へつまんで引く。つまんだ時点で矩形が見える。
+            _pinch.PinchAt(new Vector3(0.1f, 0.95f, 1.3f));
+            yield return null;
+
+            Assert.AreEqual(HazardZoneDrawing.Phase.DrawingDepth, _drawing.CurrentPhase);
             Assert.IsTrue(_zones.Preview.IsVisible, "描いている途中の線が出ていません。");
             Assert.IsTrue(_zones.Preview.IsFillVisible, "描いている途中の面が出ていません。");
+            Assert.AreEqual(0.3f, _drawing.Depth, 1e-3f, "手を辺に直角へ射影した距離が奥行きです。");
+
+            // 手を動かすと奥行きも付いてくる（辺に沿った動きは奥行きに効かない）。
+            _pinch.PinchAt(new Vector3(-0.2f, 0.9f, 1.5f));
+            yield return null;
+            Assert.AreEqual(0.5f, _drawing.Depth, 1e-3f);
 
             _pinch.Release();
             yield return null;
@@ -456,11 +500,12 @@ namespace KitchenXR.Tests.PlayMode
             Assert.AreEqual(1, _zones.Count, "離しても領域ができていません。");
             Assert.IsFalse(_zones.Preview.IsPointVisible, "確定しても始点の点が残っています。");
             Assert.IsFalse(_zones.Preview.IsFillVisible, "確定しても仮の面が残っています。");
+            Assert.IsFalse(_zones.Preview.IsEdgeVisible, "確定しても辺の線が残っています。");
 
             var zone = _zones.Last;
-            Assert.AreEqual(0.6f, zone.SizeX, 1e-3f);
-            Assert.AreEqual(0.5f, zone.SizeZ, 1e-3f);
-            Assert.AreEqual(0.9f, zone.Center.y, 1e-3f);
+            Assert.AreEqual(0.6f, zone.SizeX, 1e-3f, "幅は手前の辺の長さ。");
+            Assert.AreEqual(0.5f, zone.SizeZ, 1e-3f, "奥行きは2段目で引いた長さ。");
+            Assert.AreEqual(0.9f, zone.Center.y, 1e-3f, "高さは点 A の高さ。");
             Assert.AreEqual(0.9f, zone.Height, 1e-3f, "床（XR Origin の y = 0）からの高さ。");
 
             // 描いた直後に控えへ入る（電源が落ちても残る）。
@@ -479,60 +524,115 @@ namespace KitchenXR.Tests.PlayMode
         }
 
         /// <summary>
-        /// コンロは壁際で対角まで手が届かないので、**別々のピンチ**で角を2つ置ける。
-        /// 1回目で始点（離しても点が残る）、2回目で終点。
+        /// 斜めに引いた辺の上に矩形が立つこと。頭の向きから yaw を取っていた頃は、
+        /// 実機で矩形が始点と終点に対して斜めに転びました。
         /// </summary>
         [UnityTest]
-        public IEnumerator 別々のピンチで始点と終点を置ける()
+        public IEnumerator 斜めの辺でも矩形が辺に沿う()
         {
             yield return BuildAll();
 
-            _zones.BeginDraw();
+            // 45° の辺（長さ 0.6m）。
+            var a = new Vector3(0f, 0.9f, 1.0f);
+            var b = a + Quaternion.Euler(0f, 45f, 0f) * new Vector3(0.6f, 0f, 0f);
+
+            // 頭は別の方を向けておく——向きは頭ではなく辺から来ること。
+            _cameraGo.transform.rotation = Quaternion.Euler(0f, -80f, 0f);
+
+            yield return DrawEdge(a, b);
+
+            var hand = a + Quaternion.Euler(0f, 45f, 0f) * new Vector3(0.3f, 0f, 0.4f);
+            _pinch.PinchAt(hand);
+            yield return null;
             _pinch.Release();
             yield return null;
 
-            // 1回目——手前の角でつまんで、すぐ離す。
-            _pinch.PinchAt(new Vector3(-0.3f, 0.9f, 1.0f));
-            yield return null;
-            _pinch.Release();
-            yield return null;
-
-            Assert.AreEqual(0, _zones.Count, "離した時点で領域を作ってはいけません（終点がまだ）。");
-            Assert.AreEqual(HazardZoneDrawing.Phase.WaitingEnd, _drawing.CurrentPhase,
-                "終点待ちに入っていません。");
-            Assert.IsTrue(_drawing.HasStart, "始点が残っていません。");
-            Assert.IsTrue(_zones.Preview.IsPointVisible, "終点待ちの間に始点の点が消えています。");
-
-            // 2回目——身体を移して奥の角でつまむ。つまんだ時点で矩形が見える。
-            _pinch.PinchAt(new Vector3(0.3f, 0.95f, 1.5f));
-            yield return null;
-
-            Assert.IsTrue(_drawing.IsDragging, "2回目のピンチで引く段に戻っていません。");
-            Assert.IsTrue(_zones.Preview.IsFillVisible, "2回目のピンチで矩形が見えません。");
-
-            _pinch.Release();
-            yield return null;
-
-            Assert.AreEqual(1, _zones.Count, "2回目を離しても領域ができていません。");
-            Assert.AreEqual(0.6f, _zones.Last.SizeX, 1e-3f);
-            Assert.AreEqual(0.5f, _zones.Last.SizeZ, 1e-3f);
-            Assert.AreEqual(0.9f, _zones.Last.Center.y, 1e-3f,
-                "高さは**始点**の高さ（2回目の手の高さではない）。");
+            Assert.AreEqual(1, _zones.Count);
+            var zone = _zones.Last;
+            Assert.AreEqual(0.6f, zone.SizeX, 1e-3f);
+            Assert.AreEqual(0.4f, zone.SizeZ, 1e-3f);
+            Assert.AreEqual(0f, Mathf.DeltaAngle(45f, zone.YawDegrees), 1e-2f,
+                "矩形が辺と別の向きに立っています。");
+            Assert.AreEqual(0f, zone.DistanceTo(a), 1e-2f, "辺の端が矩形の角になっていません。");
+            Assert.AreEqual(0f, zone.DistanceTo(b), 1e-2f);
         }
 
+        /// <summary>5cm 未満は確定させず、同じ段をもう一度待つ（札に「小さすぎます」）。</summary>
         [UnityTest]
-        public IEnumerator 小さすぎる囲みは領域にしない()
+        public IEnumerator 小さすぎる辺と奥行きは確定しない()
         {
             yield return BuildAll();
 
-            _zones.BeginDraw();
-            _drawing.BeginAt(new Vector3(0f, 0.9f, 1f));
-            _drawing.DragTo(new Vector3(0.04f, 0.9f, 1.04f));
-            _drawing.Commit();
+            var tooSmall = 0;
+            _zones.DrawTooSmall += () => tooSmall++;
 
+            _zones.BeginDraw();
+            _pinch.Release();
             yield return null;
 
-            Assert.AreEqual(0, _zones.Count, "指の震えほどの囲みで領域ができました。");
+            // 辺が 4cm——確定させず、辺の待ちへ戻す。
+            _pinch.PinchAt(new Vector3(0f, 0.9f, 1.0f));
+            yield return null;
+            _pinch.PinchAt(new Vector3(0.04f, 0.9f, 1.0f));
+            yield return null;
+            _pinch.Release();
+            yield return null;
+
+            Assert.AreEqual(1, tooSmall, "短すぎる辺で「小さすぎます」が出ていません。");
+            Assert.AreEqual(HazardZoneDrawing.Phase.WaitingEdge, _drawing.CurrentPhase,
+                "短すぎる辺のあと、辺の待ちに戻っていません。");
+            Assert.IsFalse(_zones.Preview.IsEdgeVisible, "捨てた辺の線が残っています。");
+
+            // 引き直して辺を作る。
+            yield return DrawEdge(new Vector3(-0.3f, 0.9f, 1.0f), new Vector3(0.3f, 0.9f, 1.0f));
+
+            // 奥行きが 4cm——確定させず、奥行きの待ちへ戻す。
+            _pinch.PinchAt(new Vector3(0f, 0.9f, 1.04f));
+            yield return null;
+            _pinch.Release();
+            yield return null;
+
+            Assert.AreEqual(2, tooSmall, "浅すぎる奥行きで「小さすぎます」が出ていません。");
+            Assert.AreEqual(0, _zones.Count, "浅すぎる奥行きで領域ができました。");
+            Assert.AreEqual(HazardZoneDrawing.Phase.WaitingDepth, _drawing.CurrentPhase,
+                "浅すぎた後、奥行きの待ちに戻っていません。");
+            Assert.IsTrue(_zones.Preview.IsEdgeVisible, "引き直しのための辺の線が消えています。");
+        }
+
+        /// <summary>
+        /// 60×50cm・上面 90cm・中心 (0, 0.9, 1.25) の領域をその場で作る（ピンチを介さない）。
+        /// 作図そのものではなく、その先（線の段・掴みの停止）を見る試験の下ごしらえ。
+        /// </summary>
+        private void DrawZoneNow()
+        {
+            _drawing.BeginEdgeAt(new Vector3(-0.3f, 0.9f, 1.0f));
+            _drawing.DragEdgeTo(new Vector3(0.3f, 0.9f, 1.0f));
+            _drawing.ReleaseEdge();
+            _drawing.BeginDepthAt(new Vector3(0f, 0.9f, 1.5f));
+            _drawing.Commit();
+        }
+
+        /// <summary>1段目（辺）をピンチで引き切って離す。2段目の試験の下ごしらえ。</summary>
+        private IEnumerator DrawEdge(Vector3 a, Vector3 b)
+        {
+            var edgeFixed = 0;
+            void Count() => edgeFixed++;
+            _zones.EdgeFixed += Count;
+
+            _zones.BeginDraw();
+            _pinch.Release();
+            yield return null;
+
+            _pinch.PinchAt(a);
+            yield return null;
+            _pinch.PinchAt(b);
+            yield return null;
+            _pinch.Release();
+            yield return null;
+
+            _zones.EdgeFixed -= Count;
+            Assert.AreEqual(1, edgeFixed, "辺が決まった知らせが来ていません（札が切り替わりません）。");
+            Assert.AreEqual(HazardZoneDrawing.Phase.WaitingDepth, _drawing.CurrentPhase);
         }
 
         /// <summary>
@@ -578,7 +678,7 @@ namespace KitchenXR.Tests.PlayMode
             var ray = _rayGo.AddComponent<XRRayInteractor>();
             _rayGo.SetActive(true);
 
-            _drawing.Bind(new XRBaseInputInteractor[] { ray }, _cameraGo.transform);
+            _drawing.Bind(new XRBaseInputInteractor[] { ray });
             _drawing.SetPinchSource(_pinch);
 
             yield return null;
@@ -587,9 +687,7 @@ namespace KitchenXR.Tests.PlayMode
             Assert.AreEqual(0, (int)ray.interactionLayers,
                 "囲んでいる間もレイが板を掴めます（ピンチで板が飛びます）。");
 
-            _drawing.BeginAt(new Vector3(-0.3f, 0.9f, 1.0f));
-            _drawing.DragTo(new Vector3(0.3f, 0.9f, 1.5f));
-            _drawing.Commit();
+            DrawZoneNow();
 
             yield return null;
 
@@ -610,9 +708,7 @@ namespace KitchenXR.Tests.PlayMode
             yield return BuildAll();
 
             _zones.BeginDraw();
-            _drawing.BeginAt(new Vector3(-0.3f, 0.9f, 1.0f));
-            _drawing.DragTo(new Vector3(0.3f, 0.9f, 1.5f));
-            _drawing.Commit();
+            DrawZoneNow();
             yield return null;
 
             var visual = _zones.Entries[0].Visual;

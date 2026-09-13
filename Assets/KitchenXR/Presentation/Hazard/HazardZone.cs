@@ -14,8 +14,8 @@ namespace KitchenXR.Presentation.Hazard
     /// </summary>
     public sealed class HazardZone
     {
-        /// <summary>これより小さい矩形は描き間違い（指の震え）として捨てる。</summary>
-        public const float MinSideMeters = 0.15f;
+        /// <summary>これより短い辺・奥行きは描き間違い（指の震え）として捨てる。</summary>
+        public const float MinSideMeters = 0.05f;
 
         /// <summary>既定の種類（コンロ）。</summary>
         public const string StoveKind = "stove";
@@ -41,7 +41,7 @@ namespace KitchenXR.Presentation.Hazard
         public float SizeX { get; private set; }
         public float SizeZ { get; private set; }
 
-        /// <summary>矩形の水平回り（度）。囲み始めたときの頭の向きから決める。</summary>
+        /// <summary>矩形の水平回り（度）。手前の辺 A→B の向きそのもの（<see cref="YawFromEdge"/>）。</summary>
         public float YawDegrees { get; }
 
         /// <summary>床から上面までの高さ（m）。床の線を引く高さを決める。</summary>
@@ -120,42 +120,53 @@ namespace KitchenXR.Presentation.Hazard
         }
 
         /// <summary>
-        /// ピンチの始点と終点を対角とする矩形を作る。矩形は <paramref name="yawDegrees"/> の
-        /// 向きに立て、2点をその向きのローカルへ写してから外接の箱を取る（＝「水平にドラッグして
-        /// 囲む」がそのまま矩形になる）。高さは始点の高さ、床は <paramref name="floorY"/>。
+        /// 手前の辺 A→B の向き（度）。矩形のローカル +x がこの辺に沿う。
+        /// 始点と終点の2点だけでは向きが決まらない（斜めの対角でも同じ矩形が引ける）ので、
+        /// **向きは辺そのものから**取る——作図の1段目が辺なのはこのため。
         /// </summary>
-        /// <returns>短い辺が <see cref="MinSideMeters"/> 未満なら null（描き間違い）。</returns>
-        public static HazardZone FromCorners(
-            string id, string kind, Vector3 start, Vector3 end, float yawDegrees, float floorY)
+        /// <remarks>辺が短すぎて向きが出ないときは 0。</remarks>
+        public static float YawFromEdge(Vector3 a, Vector3 b)
         {
-            var rotation = Quaternion.Euler(0f, yawDegrees, 0f);
-            var inverse = Quaternion.Inverse(rotation);
+            var dx = b.x - a.x;
+            var dz = b.z - a.z;
+            if (dx * dx + dz * dz < 1e-8f)
+            {
+                return 0f;
+            }
 
-            var a = inverse * start;
-            var b = inverse * end;
+            // R(yaw) * Vector3.right が A→B に重なる yaw。
+            return Mathf.Atan2(dx, dz) * Mathf.Rad2Deg - 90f;
+        }
 
-            var sizeX = Mathf.Abs(b.x - a.x);
-            var sizeZ = Mathf.Abs(b.z - a.z);
-            if (sizeX < MinSideMeters || sizeZ < MinSideMeters)
+        /// <summary>辺 A→B に直角な水平の向き（矩形のローカル +z）。奥行きを測る軸。</summary>
+        public static Vector3 DepthAxis(float yawDegrees) =>
+            Quaternion.Euler(0f, yawDegrees, 0f) * Vector3.forward;
+
+        /// <summary>辺 A→B の長さ（水平。高さの差は見ない）。</summary>
+        public static float EdgeLength(Vector3 a, Vector3 b) =>
+            new Vector2(b.x - a.x, b.z - a.z).magnitude;
+
+        /// <summary>
+        /// 手前の辺 A→B と、その辺に直角な奥行きから矩形を作る。
+        /// <paramref name="depthMeters"/> は符号付き（正負どちらでも手のある側へ伸びる）。
+        /// 上面の高さは A の高さ、床は <paramref name="floorY"/>。
+        /// </summary>
+        /// <returns>辺か奥行きが <see cref="MinSideMeters"/> 未満なら null（描き間違い）。</returns>
+        public static HazardZone FromEdgeAndDepth(
+            string id, string kind, Vector3 a, Vector3 b, float depthMeters, float floorY)
+        {
+            var width = EdgeLength(a, b);
+            var depth = Mathf.Abs(depthMeters);
+            if (width < MinSideMeters || depth < MinSideMeters)
             {
                 return null;
             }
 
-            var localCenter = new Vector3((a.x + b.x) / 2f, start.y, (a.z + b.z) / 2f);
-            var center = rotation * localCenter;
-            center.y = start.y;
+            var yaw = YawFromEdge(a, b);
+            var center = (a + b) / 2f + DepthAxis(yaw) * (depthMeters / 2f);
+            center.y = a.y;
 
-            return new HazardZone(id, kind, center, sizeX, sizeZ, yawDegrees, start.y - floorY);
-        }
-
-        /// <summary>
-        /// 2点が領域になる大きさか（<see cref="FromCorners"/> と同じ判定）。
-        /// 描いている途中に「離したら確定してよいか」を見るのに使う。
-        /// </summary>
-        public static bool IsLargeEnough(Vector3 start, Vector3 end, float yawDegrees)
-        {
-            var local = Quaternion.Inverse(Quaternion.Euler(0f, yawDegrees, 0f)) * (end - start);
-            return Mathf.Abs(local.x) >= MinSideMeters && Mathf.Abs(local.z) >= MinSideMeters;
+            return new HazardZone(id, kind, center, width, depth, yaw, a.y - floorY);
         }
     }
 }

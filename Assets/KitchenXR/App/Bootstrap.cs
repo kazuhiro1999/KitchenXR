@@ -242,10 +242,7 @@ namespace KitchenXR.App
                 _placementMenuPanel.PageChanged -= HandleMenuPageChanged;
             }
 
-            if (_hazardZones != null)
-            {
-                _hazardZones.DrawTimedOut -= HandleZoneDrawTimedOut;
-            }
+            UnsubscribeHazardZones();
 
             if (_panelPlacement != null)
             {
@@ -973,9 +970,23 @@ namespace KitchenXR.App
 
             if (_hazardZones != null)
             {
-                _hazardZones.DrawTimedOut -= HandleZoneDrawTimedOut;
+                UnsubscribeHazardZones();
                 _hazardZones.DrawTimedOut += HandleZoneDrawTimedOut;
+                _hazardZones.EdgeFixed += HandleZoneEdgeFixed;
+                _hazardZones.DrawTooSmall += HandleZoneTooSmall;
             }
+        }
+
+        private void UnsubscribeHazardZones()
+        {
+            if (_hazardZones == null)
+            {
+                return;
+            }
+
+            _hazardZones.DrawTimedOut -= HandleZoneDrawTimedOut;
+            _hazardZones.EdgeFixed -= HandleZoneEdgeFixed;
+            _hazardZones.DrawTooSmall -= HandleZoneTooSmall;
         }
 
         private async UniTaskVoid RestoreHazardZonesAsync(CancellationToken token)
@@ -1005,8 +1016,23 @@ namespace KitchenXR.App
         private void HandleZoneDrawRequested()
         {
             _hazardZones?.BeginDraw();
-            _placementMenuPanel?.SetHint("コンロの角で指をつまんでください（20 秒で取り消し）");
+            _placementMenuPanel?.SetHint(ZoneEdgeHint);
         }
+
+        /// <summary>1段目（手前の辺）の札。20 秒で取り消すことも添える。</summary>
+        private const string ZoneEdgeHint = "手前の辺の端で つまんで、反対の端まで引いて離す（20 秒で取り消し）";
+
+        /// <summary>2段目（奥行き）の札。</summary>
+        private const string ZoneDepthHint = "奥へ つまんで引いて離す";
+
+        /// <summary>手前の辺が決まった——奥行きの段の札へ。</summary>
+        private void HandleZoneEdgeFixed() => _placementMenuPanel?.SetHint(ZoneDepthHint);
+
+        /// <summary>辺か奥行きが 5cm 未満。確定させず、同じ段をもう一度待つ。</summary>
+        private void HandleZoneTooSmall() =>
+            _placementMenuPanel?.SetHint(_hazardZones != null && _hazardZones.HasEdge
+                ? "小さすぎます。" + ZoneDepthHint
+                : "小さすぎます。" + ZoneEdgeHint);
 
         /// <summary>ピンチが無いまま時間切れ。押したことを忘れていても分かるように札へ。</summary>
         private void HandleZoneDrawTimedOut() => _placementMenuPanel?.SetHint("囲むのをやめました");
@@ -1014,7 +1040,7 @@ namespace KitchenXR.App
         private void HandleZoneRedoRequested()
         {
             _hazardZones?.Redo();
-            _placementMenuPanel?.SetHint("最後の領域を捨てました。もう一度囲んでください");
+            _placementMenuPanel?.SetHint("最後の領域を捨てました。" + ZoneEdgeHint);
         }
 
         private void HandleZoneRemoveRequested()

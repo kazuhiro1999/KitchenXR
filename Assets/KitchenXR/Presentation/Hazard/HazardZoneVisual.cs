@@ -11,9 +11,12 @@ namespace KitchenXR.Presentation.Hazard
     /// 段（<see cref="HazardAlertLevel"/>）で色と濃さだけを変え、線の形は変えない。
     ///
     /// 描いている途中だけ**上面に半透明の面**（<see cref="SetFillShown"/>）と
-    /// **始点の点**（<see cref="ShowPoint"/>）を足す。線だけだと、真横から見たときや
-    /// 細長い矩形のときに何も無いのと区別が付かなかった。確定した領域には出さない
-    /// （台所の上に薄い板が何枚も浮くことになる）。
+    /// **始点の点**（<see cref="ShowPoint"/>）と**手前の辺の線**（<see cref="ShowEdge"/>）を
+    /// 足す。線だけだと、真横から見たときや細長い矩形のときに何も無いのと区別が
+    /// 付かなかった。確定した領域には出さない（台所の上に薄い板が何枚も浮くことになる）。
+    ///
+    /// 辺の線は矩形とは別の <see cref="LineRenderer"/> です——1段目は矩形がまだ無く、
+    /// 2段目でも「どの辺から立ち上げたか」が見えている必要があるため。
     /// </summary>
     public sealed class HazardZoneVisual : MonoBehaviour
     {
@@ -49,6 +52,8 @@ namespace KitchenXR.Presentation.Hazard
 
         private LineRenderer _floor;
         private LineRenderer _top;
+        private LineRenderer _edge;
+        private readonly Vector3[] _edgeEnds = new Vector3[2];
         private MeshRenderer _fill;
         private Mesh _fillMesh;
         private Transform _point;
@@ -68,12 +73,22 @@ namespace KitchenXR.Presentation.Hazard
         /// <summary>始点の点が出ているか（試験が見る）。</summary>
         public bool IsPointVisible => _pointRenderer != null && _pointRenderer.enabled;
 
+        /// <summary>手前の辺の線が出ているか（試験が見る）。</summary>
+        public bool IsEdgeVisible => _edge != null && _edge.enabled;
+
         public HazardZone Zone => _zone;
 
         private void Awake()
         {
             _floor = CreateLine("Zone Floor Line", FloorLineWidthMeters);
             _top = CreateLine("Zone Top Frame", TopLineWidthMeters);
+
+            _edge = CreateLine("Zone Near Edge", FloorLineWidthMeters);
+            _edge.loop = false;
+            _edge.positionCount = 2;
+            _edge.enabled = false;
+            Tint(_edge, new Color(Amber.r, Amber.g, Amber.b, 1f));
+
             CreateFill();
             CreatePoint();
             SetShown(false);
@@ -83,6 +98,7 @@ namespace KitchenXR.Presentation.Hazard
         {
             DestroyMaterial(_floor);
             DestroyMaterial(_top);
+            DestroyMaterial(_edge);
 
             if (_fill != null && _fill.material != null)
             {
@@ -143,6 +159,29 @@ namespace KitchenXR.Presentation.Hazard
             if (_pointRenderer != null)
             {
                 _pointRenderer.enabled = false;
+            }
+        }
+
+        /// <summary>手前の辺 A→B の線を出す（1段目はこれだけ、2段目は矩形に重ねる）。</summary>
+        public void ShowEdge(Vector3 a, Vector3 b)
+        {
+            if (_edge == null)
+            {
+                return;
+            }
+
+            _edgeEnds[0] = a;
+            _edgeEnds[1] = b;
+            _edge.positionCount = 2;
+            _edge.SetPositions(_edgeEnds);
+            _edge.enabled = true;
+        }
+
+        public void HideEdge()
+        {
+            if (_edge != null)
+            {
+                _edge.enabled = false;
             }
         }
 

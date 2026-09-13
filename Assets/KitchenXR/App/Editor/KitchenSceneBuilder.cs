@@ -717,7 +717,6 @@ namespace KitchenXR.App.Editor
             AssignArray(drawingSo.FindProperty("_interactors"), rayLike);
             AssignArray(drawingSo.FindProperty("_pokeInteractors"), pokes);
             drawingSo.FindProperty("_originTransform").objectReferenceValue = xrOrigin;
-            drawingSo.FindProperty("_headTransform").objectReferenceValue = head;
             drawingSo.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(drawing);
 

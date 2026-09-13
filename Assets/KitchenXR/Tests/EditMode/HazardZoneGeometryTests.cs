@@ -59,48 +59,112 @@ namespace KitchenXR.Tests.EditMode
         }
 
         [Test]
-        public void 対角の2点から矩形を作る()
+        public void 手前の辺と奥行きから矩形を作る()
         {
-            var zone = HazardZone.FromCorners(
+            // 手前の辺は x 方向に 60cm、奥行きは +z に 50cm。
+            var zone = HazardZone.FromEdgeAndDepth(
                 "z", HazardZone.StoveKind,
-                new Vector3(-0.3f, 0.9f, -0.25f), new Vector3(0.3f, 0.9f, 0.25f), 0f, 0f);
+                new Vector3(-0.3f, 0.9f, 0f), new Vector3(0.3f, 0.9f, 0f), 0.5f, 0f);
 
             Assert.IsNotNull(zone);
-            Assert.AreEqual(0.6f, zone.SizeX, 1e-4f);
-            Assert.AreEqual(0.5f, zone.SizeZ, 1e-4f);
+            Assert.AreEqual(0.6f, zone.SizeX, 1e-4f, "幅は辺の長さ。");
+            Assert.AreEqual(0.5f, zone.SizeZ, 1e-4f, "奥行きは辺に直角な方向の長さ。");
             Assert.AreEqual(0f, zone.Center.x, 1e-4f);
-            Assert.AreEqual(0.9f, zone.Center.y, 1e-4f, "上面の高さは始点の高さ。");
+            Assert.AreEqual(0.25f, zone.Center.z, 1e-4f, "中心は辺から奥行きの半分だけ奥。");
+            Assert.AreEqual(0.9f, zone.Center.y, 1e-4f, "上面の高さは辺の高さ。");
             Assert.AreEqual(0.9f, zone.Height, 1e-4f, "床（0m）からの高さ。");
             Assert.AreEqual(0f, zone.FloorY, 1e-4f);
         }
 
+        /// <summary>
+        /// 奥行きの符号は「手のある側」。負でも同じ大きさの矩形が、辺の反対側にできること。
+        /// </summary>
         [Test]
-        public void 向きを付けて囲むと矩形もその向きに立つ()
+        public void 奥行きが負なら辺の反対側に伸びる()
+        {
+            var a = new Vector3(-0.3f, 0.9f, 0f);
+            var b = new Vector3(0.3f, 0.9f, 0f);
+
+            var far = HazardZone.FromEdgeAndDepth("z", HazardZone.StoveKind, a, b, 0.5f, 0f);
+            var near = HazardZone.FromEdgeAndDepth("z", HazardZone.StoveKind, a, b, -0.5f, 0f);
+
+            Assert.IsNotNull(near);
+            Assert.AreEqual(far.SizeX, near.SizeX, 1e-4f);
+            Assert.AreEqual(far.SizeZ, near.SizeZ, 1e-4f);
+            Assert.AreEqual(-far.Center.z, near.Center.z, 1e-4f, "辺を挟んで反対側のはずです。");
+        }
+
+        /// <summary>
+        /// **向きは辺そのもの**から来る（頭の向きではない）。斜めに引いた辺の上に矩形が
+        /// 立ち、辺の両端はどちらも矩形の角になること——実機で矩形が斜めに転んだ件の縛り。
+        /// </summary>
+        [Test]
+        public void 斜めの辺の上に矩形が立つ()
         {
             const float yaw = 30f;
-            var start = new Vector3(0f, 0.9f, 0f);
-            var end = start + Quaternion.Euler(0f, yaw, 0f) * new Vector3(0.6f, 0f, 0.4f);
+            var a = new Vector3(0f, 0.9f, 0f);
+            var b = a + Quaternion.Euler(0f, yaw, 0f) * new Vector3(0.6f, 0f, 0f);
 
-            var zone = HazardZone.FromCorners("z", HazardZone.StoveKind, start, end, yaw, 0f);
+            var zone = HazardZone.FromEdgeAndDepth("z", HazardZone.StoveKind, a, b, 0.4f, 0f);
 
             Assert.IsNotNull(zone);
-            Assert.AreEqual(0.6f, zone.SizeX, 1e-3f, "囲んだ向きで測った幅になるはずです。");
+            Assert.AreEqual(0.6f, zone.SizeX, 1e-3f);
             Assert.AreEqual(0.4f, zone.SizeZ, 1e-3f);
+            Assert.AreEqual(yaw, Mathf.DeltaAngle(0f, zone.YawDegrees), 1e-3f,
+                "矩形の向きが辺の向きと違います。");
 
-            // 始点と終点はどちらも矩形の角なので、上面までの距離は 0。
-            Assert.AreEqual(0f, zone.DistanceTo(start), 1e-3f);
-            Assert.AreEqual(0f, zone.DistanceTo(end), 1e-3f);
+            // 辺の両端はどちらも矩形の角なので、上面までの距離は 0。
+            Assert.AreEqual(0f, zone.DistanceTo(a), 1e-3f);
+            Assert.AreEqual(0f, zone.DistanceTo(b), 1e-3f);
+        }
+
+        /// <summary>回した矩形への最短距離。局所座標へ写し損ねると斜めの矩形だけ狂う。</summary>
+        [Test]
+        public void 回した矩形への最短距離を辺の向きで測る()
+        {
+            const float yaw = 30f;
+            var a = new Vector3(0f, 0.9f, 0f);
+            var rotation = Quaternion.Euler(0f, yaw, 0f);
+            var b = a + rotation * new Vector3(0.6f, 0f, 0f);
+
+            var zone = HazardZone.FromEdgeAndDepth("z", HazardZone.StoveKind, a, b, 0.4f, 0f);
+
+            // 辺に沿って端から 20cm 外（局所 x の外）。
+            Assert.AreEqual(
+                0.2f, zone.DistanceTo(b + rotation * new Vector3(0.2f, 0f, 0f)), 1e-3f);
+
+            // 奥へ 30cm 行き過ぎた点（局所 z の外）。
+            Assert.AreEqual(
+                0.3f, zone.DistanceTo(a + rotation * new Vector3(0.3f, 0f, 0.7f)), 1e-3f);
+
+            // 矩形の内側の真上（水平の成分は 0）。
+            Assert.AreEqual(
+                0.25f, zone.DistanceTo(a + rotation * new Vector3(0.3f, 0.25f, 0.2f)), 1e-3f);
+
+            // 角の外（辺の向きで x に 30cm・z に 40cm はみ出す）。
+            Assert.AreEqual(
+                0.5f, zone.DistanceTo(a + rotation * new Vector3(-0.3f, 0f, -0.4f)), 1e-3f);
         }
 
         [Test]
-        public void 小さすぎる矩形は作らない()
+        public void 小さすぎる辺と奥行きは矩形にしない()
         {
-            var start = new Vector3(0f, 0.9f, 0f);
-            var tiny = start + new Vector3(0.05f, 0f, 0.05f);
+            var a = new Vector3(0f, 0.9f, 0f);
 
             Assert.IsNull(
-                HazardZone.FromCorners("z", HazardZone.StoveKind, start, tiny, 0f, 0f),
-                "指の震えほどの大きさは領域にしない。");
+                HazardZone.FromEdgeAndDepth(
+                    "z", HazardZone.StoveKind, a, a + new Vector3(0.04f, 0f, 0f), 0.5f, 0f),
+                "5cm 未満の辺は領域にしない。");
+
+            Assert.IsNull(
+                HazardZone.FromEdgeAndDepth(
+                    "z", HazardZone.StoveKind, a, a + new Vector3(0.6f, 0f, 0f), 0.04f, 0f),
+                "5cm 未満の奥行きは領域にしない。");
+
+            Assert.IsNotNull(
+                HazardZone.FromEdgeAndDepth(
+                    "z", HazardZone.StoveKind, a, a + new Vector3(0.06f, 0f, 0f), 0.06f, 0f),
+                "6cm 角なら作れるはずです（境目は 5cm）。");
         }
 
         [Test]
@@ -134,30 +198,40 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
-        /// 「離したら確定してよいか」の判定が <see cref="HazardZone.FromCorners"/> と食い違わないこと。
-        /// 食い違うと、離した瞬間に確定したのに領域ができない（か、その逆）ことになる。
+        /// どの向きの辺でも、辺の長さ＝<c>SizeX</c>・手で測った奥行き＝<c>SizeZ</c> になること。
+        /// 作図が使う <see cref="HazardZone.YawFromEdge"/>・<see cref="HazardZone.DepthAxis"/> と
+        /// <see cref="HazardZone.FromEdgeAndDepth"/> が食い違うと、離した瞬間に形が変わる。
         /// </summary>
         [Test]
-        public void 確定してよい大きさの判定が矩形を作れるかと一致する()
+        public void どの向きの辺でも辺と奥行きがそのまま矩形の辺になる()
         {
-            var start = new Vector3(0f, 0.9f, 0f);
+            var a = new Vector3(0.2f, 0.9f, -0.4f);
 
-            foreach (var yaw in new[] { 0f, 30f, 175f })
+            foreach (var yaw in new[] { 0f, 30f, 175f, -120f })
             {
-                foreach (var local in new[]
-                         {
-                             new Vector3(0.6f, 0f, 0.4f),   // 十分
-                             new Vector3(-0.6f, 0f, -0.4f), // 逆向きでも同じ
-                             new Vector3(0.6f, 0f, 0.05f),  // 細すぎ
-                             new Vector3(0.05f, 0f, 0.05f), // 指の震え
-                         })
-                {
-                    var end = start + Quaternion.Euler(0f, yaw, 0f) * local;
-                    var zone = HazardZone.FromCorners("z", HazardZone.StoveKind, start, end, yaw, 0f);
+                var rotation = Quaternion.Euler(0f, yaw, 0f);
+                var b = a + rotation * new Vector3(0.6f, 0f, 0f);
 
-                    Assert.AreEqual(
-                        zone != null, HazardZone.IsLargeEnough(start, end, yaw),
-                        $"yaw {yaw}・{local} で判定が食い違います。");
+                Assert.AreEqual(0f, Mathf.DeltaAngle(yaw, HazardZone.YawFromEdge(a, b)), 1e-3f,
+                    $"yaw {yaw} の辺から向きが出ていません。");
+                Assert.AreEqual(0.6f, HazardZone.EdgeLength(a, b), 1e-4f);
+
+                foreach (var depth in new[] { 0.4f, -0.4f })
+                {
+                    // 作図と同じ道筋——手の位置を辺に直角な軸へ射影して奥行きにする。
+                    var hand = a + rotation * new Vector3(0.1f, 0f, depth);
+                    var measured = Vector3.Dot(
+                        hand - a, HazardZone.DepthAxis(HazardZone.YawFromEdge(a, b)));
+                    Assert.AreEqual(depth, measured, 1e-3f, $"yaw {yaw} で奥行きの射影が狂います。");
+
+                    var zone = HazardZone.FromEdgeAndDepth(
+                        "z", HazardZone.StoveKind, a, b, measured, 0f);
+
+                    Assert.IsNotNull(zone);
+                    Assert.AreEqual(0.6f, zone.SizeX, 1e-3f);
+                    Assert.AreEqual(0.4f, zone.SizeZ, 1e-3f);
+                    Assert.AreEqual(0f, zone.DistanceTo(a), 1e-3f, "辺の端が矩形の角になっていません。");
+                    Assert.AreEqual(0f, zone.DistanceTo(b), 1e-3f);
                 }
             }
         }
