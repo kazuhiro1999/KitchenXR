@@ -242,6 +242,11 @@ namespace KitchenXR.App
                 _placementMenuPanel.PageChanged -= HandleMenuPageChanged;
             }
 
+            if (_hazardZones != null)
+            {
+                _hazardZones.DrawTimedOut -= HandleZoneDrawTimedOut;
+            }
+
             if (_panelPlacement != null)
             {
                 _panelPlacement.PlacementFinished -= HandlePlacementFinished;
@@ -965,6 +970,12 @@ namespace KitchenXR.App
 
             _hazardZones?.Bind(_hazardZoneFile, _anchorStore);
             _hazardProximity?.Bind(_hazardZones, null, null, _headTransform, _handInputPolicy);
+
+            if (_hazardZones != null)
+            {
+                _hazardZones.DrawTimedOut -= HandleZoneDrawTimedOut;
+                _hazardZones.DrawTimedOut += HandleZoneDrawTimedOut;
+            }
         }
 
         private async UniTaskVoid RestoreHazardZonesAsync(CancellationToken token)
@@ -994,8 +1005,11 @@ namespace KitchenXR.App
         private void HandleZoneDrawRequested()
         {
             _hazardZones?.BeginDraw();
-            _placementMenuPanel?.SetHint("コンロの上面を指してピンチ、そのまま水平にドラッグ");
+            _placementMenuPanel?.SetHint("コンロの角で指をつまんでください（20 秒で取り消し）");
         }
+
+        /// <summary>ピンチが無いまま時間切れ。押したことを忘れていても分かるように札へ。</summary>
+        private void HandleZoneDrawTimedOut() => _placementMenuPanel?.SetHint("囲むのをやめました");
 
         private void HandleZoneRedoRequested()
         {

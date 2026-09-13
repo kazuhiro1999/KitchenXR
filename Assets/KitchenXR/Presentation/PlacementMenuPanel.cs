@@ -98,7 +98,7 @@ namespace KitchenXR.Presentation
         public const string HazardHint = "選ぶと頭の前に板が出ます";
 
         /// <summary>領域の頁の札。</summary>
-        public const string ZoneHint = "「囲む」→ コンロの上面をレイで指し、ピンチしたまま水平にドラッグ";
+        public const string ZoneHint = "「囲む」→ コンロの角で指をつまむ。対角の角でもう一度つまむ";
 
         private const string ZoneRemoveLabel = "消す";
         private const string ZoneRemoveArmedLabel = "もう一度";

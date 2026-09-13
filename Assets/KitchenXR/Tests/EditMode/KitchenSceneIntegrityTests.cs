@@ -545,7 +545,11 @@ namespace KitchenXR.Tests.EditMode
 
             var drawingSo = new SerializedObject(drawing);
             Assert.GreaterOrEqual(drawingSo.FindProperty("_interactors").arraySize, 2,
-                "領域を囲むレイ（Near-Far Interactor）が挿さっていません。");
+                "囲んでいる間に掴みを止める Interactor が挿さっていません。");
+            Assert.GreaterOrEqual(drawingSo.FindProperty("_pokeInteractors").arraySize, 2,
+                "手が追えないときの指先（Poke Interactor）が挿さっていません。");
+            Assert.IsNotNull(drawingSo.FindProperty("_originTransform").objectReferenceValue,
+                "XR Origin が挿さっていません（XR Hands の関節を世界へ出せません）。");
 
             var zones = Object.FindFirstObjectByType<HazardZones>(FindObjectsInactive.Include);
             Assert.IsNotNull(zones, "領域の一式（HazardZones）がありません。");

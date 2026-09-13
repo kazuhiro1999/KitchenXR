@@ -4,6 +4,7 @@
     "references": [
         "KitchenXR.Domain",
         "Unity.XR.Interaction.Toolkit",
+        "Unity.XR.Hands",
         "Unity.XR.ARFoundation",
         "Unity.XR.ARSubsystems",
         "Unity.XR.CoreUtils",

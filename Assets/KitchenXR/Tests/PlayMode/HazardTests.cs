@@ -24,7 +24,8 @@ namespace KitchenXR.Tests.PlayMode
     ///      （＝その場で掴めて、保存で位置が覚えられる）
     ///   3. 調理中の注意の板は触れない（コライダーが降り、レイの層から外れる）
     ///   4. 「消す」の2度押しで板と鍵が消える
-    ///   5. 領域は始点と終点から矩形になり、閾値で床の線の段が切り替わる
+    ///   5. 領域は「つまんだ手の位置」2点から矩形になり（1回のピンチでも2回でも）、
+    ///      描いている間は見え、ピンチが無いまま待てばやめ、閾値で床の線の段が切り替わる
     ///
     /// 板の組み立てはシーンと同じ <see cref="WorldSpacePanelFactory"/> を通す。
     /// </summary>
@@ -53,6 +54,7 @@ namespace KitchenXR.Tests.PlayMode
         private HazardBoards _boards;
         private HazardZones _zones;
         private HazardZoneDrawing _drawing;
+        private ManualPinchSource _pinch;
         private HazardProximity _proximity;
         private HazardSound _sound;
         private XRPokeInteractor _poke;
@@ -94,6 +96,7 @@ namespace KitchenXR.Tests.PlayMode
             _boards = null;
             _zones = null;
             _drawing = null;
+            _pinch = null;
             _proximity = null;
             _sound = null;
             _poke = null;
@@ -171,7 +174,10 @@ namespace KitchenXR.Tests.PlayMode
                 _placement, _panelFile, _catalog, _cameraGo.transform,
                 LoadPanelSettings(), LoadUxml(HazardUxmlPath), LoadUxml(DeleteUxmlPath));
 
+            // 実機の XR Hands の代わりに、試験が手で動かすピンチを挿す。
+            _pinch = new ManualPinchSource();
             _drawing.Bind(Array.Empty<XRBaseInputInteractor>(), _cameraGo.transform);
+            _drawing.SetPinchSource(_pinch);
             _zones.Bind(_zoneFile, new InMemoryAnchorStore(), _originGo.transform, _drawing);
             _proximity.Bind(_zones, _sound, new[] { _poke }, _cameraGo.transform, _policy);
 
@@ -407,27 +413,50 @@ namespace KitchenXR.Tests.PlayMode
 
         // ---------------------------------------------------------------- 5. 領域
 
+        /// <summary>
+        /// 1回のピンチで対角まで引く。**手の位置そのもの**が始点／終点になること
+        /// （レイの当たり点ではない）と、高さが始点の面に貼り付くことを見る。
+        /// </summary>
         [UnityTest]
-        public IEnumerator 領域は始点と終点から矩形になる()
+        public IEnumerator 一度のピンチで対角まで引くと矩形になる()
         {
             yield return BuildAll();
 
             _zones.BeginDraw();
             Assert.IsTrue(_drawing.IsArmed, "「囲む」で待ちに入っていません。");
 
-            // コンロの上面（0.9m）の高さでピンチして、水平に 60×50cm ドラッグ。
-            _drawing.BeginAt(new Vector3(-0.3f, 0.9f, 1.0f));
-            Assert.IsTrue(_drawing.IsDragging);
-            Assert.AreEqual(0.9f, _drawing.PlaneY, 1e-4f, "仮の作業面が始点の高さに張られていません。");
+            // 「囲む」を押した手がもうつまんでいても始点にはしない（離してからの1回を待つ）。
+            _pinch.PinchAt(new Vector3(-0.3f, 0.9f, 1.0f));
+            yield return null;
+            Assert.IsFalse(_drawing.IsDragging, "押しっぱなしの指で始点が置かれました。");
 
-            // 高さの違う点を渡しても作業面に貼り付く（＝水平にドラッグ）。
-            _drawing.DragTo(new Vector3(0.3f, 1.4f, 1.5f));
-            Assert.AreEqual(0.9f, _drawing.Current.y, 1e-4f);
-
-            _drawing.Commit();
+            _pinch.Release();
             yield return null;
 
-            Assert.AreEqual(1, _zones.Count, "領域ができていません。");
+            // コンロの手前の角でつまむ。
+            _pinch.PinchAt(new Vector3(-0.3f, 0.9f, 1.0f));
+            yield return null;
+
+            Assert.IsTrue(_drawing.IsDragging, "つまんでも始点が置かれません。");
+            Assert.AreEqual(0.9f, _drawing.PlaneY, 1e-4f, "始点の高さに面が張られていません。");
+            Assert.IsTrue(_zones.Preview.IsPointVisible, "始点の点が出ていません。");
+
+            // 手が上下しても矩形は水平（始点の高さに貼り付く）。
+            _pinch.PinchAt(new Vector3(0.3f, 1.4f, 1.5f));
+            yield return null;
+            Assert.AreEqual(0.9f, _drawing.Current.y, 1e-4f, "矩形が水平になっていません。");
+
+            // 引いている途中の矩形が見えていること（半透明の面＋縁の線）。
+            Assert.IsTrue(_zones.Preview.IsVisible, "描いている途中の線が出ていません。");
+            Assert.IsTrue(_zones.Preview.IsFillVisible, "描いている途中の面が出ていません。");
+
+            _pinch.Release();
+            yield return null;
+
+            Assert.AreEqual(1, _zones.Count, "離しても領域ができていません。");
+            Assert.IsFalse(_zones.Preview.IsPointVisible, "確定しても始点の点が残っています。");
+            Assert.IsFalse(_zones.Preview.IsFillVisible, "確定しても仮の面が残っています。");
+
             var zone = _zones.Last;
             Assert.AreEqual(0.6f, zone.SizeX, 1e-3f);
             Assert.AreEqual(0.5f, zone.SizeZ, 1e-3f);
@@ -449,6 +478,48 @@ namespace KitchenXR.Tests.PlayMode
             Assert.AreEqual(0, _zones.Count);
         }
 
+        /// <summary>
+        /// コンロは壁際で対角まで手が届かないので、**別々のピンチ**で角を2つ置ける。
+        /// 1回目で始点（離しても点が残る）、2回目で終点。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 別々のピンチで始点と終点を置ける()
+        {
+            yield return BuildAll();
+
+            _zones.BeginDraw();
+            _pinch.Release();
+            yield return null;
+
+            // 1回目——手前の角でつまんで、すぐ離す。
+            _pinch.PinchAt(new Vector3(-0.3f, 0.9f, 1.0f));
+            yield return null;
+            _pinch.Release();
+            yield return null;
+
+            Assert.AreEqual(0, _zones.Count, "離した時点で領域を作ってはいけません（終点がまだ）。");
+            Assert.AreEqual(HazardZoneDrawing.Phase.WaitingEnd, _drawing.CurrentPhase,
+                "終点待ちに入っていません。");
+            Assert.IsTrue(_drawing.HasStart, "始点が残っていません。");
+            Assert.IsTrue(_zones.Preview.IsPointVisible, "終点待ちの間に始点の点が消えています。");
+
+            // 2回目——身体を移して奥の角でつまむ。つまんだ時点で矩形が見える。
+            _pinch.PinchAt(new Vector3(0.3f, 0.95f, 1.5f));
+            yield return null;
+
+            Assert.IsTrue(_drawing.IsDragging, "2回目のピンチで引く段に戻っていません。");
+            Assert.IsTrue(_zones.Preview.IsFillVisible, "2回目のピンチで矩形が見えません。");
+
+            _pinch.Release();
+            yield return null;
+
+            Assert.AreEqual(1, _zones.Count, "2回目を離しても領域ができていません。");
+            Assert.AreEqual(0.6f, _zones.Last.SizeX, 1e-3f);
+            Assert.AreEqual(0.5f, _zones.Last.SizeZ, 1e-3f);
+            Assert.AreEqual(0.9f, _zones.Last.Center.y, 1e-3f,
+                "高さは**始点**の高さ（2回目の手の高さではない）。");
+        }
+
         [UnityTest]
         public IEnumerator 小さすぎる囲みは領域にしない()
         {
@@ -462,6 +533,35 @@ namespace KitchenXR.Tests.PlayMode
             yield return null;
 
             Assert.AreEqual(0, _zones.Count, "指の震えほどの囲みで領域ができました。");
+        }
+
+        /// <summary>
+        /// 「囲む」を押してからピンチが無いまま 20 秒でやめる。
+        /// <see cref="Time.time"/> は動かせないので、境目だけを確かめる。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator ピンチが無いまま時間切れでやめる()
+        {
+            yield return BuildAll();
+
+            Assert.AreEqual(20f, HazardZoneDrawing.DefaultTimeoutSeconds, "上限は 20 秒のはずです。");
+
+            var timedOut = 0;
+            _zones.DrawTimedOut += () => timedOut++;
+
+            _drawing.TimeoutSeconds = 0.2f; // 20 秒待つ試験は書けないので、境目だけ縮める。
+            _zones.BeginDraw();
+            _pinch.Lose();
+
+            var deadline = Time.time + 5f;
+            while (Time.time < deadline && timedOut == 0)
+            {
+                yield return null;
+            }
+
+            Assert.AreEqual(1, timedOut, "ピンチが無いまま待っても囲むのをやめていません。");
+            Assert.AreEqual(HazardZoneDrawing.Phase.Off, _drawing.CurrentPhase);
+            Assert.IsFalse(_zones.IsDrawing, "やめたのに待ちが残っています。");
         }
 
         /// <summary>
@@ -479,6 +579,7 @@ namespace KitchenXR.Tests.PlayMode
             _rayGo.SetActive(true);
 
             _drawing.Bind(new XRBaseInputInteractor[] { ray }, _cameraGo.transform);
+            _drawing.SetPinchSource(_pinch);
 
             yield return null;
 

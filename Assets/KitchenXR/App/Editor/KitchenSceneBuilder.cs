@@ -665,7 +665,8 @@ namespace KitchenXR.App.Editor
         /// 板も床の線も実行時に作る——プリセットの数だけシーンに板を並べる作りにすると、
         /// プリセットを1つ足すたびにシーンを組み直すことになる。
         ///
-        /// レイ（Near-Far Interactor）は領域を囲むピンチに、Poke Interactor は手の位置に使う。
+        /// Poke Interactor は手の位置（近さの判定と、XR Hands が動かない端末で囲む指先）、
+        /// Near-Far Interactor は囲んでいる間の掴みの停止と select 入力に使う。
         /// 拾えた数をログに出すのは、rig を差し替えたときに黙って 0 個になるのを防ぐため
         /// （レイの線・指先カーソルと同じ流儀）。
         /// </summary>
@@ -714,6 +715,8 @@ namespace KitchenXR.App.Editor
 
             var drawingSo = new SerializedObject(drawing);
             AssignArray(drawingSo.FindProperty("_interactors"), rayLike);
+            AssignArray(drawingSo.FindProperty("_pokeInteractors"), pokes);
+            drawingSo.FindProperty("_originTransform").objectReferenceValue = xrOrigin;
             drawingSo.FindProperty("_headTransform").objectReferenceValue = head;
             drawingSo.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(drawing);

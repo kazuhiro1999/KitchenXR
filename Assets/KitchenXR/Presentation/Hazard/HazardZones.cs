@@ -44,6 +44,9 @@ namespace KitchenXR.Presentation.Hazard
         /// <summary>領域が増えた／減った／高さが変わった（札の書き換えの契機）。</summary>
         public event Action Changed;
 
+        /// <summary>ピンチが無いまま時間切れで囲むのをやめた（札に出す）。</summary>
+        public event Action DrawTimedOut;
+
         /// <summary>今の領域（試験と近接の判定が見る）。</summary>
         public IReadOnlyList<ZoneEntry> Entries => _entries;
 
@@ -73,8 +76,10 @@ namespace KitchenXR.Presentation.Hazard
             {
                 _drawing.Committed -= HandleCommitted;
                 _drawing.Progress -= HandleProgress;
+                _drawing.TimedOut -= HandleTimedOut;
                 _drawing.Committed += HandleCommitted;
                 _drawing.Progress += HandleProgress;
+                _drawing.TimedOut += HandleTimedOut;
             }
         }
 
@@ -84,6 +89,7 @@ namespace KitchenXR.Presentation.Hazard
             {
                 _drawing.Committed -= HandleCommitted;
                 _drawing.Progress -= HandleProgress;
+                _drawing.TimedOut -= HandleTimedOut;
             }
         }
 
@@ -243,12 +249,20 @@ namespace KitchenXR.Presentation.Hazard
         /// <summary>最後に作った領域（札に高さを出すため）。無ければ null。</summary>
         public HazardZone Last => _entries.Count == 0 ? null : _entries[_entries.Count - 1].Zone;
 
+        /// <summary>
+        /// 描いている途中の見せ方。始点を置いた瞬間に**点**を出し、矩形が領域になる大きさに
+        /// なったら半透明の面と縁の線を重ねる（点はそのまま＝どこから始めたかが分かる）。
+        /// </summary>
         private void HandleProgress()
         {
-            if (_drawing == null || !_drawing.IsDragging)
+            if (_drawing == null || !_drawing.HasStart)
             {
+                HidePreview();
                 return;
             }
+
+            var preview = EnsurePreview();
+            preview.ShowPoint(_drawing.Start);
 
             var zone = HazardZone.FromCorners(
                 "preview", HazardZone.StoveKind, _drawing.Start, _drawing.Current,
@@ -256,13 +270,21 @@ namespace KitchenXR.Presentation.Hazard
 
             if (zone == null)
             {
-                // まだ小さすぎる（ドラッグを始めた直後）。仮の枠は出さない。
-                HidePreview();
+                // まだ小さすぎる（つまんだ直後・終点待ち）。点だけ出しておく。
+                preview.SetLevel(HazardAlertLevel.Off, false);
+                preview.SetFillShown(false);
                 return;
             }
 
-            EnsurePreview().SetZone(zone);
-            EnsurePreview().SetLevel(HazardAlertLevel.Watch, true);
+            preview.SetZone(zone);
+            preview.SetFillShown(true);
+            preview.SetLevel(HazardAlertLevel.Watch, true);
+        }
+
+        private void HandleTimedOut()
+        {
+            HidePreview();
+            DrawTimedOut?.Invoke();
         }
 
         private void HandleCommitted(Vector3 start, Vector3 end, float yaw)
@@ -326,7 +348,20 @@ namespace KitchenXR.Presentation.Hazard
             return _preview;
         }
 
-        private void HidePreview() => _preview?.SetLevel(HazardAlertLevel.Off, false);
+        private void HidePreview()
+        {
+            if (_preview == null)
+            {
+                return;
+            }
+
+            _preview.SetFillShown(false);
+            _preview.HidePoint();
+            _preview.SetLevel(HazardAlertLevel.Off, false);
+        }
+
+        /// <summary>今描いている仮の枠（試験が見る）。</summary>
+        public HazardZoneVisual Preview => _preview;
 
         /// <summary>控えだけ書く（アンカーは「保存」のときだけ。描いた直後に消えないように）。</summary>
         private void SaveFileOnly()

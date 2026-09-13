@@ -147,5 +147,15 @@ namespace KitchenXR.Presentation.Hazard
 
             return new HazardZone(id, kind, center, sizeX, sizeZ, yawDegrees, start.y - floorY);
         }
+
+        /// <summary>
+        /// 2点が領域になる大きさか（<see cref="FromCorners"/> と同じ判定）。
+        /// 描いている途中に「離したら確定してよいか」を見るのに使う。
+        /// </summary>
+        public static bool IsLargeEnough(Vector3 start, Vector3 end, float yawDegrees)
+        {
+            var local = Quaternion.Inverse(Quaternion.Euler(0f, yawDegrees, 0f)) * (end - start);
+            return Mathf.Abs(local.x) >= MinSideMeters && Mathf.Abs(local.z) >= MinSideMeters;
+        }
     }
 }

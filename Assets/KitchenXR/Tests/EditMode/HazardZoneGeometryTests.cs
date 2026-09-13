@@ -133,23 +133,33 @@ namespace KitchenXR.Tests.EditMode
             }
         }
 
+        /// <summary>
+        /// 「離したら確定してよいか」の判定が <see cref="HazardZone.FromCorners"/> と食い違わないこと。
+        /// 食い違うと、離した瞬間に確定したのに領域ができない（か、その逆）ことになる。
+        /// </summary>
         [Test]
-        public void レイと水平面の交点を数学で取る()
+        public void 確定してよい大きさの判定が矩形を作れるかと一致する()
         {
-            // 目の高さ 1.5m から 45° 下へ。0.9m の面とは水平に 0.6m 先で交わる。
-            var ray = new Ray(new Vector3(0f, 1.5f, 0f), new Vector3(0f, -1f, 1f).normalized);
+            var start = new Vector3(0f, 0.9f, 0f);
 
-            Assert.IsTrue(HazardZoneDrawing.TryIntersectPlane(ray, 0.9f, out var point));
-            Assert.AreEqual(0.9f, point.y, 1e-4f);
-            Assert.AreEqual(0.6f, point.z, 1e-3f);
+            foreach (var yaw in new[] { 0f, 30f, 175f })
+            {
+                foreach (var local in new[]
+                         {
+                             new Vector3(0.6f, 0f, 0.4f),   // 十分
+                             new Vector3(-0.6f, 0f, -0.4f), // 逆向きでも同じ
+                             new Vector3(0.6f, 0f, 0.05f),  // 細すぎ
+                             new Vector3(0.05f, 0f, 0.05f), // 指の震え
+                         })
+                {
+                    var end = start + Quaternion.Euler(0f, yaw, 0f) * local;
+                    var zone = HazardZone.FromCorners("z", HazardZone.StoveKind, start, end, yaw, 0f);
 
-            // 上を向いたレイは下の面と交わらない（後ろ側の交点を拾わない）。
-            var up = new Ray(new Vector3(0f, 1.5f, 0f), new Vector3(0f, 1f, 1f).normalized);
-            Assert.IsFalse(HazardZoneDrawing.TryIntersectPlane(up, 0.9f, out _));
-
-            // 水平に近いレイは交点が遠すぎるので捨てる。
-            var flat = new Ray(new Vector3(0f, 1.5f, 0f), new Vector3(0f, -0.01f, 1f).normalized);
-            Assert.IsFalse(HazardZoneDrawing.TryIntersectPlane(flat, 0.9f, out _));
+                    Assert.AreEqual(
+                        zone != null, HazardZone.IsLargeEnough(start, end, yaw),
+                        $"yaw {yaw}・{local} で判定が食い違います。");
+                }
+            }
         }
     }
 }

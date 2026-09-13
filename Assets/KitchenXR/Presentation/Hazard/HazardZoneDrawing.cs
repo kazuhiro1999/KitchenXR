@@ -1,61 +1,94 @@
 using System;
 using UnityEngine;
-using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
 namespace KitchenXR.Presentation.Hazard
 {
     /// <summary>
-    /// 領域を「レイで指してピンチしたまま水平にドラッグして囲む」で描く。
+    /// 領域を「対角の角から角までを指でつまむ」で描く。
     ///
-    /// コンロは壁際にあって手が届かないので、床の平面や物の面を直接なぞらせることはできない。
-    /// そこで**最初のピンチの当たり点の高さに水平な作業面を仮に張り**、以後はレイとその面との
-    /// 交点だけを追う（＝手を伸ばさずに天板の上を囲める）。面は無限平面なので、交点は
-    /// <c>t = (planeY - o.y) / d.y</c> の1行で取れる——AR の平面検出には頼らない。
+    /// レイは使いません。始点も終点も**つまんだ手の位置そのもの**
+    /// （<see cref="IPinchSource"/>＝人差し指と親指の中点。取れなければポークの指先）です。
+    /// レイの当たり点だと、コンロには当たる物が無く（AR の平面はコンロを知らない）
+    /// 矩形がどこにも出ませんでした。
     ///
-    /// ピンチは XRI の「選択」だが、<c>selectEntered</c>／<c>selectExited</c> は**何かを
-    /// 選んだときだけ**出る。空を指してピンチしても発火しないので、掴んだ相手に関わらず
-    /// 押されていることが分かる <c>logicalSelectState</c>（<c>wasPerformedThisFrame</c>／
-    /// <c>isPerformed</c>／<c>wasCompletedThisFrame</c>）を見る。
+    /// 始点を置いた高さに水平な面を張り、以後の手の高さは無視します（＝必ず水平な長方形）。
+    /// 天板の高さは <see cref="HazardZones.AdjustHeight"/> の ±5cm で後から直せます。
     ///
-    /// レイの出どころは <see cref="IXRRayProvider.GetOrCreateRayOrigin"/>——手でも
-    /// コントローラでも、Near-Far Interactor でも Ray Interactor でも同じ口で取れる。
+    /// **始点と終点は別々のピンチでもよい**のが肝心——コンロは壁際で、対角の角まで手を
+    /// 伸ばしたままにはできません。1回目のピンチで手前の角、離して身体を移し、2回目の
+    /// ピンチで奥の角。1回のピンチで対角まで引いてもよい（引いた先が十分大きければ
+    /// 離した時点で確定、小さければ「まだ終点待ち」として2回目のピンチを待ちます）。
+    ///
+    /// 待っている間に <see cref="TimeoutSeconds"/> 秒ピンチが無ければやめます——
+    /// 「囲む」を押したことを忘れた手が、別の用でつまんだ拍子に矩形を作らないように。
     /// </summary>
     public sealed class HazardZoneDrawing : MonoBehaviour
     {
-        /// <summary>当たる物が無いときの作業面の高さ（頭からの下がり。m）。一般的な天板の高さ。</summary>
-        public const float FallbackBelowHeadMeters = 0.30f;
+        /// <summary>ピンチを待つ上限（秒）。過ぎたらやめる。</summary>
+        public const float DefaultTimeoutSeconds = 20f;
 
-        /// <summary>レイを伸ばす上限（m）。これより遠い交点は台所の外なので捨てる。</summary>
-        public const float MaxReachMeters = 6f;
+        /// <summary>ピンチを待つ上限（秒）。試験だけ短くする。</summary>
+        public float TimeoutSeconds { get; set; } = DefaultTimeoutSeconds;
 
-        /// <summary>水平に近すぎるレイは作業面と交わらない（|d.y| の下限）。</summary>
-        private const float MinVerticalComponent = 0.05f;
+        /// <summary>作図の段。</summary>
+        public enum Phase
+        {
+            /// <summary>描いていない。</summary>
+            Off,
 
-        /// <summary>一度に見る当たりの数。台所の板は数枚なので余裕を持って 16。</summary>
-        private const int MaxHits = 16;
+            /// <summary>始点を置くピンチ待ち。</summary>
+            WaitingStart,
 
-        private readonly RaycastHit[] _hits = new RaycastHit[MaxHits];
+            /// <summary>つまんだまま終点を引いている。</summary>
+            Drawing,
+
+            /// <summary>始点は置いた。終点を置くピンチ待ち。</summary>
+            WaitingEnd,
+        }
 
         [SerializeField]
-        [Tooltip("レイを持つ Interactor（rig の Near-Far Interactor 4つ）。")]
+        [Tooltip("囲んでいる間だけ掴みを止める Interactor（rig の Near-Far Interactor 4つ）。"
+                 + "手が追えないときの select 入力もここから取る。")]
         private XRBaseInputInteractor[] _interactors = Array.Empty<XRBaseInputInteractor>();
 
         [SerializeField]
-        [Tooltip("矩形の向き（yaw）と、当たる物が無いときの高さの基準。未指定なら Camera.main。")]
+        [Tooltip("手が追えないときの指先（rig の Poke Interactor）。")]
+        private XRPokeInteractor[] _pokeInteractors = Array.Empty<XRPokeInteractor>();
+
+        [SerializeField]
+        [Tooltip("XR Origin。XR Hands の関節は追跡原点基準なので、世界へ出すのに要る。")]
+        private Transform _originTransform;
+
+        [SerializeField]
+        [Tooltip("矩形の向き（yaw）の基準。未指定なら Camera.main。")]
         private Transform _headTransform;
 
-        /// <summary>矩形が確定した（始点・終点・yaw・床の高さは呼び出し側が決める）。</summary>
+        private IPinchSource _source;
+        private Phase _phase = Phase.Off;
+        private bool _wasPinching;
+        private bool _secondPinch;
+        private float _waitingSince;
+
+        /// <summary>矩形が確定した（始点・終点・yaw）。</summary>
         public event Action<Vector3, Vector3, float> Committed;
 
-        /// <summary>伸びている途中（仮の枠を描き替える契機）。</summary>
+        /// <summary>始点／終点が動いた（仮の枠を描き替える契機）。</summary>
         public event Action Progress;
 
-        /// <summary>次のピンチを待っているか。</summary>
-        public bool IsArmed { get; private set; }
+        /// <summary>ピンチが無いまま時間切れになった。</summary>
+        public event Action TimedOut;
 
-        /// <summary>今ドラッグの最中か。</summary>
-        public bool IsDragging { get; private set; }
+        public Phase CurrentPhase => _phase;
+
+        /// <summary>次のピンチを待っているか（始点待ちでも終点待ちでも）。</summary>
+        public bool IsArmed => _phase == Phase.WaitingStart || _phase == Phase.WaitingEnd;
+
+        /// <summary>今つまんだまま引いている最中か。</summary>
+        public bool IsDragging => _phase == Phase.Drawing;
+
+        /// <summary>始点が置かれているか（点を出す契機）。</summary>
+        public bool HasStart => _phase == Phase.Drawing || _phase == Phase.WaitingEnd;
 
         /// <summary>始点（世界）。</summary>
         public Vector3 Start { get; private set; }
@@ -63,43 +96,72 @@ namespace KitchenXR.Presentation.Hazard
         /// <summary>今の終点（世界）。</summary>
         public Vector3 Current { get; private set; }
 
-        /// <summary>仮の作業面の高さ（世界の y）。</summary>
+        /// <summary>始点の高さに張った水平面（世界の y）。</summary>
         public float PlaneY { get; private set; }
 
-        /// <summary>矩形の向き（度）。囲み始めたときの頭の向き。</summary>
+        /// <summary>矩形の向き（度）。始点を置いたときの頭の向き。</summary>
         public float YawDegrees { get; private set; }
 
-        public void Bind(XRBaseInputInteractor[] interactors, Transform head = null)
+        /// <summary>今の始点と終点で領域になる大きさか（＝離して確定してよいか）。</summary>
+        public bool IsLargeEnough => HasStart && HazardZone.IsLargeEnough(Start, Current, YawDegrees);
+
+        public void Bind(
+            XRBaseInputInteractor[] interactors, Transform head = null,
+            XRPokeInteractor[] pokes = null, Transform origin = null)
         {
             _interactors = interactors ?? Array.Empty<XRBaseInputInteractor>();
+
             if (head != null)
             {
                 _headTransform = head;
             }
+
+            if (pokes != null)
+            {
+                _pokeInteractors = pokes;
+            }
+
+            if (origin != null)
+            {
+                _originTransform = origin;
+            }
+
+            _source = null; // 次に読むときに組み直す。
         }
+
+        /// <summary>ピンチの出どころを差し替える（試験と Editor の試し）。</summary>
+        public void SetPinchSource(IPinchSource source) => _source = source;
+
+        /// <summary>今のピンチの出どころ。無ければ実機用を組む。</summary>
+        public IPinchSource Source =>
+            _source ??= new HandPinchSource(_originTransform, _pokeInteractors, _interactors);
 
         /// <summary>「囲む」——次のピンチで始点を取る。</summary>
         public void Arm()
         {
-            IsArmed = true;
-            IsDragging = false;
+            _phase = Phase.WaitingStart;
+            _secondPinch = false;
+
+            // 押した手がもうつまんでいても始点にしない（離してからの1回を待つ）。
+            _wasPinching = true;
+            _waitingSince = Time.time;
+
             SetGrabSuspended(true);
         }
 
-        /// <summary>「やり直す」「戻る」——描くのをやめる。</summary>
+        /// <summary>「やり直す」「戻る」「時間切れ」——描くのをやめる。</summary>
         public void Disarm()
         {
-            IsArmed = false;
-            IsDragging = false;
+            _phase = Phase.Off;
+            _secondPinch = false;
             SetGrabSuspended(false);
         }
 
         /// <summary>
         /// 描いている間だけレイの掴みを止める（触れてよい層を空にする）。
         ///
-        /// 配置モードのレイは全ての層に届くので、コンロを指したレイが途中の板を横切っていると、
-        /// 囲もうとしたピンチがその板を掴んでしまう（板が飛んで、矩形も始まらない）。
-        /// 戻す先が配置モードの値で固定なのは、描くのが配置モードの中だけだから。
+        /// 配置モードのレイは全ての層に届くので、囲もうとしたピンチが視線の先の板を
+        /// 掴んでしまう（板が飛んで、矩形も始まらない）。
         /// </summary>
         private void SetGrabSuspended(bool suspended)
         {
@@ -115,66 +177,85 @@ namespace KitchenXR.Presentation.Hazard
 
         private void Update()
         {
-            if (!IsArmed && !IsDragging)
+            if (_phase == Phase.Off)
             {
                 return;
             }
 
-            foreach (var interactor in _interactors)
+            var sample = Source.Read();
+            var pinching = sample.IsTracked && sample.IsPinching;
+            var pressed = pinching && !_wasPinching;
+            _wasPinching = pinching;
+
+            switch (_phase)
             {
-                if (interactor == null || !interactor.isActiveAndEnabled)
-                {
-                    continue;
-                }
-
-                var state = interactor.logicalSelectState;
-                if (state == null)
-                {
-                    continue;
-                }
-
-                if (!IsDragging)
-                {
-                    if (state.wasPerformedThisFrame && TryGetRay(interactor, out var startRay))
+                case Phase.WaitingStart:
+                    if (pressed)
                     {
-                        BeginAt(FirstHitPoint(startRay));
+                        BeginAt(sample.Position);
+                    }
+                    else
+                    {
+                        CheckTimeout();
                     }
 
-                    continue;
-                }
+                    break;
 
-                if (TryGetRay(interactor, out var ray) && TryIntersectPlane(ray, PlaneY, out var point))
-                {
-                    DragTo(point);
-                }
+                case Phase.WaitingEnd:
+                    if (pressed)
+                    {
+                        ResumeAt(sample.Position);
+                    }
+                    else
+                    {
+                        CheckTimeout();
+                    }
 
-                if (state.wasCompletedThisFrame || !state.isPerformed)
-                {
-                    Commit();
-                }
+                    break;
 
-                return;
+                case Phase.Drawing:
+                    if (pinching)
+                    {
+                        DragTo(sample.Position);
+                    }
+                    else
+                    {
+                        ReleasePinch();
+                    }
+
+                    break;
             }
         }
 
-        // ---------------------------------------------------------------- 試験から叩ける3つ
+        private void CheckTimeout()
+        {
+            if (Time.time - _waitingSince < TimeoutSeconds)
+            {
+                return;
+            }
 
-        /// <summary>始点を置く（＝仮の作業面をその高さに張る）。</summary>
+            Disarm();
+            TimedOut?.Invoke();
+        }
+
+        // ---------------------------------------------------------------- 段を移す4つ
+
+        /// <summary>始点を置く（＝その高さに水平な面を張る）。</summary>
         public void BeginAt(Vector3 point)
         {
             PlaneY = point.y;
             Start = point;
             Current = point;
             YawDegrees = HeadYaw();
-            IsArmed = false;
-            IsDragging = true;
+            _phase = Phase.Drawing;
+            _secondPinch = false;
             Progress?.Invoke();
         }
 
-        /// <summary>終点を動かす（水平にドラッグ）。高さは作業面に貼り付ける。</summary>
+        /// <summary>終点を動かす。高さは始点の面に貼り付ける（＝必ず水平な長方形）。</summary>
         public void DragTo(Vector3 point)
         {
-            if (!IsDragging)
+            if (_phase != Phase.Drawing)
             {
                 return;
             }
@@ -184,116 +265,63 @@ namespace KitchenXR.Presentation.Hazard
             Progress?.Invoke();
         }
 
-        /// <summary>離した——矩形を確定する。</summary>
-        public void Commit()
+        /// <summary>2回目のピンチ——終点を置き直して、そのまま引ける段へ。</summary>
+        public void ResumeAt(Vector3 point)
         {
-            if (!IsDragging)
+            if (_phase != Phase.WaitingEnd)
             {
                 return;
             }
 
-            IsDragging = false;
+            _secondPinch = true;
+            _phase = Phase.Drawing;
+            DragTo(point);
+        }
+
+        /// <summary>
+        /// 指を離した。十分な大きさなら確定、まだ小さければ**終点待ち**へ——
+        /// 「つまんで、離して、離れた角でもう一度つまむ」を成り立たせるため。
+        /// 2回目のピンチのあとは小さくても確定する（待ち続けない）。
+        /// </summary>
+        public void ReleasePinch()
+        {
+            if (_phase != Phase.Drawing)
+            {
+                return;
+            }
+
+            if (_secondPinch || IsLargeEnough)
+            {
+                Commit();
+                return;
+            }
+
+            _phase = Phase.WaitingEnd;
+            _waitingSince = Time.time;
+            Progress?.Invoke();
+        }
+
+        /// <summary>矩形を確定する。</summary>
+        public void Commit()
+        {
+            if (!HasStart)
+            {
+                return;
+            }
+
+            _phase = Phase.Off;
+            _secondPinch = false;
             SetGrabSuspended(false);
             Committed?.Invoke(Start, Current, YawDegrees);
         }
 
-        // ---------------------------------------------------------------- レイと面
-
-        /// <summary>
-        /// 最初のピンチの当たり点。台所の物（AR の面・壁・家具）に当たればその点、
-        /// 当たらなければ「頭の高さ − 30cm」の水平面との交点
-        /// （それも取れなければレイの 1m 先）。
-        ///
-        /// **板は数えない。** レイが途中の板を横切っていると、作業面が板の面の高さに張られて
-        /// しまう（板は胸の高さなので、天板よりずっと高いところを囲うことになる）。
-        /// </summary>
-        private Vector3 FirstHitPoint(Ray ray)
-        {
-            var count = Physics.RaycastNonAlloc(
-                ray, _hits, MaxReachMeters, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-
-            var nearest = float.PositiveInfinity;
-            var found = false;
-            var point = Vector3.zero;
-
-            for (var i = 0; i < count; i++)
-            {
-                var hit = _hits[i];
-                if (hit.collider == null || hit.collider.GetComponentInParent<XRBaseInteractable>() != null)
-                {
-                    continue; // 板（XRI の相手）は飛ばす。
-                }
-
-                if (hit.distance < nearest)
-                {
-                    nearest = hit.distance;
-                    point = hit.point;
-                    found = true;
-                }
-            }
-
-            if (found)
-            {
-                return point;
-            }
-
-            var fallbackY = HeadPosition().y - FallbackBelowHeadMeters;
-            return TryIntersectPlane(ray, fallbackY, out var fallback)
-                ? fallback
-                : ray.origin + ray.direction;
-        }
-
-        /// <summary>レイと高さ <paramref name="planeY"/> の水平な無限平面との交点。</summary>
-        public static bool TryIntersectPlane(Ray ray, float planeY, out Vector3 point)
-        {
-            point = default;
-
-            var dy = ray.direction.y;
-            if (Mathf.Abs(dy) < MinVerticalComponent)
-            {
-                return false; // 水平に近いレイは面と交わらない（交点が無限遠へ飛ぶ）。
-            }
-
-            var t = (planeY - ray.origin.y) / dy;
-            if (t <= 0f || t > MaxReachMeters)
-            {
-                return false;
-            }
-
-            point = ray.origin + ray.direction * t;
-            return true;
-        }
-
-        private static bool TryGetRay(XRBaseInputInteractor interactor, out Ray ray)
-        {
-            ray = default;
-
-            if (interactor is not IXRRayProvider provider)
-            {
-                return false;
-            }
-
-            var origin = provider.GetOrCreateRayOrigin();
-            if (origin == null)
-            {
-                return false;
-            }
-
-            ray = new Ray(origin.position, origin.forward);
-            return true;
-        }
+        // ---------------------------------------------------------------- 頭の向き
 
         private Transform Head =>
             _headTransform != null ? _headTransform : Camera.main != null ? Camera.main.transform : null;
 
-        private Vector3 HeadPosition()
-        {
-            var head = Head;
-            return head != null ? head.position : Vector3.zero;
-        }
-
         /// <summary>
-        /// 矩形の向きは囲み始めたときの頭の向き。コンロに向かって囲めば矩形が天板の縁に
+        /// 矩形の向きは始点を置いたときの頭の向き。コンロに向かって囲めば矩形が天板の縁に
         /// 沿うので、床の線が部屋の座標系と斜めに交わって見えない。
         /// </summary>
         private float HeadYaw()
