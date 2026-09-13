@@ -164,7 +164,7 @@ Pixels Per Unit 100、板の `localScale` は 0.2 なので **1 UI px = 2mm** �
 
 ### 8.1 取る
 
-- 口は `Platform/IPassthroughCamera`（`IsSupported`・`RequestPermissionAsync`・`Restart`・
+- 口は `Platform/IPassthroughCamera`（`IsSupported`・`RequestPermissionAsync`・
   `TryAcquire`・`AcquireAsync`・`PermissionJustGranted`・`TransformationText`・`Dispose`）で、
   返すのは `CameraFrame`（画素・寸法・撮影時刻・内部パラメータ）だけ。
   板も `CameraProbe` も SDK の型を見ません。
@@ -178,11 +178,20 @@ Pixels Per Unit 100、板の `localScale` は 0.2 なので **1 UI px = 2mm** �
   （実測 2026-09-13。`MirrorY(元) = Rot180(真)` ⇒ `真 = MirrorX(元)`。調査 §7）。
   左右が合っているかは実機でしか見えないので、札に「反転: X」を出しています。
   **`Dispose` は必ず通す**——取りこぼすと AR プラットフォーム側がメモリ切れになります。
-- **権限が下りた直後は口を起こし直します**（`Restart`）。権限が無いまま始まった subsystem は
-  そのセッションの間ずっと 1 枚も返しません（実測 2026-09-13。立ち上げ直すと取れた）。
-  許可の返事を受けたら `ARCameraManager` を disable→enable（無ければ subsystem を Stop／Start）
-  して 0.6 秒待ち、`CameraProbe` がさらに 0.4 秒おきに 4 回まで取り直します。
-  それでも駄目なら札に「許可されました。もう一度「カメラ」を押してください」と出します。
+- **権限は起動時に求めます**（`Bootstrap.RequestHeadsetCameraPermissionAtStartup`。
+  `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]` なので**場面が読まれる前＝AR セッションが
+  立つ前**）。権限が無いまま始まった subsystem はそのセッションの間ずっと 1 枚も返さないので、
+  許可済みで起動するのが唯一カメラが動く道です。呼ぶのは manifest に権限が入っているビルド
+  ——Camera Image Support を立てたビルド——だけ（`IsHeadsetCameraDeclared`）。
+- **口は起こし直しません。`ARCameraManager` にも subsystem にも触りません。**
+  Unity OpenXR: Meta ではパススルーの描画が `ARCameraManager` に結び付いているので、
+  権限の直後に disable→enable したら **MR の視界が真っ暗になって戻りませんでした**
+  （実測 2026-09-13。調査 §7.1）。1 枚も取れないより背景が黒い方がまずい。
+  この壊れ方は実機でしか現れないので、`PlatformIsolationTests` が
+  「`MetaOpenXRPassthroughCamera` のコードに `enabled =`・`ARCameraManager`・`.Stop()`・`.Start()`
+  が現れない」を静的に縛っています。
+- 許可した直後のセッションは諦めます——`CameraProbe` が 0.4 秒おきに 4 回まで取り直し、
+  それでも駄目なら札に「許可されました。アプリを立ち上げ直してください」と出します。
 - 連写は `ConvertAsync` の道（`AcquireAsync`）を通り、変換で主スレッドを止めません。
 - Editor は必ず `Platform/Null/NullPassthroughCamera` に落ちます（XR Simulator はカメラ非対応）。
   差し替えは `PassthroughCameraFactory`（`AnchorStoreFactory` と同じ役回り）。

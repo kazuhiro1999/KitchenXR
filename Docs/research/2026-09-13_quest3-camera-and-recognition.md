@@ -261,3 +261,33 @@ Quest 3・`KitchenXR_v1.0.12-camera.apk`（段 a のビルド）を主人が実�
 
 速さは十分——取得 20ms ＋ 変換 15ms なら 2fps（500ms 間隔）に対して 7% しか使っていない。
 段 (b) の端末内認識（§2.1）に回せる時間が 400ms 以上あるということ。
+
+### 7.1 追記——権限の直後に `ARCameraManager` を無効化するとパススルーが消える（実機）
+
+上の 3 番（「権限の直後はカメラの口を起こし直す」）は**取り消し**。`KitchenXR_v1.0.12-camera2.apk`
+で試したところ、**カメラの権限を許したその瞬間に MR の視界が真っ暗になり、戻らなかった**。
+カメラ自体は取得に成功していたので、消えていたのは映像ではなく**パススルーの背景**。
+
+Unity OpenXR: Meta では**パススルーの描画が `ARCameraManager` に結び付いている**（背景を描くのは
+`ARCameraBackground` で、その絵は `ARCameraManager` から来る）。`enabled` を落とした時点で背景が
+消え、`enabled` を戻しても復帰しませんでした。1 枚も取れないより**背景が黒い方がまずい**——
+調理中は視界そのものなので。
+
+したがって:
+
+- **`ARCameraManager` にも subsystem にも触らない。** `Restart()` は口ごと落とした
+  （`IPassthroughCamera` から外し、`EditMode` の `PlatformIsolationTests` で
+  「`MetaOpenXRPassthroughCamera` のコードに `enabled =`・`ARCameraManager`・`.Stop()`・`.Start()`
+  が現れない」を静的に縛っている。実機でしか現れない壊れ方なので、机の上ではこれしか縛れない）。
+- **権限は起動時に求める。** 場面が読まれる前（＝AR セッションが立つ前）に
+  `Permission.HasUserAuthorizedPermission("horizonos.permission.HEADSET_CAMERA")` を見て、
+  無ければ `RequestUserPermission`（`Bootstrap.RequestHeadsetCameraPermissionAtStartup`。
+  `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]`）。manifest に権限が入っているビルド
+  ——すなわち Camera Image Support を立てたビルド——でだけ呼ぶ
+  （`MetaOpenXRPassthroughCamera.IsHeadsetCameraDeclared()`。`PackageManager` の
+  `requestedPermissions` を見る）。**許可済みなら最初のセッションからカメラが動く。**
+- 許可した直後のセッションについては諦める。「カメラ」を押したときは 0.4 秒おきに 4 回まで
+  取り直し、それでも取れなければ札に**「許可されました。アプリを立ち上げ直してください」**。
+
+言い換えると、「後から許して今のセッションで動かす」道は塞がっている。開いているのは
+「起動時に訊いて、次の起動から動かす」道だけ。

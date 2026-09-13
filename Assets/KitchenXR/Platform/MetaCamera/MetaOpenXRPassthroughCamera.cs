@@ -5,7 +5,6 @@ using Cysharp.Threading.Tasks;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Android;
-using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
 using UnityEngine.XR.OpenXR.Features.Meta;
 
@@ -38,9 +37,6 @@ namespace KitchenXR.Platform.MetaCamera
 
         /// <summary>権限のダイアログの返事を待つ上限（ミリ秒）。</summary>
         public const int PermissionTimeoutMs = 60_000;
-
-        /// <summary>起こし直したあと、最初の1枚が流れてくるまでの待ち（ミリ秒）。</summary>
-        public const int RestartSettleMs = 600;
 
         /// <summary>
         /// 実機の実測（2026-09-13）で絵が 180 度回っていた。<c>MirrorY</c> を掛けた結果が
@@ -109,54 +105,47 @@ namespace KitchenXR.Platform.MetaCamera
             }
 
             // ここに来たのは「今 許可が下りた」ときだけ（既に許されていれば上で返っている）。
-            // 権限が無いまま始まった subsystem はそのセッションの間ずっと 1 枚も返さないので、
-            // 口を起こし直してから最初の1枚が流れてくるのを待つ。
+            //
+            // **口は起こし直さない。** Unity OpenXR: Meta ではパススルーの映像そのものが
+            // ARCameraManager にぶら下がっているので、無効にした時点で MR の背景が黒くなり、
+            // 再有効化しても戻りませんでした（実測 2026-09-13。調査 §7）。
+            // 権限が無いまま始まった subsystem はそのセッションの間 1 枚も返さないので、
+            // このセッションは諦めて立ち上げ直してもらう——だから権限は起動時に求める
+            // （Bootstrap.RequestHeadsetCameraPermissionAtStartup）。
             PermissionJustGranted = true;
-            Restart();
-            await UniTask.Delay(RestartSettleMs, ignoreTimeScale: true, cancellationToken: token)
-                .SuppressCancellationThrow();
-
             return true;
         }
 
         /// <summary>
-        /// カメラの口を起こし直す。持ち主は <c>ARCameraManager</c>（MR テンプレートの rig に居る）
-        /// なので、まずその <c>enabled</c> を落として立て直す——<c>OnDisable</c>／<c>OnEnable</c> は
-        /// setter の中で同期に走るので、その場で subsystem の Stop／Start まで通る。
-        /// 見つからないときだけ subsystem を直に Stop／Start する。
+        /// このビルドが Camera Image Support 付きか（＝manifest に
+        /// <see cref="HeadsetCameraPermission"/> が入っているか）。起動時に権限を求めてよいかの
+        /// 判定に使う——立てていないビルドで求めると、ダイアログも出ないまま拒否が返る。
         /// </summary>
-        public bool Restart()
+        public static bool IsHeadsetCameraDeclared()
         {
-            if (_disposed)
+            if (Application.platform != RuntimePlatform.Android)
             {
                 return false;
             }
 
-            var manager = UnityEngine.Object.FindFirstObjectByType<ARCameraManager>(
-                FindObjectsInactive.Include);
-
-            if (manager != null && manager.enabled)
+            try
             {
-                manager.enabled = false;
-                manager.enabled = true;
-                Debug.Log("[KitchenXR] カメラ: ARCameraManager を起こし直しました。");
-                return true;
+                using var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+                using var activity = player.GetStatic<AndroidJavaObject>("currentActivity");
+                using var manager = activity.Call<AndroidJavaObject>("getPackageManager");
+                var package = activity.Call<string>("getPackageName");
+
+                // GET_PERMISSIONS = 0x00001000。
+                using var info = manager.Call<AndroidJavaObject>("getPackageInfo", package, 0x1000);
+                var declared = info.Get<string[]>("requestedPermissions");
+
+                return declared != null && Array.IndexOf(declared, HeadsetCameraPermission) >= 0;
             }
-
-            var subsystem = FindSubsystem();
-            if (subsystem == null)
+            catch (Exception e)
             {
+                Debug.LogWarning($"[KitchenXR] カメラ: manifest の権限を読めませんでした: {e.Message}");
                 return false;
             }
-
-            if (subsystem.running)
-            {
-                subsystem.Stop();
-            }
-
-            subsystem.Start();
-            Debug.Log("[KitchenXR] カメラ: subsystem を Stop／Start しました。");
-            return true;
         }
 
         public bool TryAcquire(out CameraFrame frame)
@@ -288,7 +277,7 @@ namespace KitchenXR.Platform.MetaCamera
 
             if (!subsystem.running)
             {
-                LastFailure = "カメラの subsystem が動いていません（ARCameraManager が無効）";
+                LastFailure = "カメラの subsystem が動いていません（rig のカメラが無効）";
                 return false;
             }
 

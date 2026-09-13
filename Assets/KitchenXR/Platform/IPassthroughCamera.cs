@@ -37,16 +37,13 @@ namespace KitchenXR.Platform
         /// manifest に入っているだけでは足りず、自分で呼ぶ必要がある（調査 §1.3）。
         /// 既に許されていれば即 true。
         ///
-        /// **下りた直後はカメラの口を起こし直す**（実装の責任）——権限が無いまま始まった
-        /// subsystem はそのセッションの間ずっと 1 枚も返さない。
+        /// **下りた直後にカメラの口を起こし直してはいけない**——パススルーの映像が
+        /// カメラの持ち主（<c>ARCameraManager</c>）にぶら下がっているので、無効にすると
+        /// MR の背景が黒いまま戻りません（実測 2026-09-13。調査 §7）。
+        /// 権限が無いまま始まった subsystem はそのセッションの間ずっと 1 枚も返さないので、
+        /// **権限は起動時に求める**（AR セッションが立つ前）のが唯一の道です。
         /// </summary>
         UniTask<bool> RequestPermissionAsync(CancellationToken token = default);
-
-        /// <summary>
-        /// カメラの口を起こし直す（<c>ARCameraManager</c> の disable→enable、
-        /// または subsystem の Stop／Start）。起こせたら true。
-        /// </summary>
-        bool Restart();
 
         /// <summary>
         /// 今ある最新の1枚を取る。取れなければ false（理由は <see cref="LastFailure"/>）。

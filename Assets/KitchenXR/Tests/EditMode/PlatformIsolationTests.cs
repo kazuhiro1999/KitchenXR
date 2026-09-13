@@ -158,6 +158,38 @@ namespace KitchenXR.Tests.EditMode
         }
 
         /// <summary>
+        /// パススルーの口が <c>ARCameraManager</c> や subsystem を**起こし直さない**こと。
+        ///
+        /// Unity OpenXR: Meta ではパススルーの映像そのものが <c>ARCameraManager</c> に
+        /// ぶら下がっているので、権限が下りた直後に無効化したら MR の背景が真っ暗になり、
+        /// 再有効化しても戻りませんでした（実測 2026-09-13。調査 §7）。これは実機でしか
+        /// 現れないので、コードの側を静的に縛る——権限は起動時に求めるのが正しい道
+        /// （<c>Bootstrap.RequestHeadsetCameraPermissionAtStartup</c>）。
+        /// </summary>
+        [Test]
+        public void パススルーの口はARCameraManagerを起こし直さない()
+        {
+            var path = Path.Combine(
+                KitchenXrRoot, "Platform", "MetaCamera", "MetaOpenXRPassthroughCamera.cs");
+            Assert.IsTrue(File.Exists(path), $"{path} がありません。");
+
+            var code = string.Join("\n", CodeLines(path));
+
+            StringAssert.DoesNotContain("enabled =", code,
+                "ARCameraManager.enabled を書き換えるとパススルーが消えます。");
+            StringAssert.DoesNotContain("ARCameraManager", code,
+                "カメラの持ち主（ARCameraManager）には触らないこと。");
+            StringAssert.DoesNotContain(".Stop()", code,
+                "subsystem を止めるとパススルーが消えます。");
+            StringAssert.DoesNotContain(".Start()", code,
+                "subsystem を起こし直すと管理の持ち主が2つになります。");
+
+            Assert.IsNull(
+                typeof(KitchenXR.Platform.IPassthroughCamera).GetMethod("Restart"),
+                "起こし直す口そのものを残すと、また呼ばれます。");
+        }
+
+        /// <summary>
         /// 注釈（<c>//</c>・<c>/* */</c>・<c>///</c>）を落とした行だけを返す、粗い切り分け。
         /// 「参照しているか」を見たいので、説明のための言及は数えない。
         /// 完全な字句解析ではない（文字列の中の <c>//</c> も注釈と見なす）が、

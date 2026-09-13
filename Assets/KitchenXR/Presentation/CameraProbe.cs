@@ -26,14 +26,18 @@ namespace KitchenXR.Presentation
         /// <summary>JPEG の品質（調査 §3.1 の 640×480・q70）。</summary>
         public const int JpegQuality = 70;
 
-        /// <summary>権限が下りた直後に取り直す回数（口を起こし直しても少し流れ始めが遅い）。</summary>
+        /// <summary>権限が下りた直後に取り直す回数（流れ始めが少し遅いことがある）。</summary>
         public const int RetriesAfterGrant = 4;
 
         /// <summary>その取り直しの間隔（ミリ秒）。</summary>
         public const int RetryIntervalMs = 400;
 
-        /// <summary>権限の直後に取れなかったときの札。次の1回で必ず取れる。</summary>
-        public const string PressAgainText = "許可されました。もう一度「カメラ」を押してください";
+        /// <summary>
+        /// 権限の直後に取れなかったときの札。**このセッションではもう取れません**——
+        /// 権限が無いまま始まった subsystem は 1 枚も返さず、起こし直すとパススルーが
+        /// 消えるので（調査 §7）、立ち上げ直してもらうしかない。
+        /// </summary>
+        public const string PressAgainText = "許可されました。アプリを立ち上げ直してください";
 
         private readonly IPassthroughCamera _camera;
         private readonly ManorClient _manor;
@@ -243,7 +247,8 @@ namespace KitchenXR.Presentation
             }
 
             // 権限が下りた**そのセッション**では 1 枚も来ないことがある（実測 2026-09-13）。
-            // 口は既に起こし直してあるので、流れ始めるまで数回だけ取り直す。
+            // 流れ始めるのを数回だけ待ってみて、駄目なら立ち上げ直してもらう
+            // （起こし直すとパススルーが消えるので、それはしない）。
             var attempts = _camera.PermissionJustGranted ? 1 + RetriesAfterGrant : 1;
 
             for (var i = 0; i < attempts; i++)

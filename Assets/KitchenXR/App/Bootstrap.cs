@@ -10,6 +10,7 @@ using KitchenXR.Platform.Null;
 using KitchenXR.Presentation;
 using KitchenXR.Presentation.Video;
 using UnityEngine;
+using UnityEngine.Android;
 using UnityEngine.UIElements;
 
 namespace KitchenXR.App
@@ -92,6 +93,33 @@ namespace KitchenXR.App
         private RecipeSummary _bundledSummary;
 
         private CancellationTokenSource _cts;
+
+        /// <summary>
+        /// カメラの権限は**起動時**（場面が読まれる前＝AR セッションが立つ前）に求める。
+        ///
+        /// 後から許しても、そのセッションの subsystem は 1 枚も返しません。前は許可の直後に
+        /// <c>ARCameraManager</c> を起こし直していましたが、Unity OpenXR: Meta では
+        /// パススルーの映像そのものがそこにぶら下がっているので、**MR の背景が真っ暗に
+        /// なって戻りませんでした**（実測 2026-09-13。調査 §7）。
+        ///
+        /// ここで許してもらえれば、次の起動——多くは初回に許した時点の起動——から
+        /// 最初のセッションでカメラが動きます。Camera Image Support を立てていないビルド
+        /// （manifest に権限が無い）では何もしない。
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void RequestHeadsetCameraPermissionAtStartup()
+        {
+            const string permission = MetaOpenXRPassthroughCamera.HeadsetCameraPermission;
+
+            if (!MetaOpenXRPassthroughCamera.IsHeadsetCameraDeclared() ||
+                Permission.HasUserAuthorizedPermission(permission))
+            {
+                return;
+            }
+
+            Debug.Log("[KitchenXR] カメラ: 起動時に権限を求めます（AR セッションが立つ前）。");
+            Permission.RequestUserPermission(permission);
+        }
 
         private void Awake()
         {

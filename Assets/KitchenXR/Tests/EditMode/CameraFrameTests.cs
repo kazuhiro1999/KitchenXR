@@ -87,7 +87,6 @@ namespace KitchenXR.Tests.EditMode
             Assert.IsNull(frame);
             Assert.IsNotEmpty(camera.LastFailure, "非対応の理由が空です（札に何も出せません）。");
             Assert.IsFalse(camera.PermissionJustGranted);
-            Assert.IsFalse(camera.Restart(), "受け皿には起こし直す口がありません。");
         }
 
         /// <summary>

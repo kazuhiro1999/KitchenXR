@@ -27,8 +27,6 @@ namespace KitchenXR.Platform.Null
         public UniTask<bool> RequestPermissionAsync(CancellationToken token = default) =>
             UniTask.FromResult(false);
 
-        public bool Restart() => false;
-
         public bool TryAcquire(out CameraFrame frame)
         {
             frame = null;

@@ -749,10 +749,10 @@ namespace KitchenXR.Tests.PlayMode
 
         /// <summary>
         /// 実機では「許可した**そのセッション**では 1 枚も取れない」（実測 2026-09-13）。
-        /// 権限が下りたら口を起こし直し、流れ始めるまで取り直すこと。
+        /// 口は起こし直さず（パススルーが消える）、流れ始めるまで数回だけ取り直すこと。
         /// </summary>
         [UnityTest]
-        public IEnumerator 権限の直後に取れなくても起こし直して取り直す()
+        public IEnumerator 権限の直後に取れなくても数回だけ取り直す()
         {
             var camera = new GrantingCamera(framesUntilReady: 2);
             var probe = new CameraProbe(camera);
@@ -766,16 +766,15 @@ namespace KitchenXR.Tests.PlayMode
             }
 
             Assert.IsNotNull(probe.Texture, $"取り直しても絵が出ませんでした（札: {probe.StatusText}）。");
-            Assert.AreEqual(1, camera.Restarts, "権限の直後にカメラの口を起こし直していません。");
             Assert.AreEqual(3, camera.Attempts, "取り直しの回数が合いません。");
             StringAssert.Contains("反転: X", probe.StatusText, "札に反転が出ていません。");
 
             probe.Dispose();
         }
 
-        /// <summary>それでも取れなければ、2 度目で必ず取れることを札で伝える。</summary>
+        /// <summary>それでも取れなければ、立ち上げ直すよう札で伝える。</summary>
         [UnityTest]
-        public IEnumerator 権限の直後にどうしても取れなければもう一度押すよう札に出す()
+        public IEnumerator 権限の直後にどうしても取れなければ立ち上げ直すよう札に出す()
         {
             var camera = new GrantingCamera(framesUntilReady: int.MaxValue);
             var probe = new CameraProbe(camera);
@@ -789,7 +788,9 @@ namespace KitchenXR.Tests.PlayMode
             }
 
             Assert.AreEqual(CameraProbe.PressAgainText, probe.StatusText,
-                "もう一度押すよう札に出ていません。");
+                "立ち上げ直すよう札に出ていません。");
+            StringAssert.Contains("立ち上げ直して", CameraProbe.PressAgainText,
+                "この札で「もう一度押す」を促すと、押しても取れないまま堂々巡りになります。");
             Assert.AreEqual(1 + CameraProbe.RetriesAfterGrant, camera.Attempts);
             Assert.IsNull(probe.Texture);
 
@@ -803,7 +804,6 @@ namespace KitchenXR.Tests.PlayMode
 
             public GrantingCamera(int framesUntilReady) => _framesUntilReady = framesUntilReady;
 
-            public int Restarts { get; private set; }
             public int Attempts { get; private set; }
 
             public bool IsSupported => true;
@@ -815,14 +815,7 @@ namespace KitchenXR.Tests.PlayMode
                 System.Threading.CancellationToken token = default)
             {
                 PermissionJustGranted = true;
-                Restart();
                 return Cysharp.Threading.Tasks.UniTask.FromResult(true);
-            }
-
-            public bool Restart()
-            {
-                Restarts++;
-                return true;
             }
 
             public bool TryAcquire(out KitchenXR.Platform.CameraFrame frame)
